@@ -1,0 +1,38 @@
+name: order-flow
+
+publish:
+  topic: order.created
+  payload:
+    orderId: ord_123
+    customerId: cus_123
+    customerEmail: developer@example.com
+    currency: CAD
+    total: 279
+    items:
+      - sku: orson-mug
+        quantity: 1
+
+watch:
+  - payment.charged
+  - inventory.reserved
+  - notification.sent
+  - order.cancelled
+
+correlation:
+  header: x-correlation-id
+
+capture:
+  timeout: 10s
+
+topology:
+  - from: order.created
+    to: payment.charged
+
+  - from: order.created
+    to: order.cancelled
+
+  - from: payment.charged
+    to: inventory.reserved
+
+  - from: payment.charged
+    to: notification.sent
