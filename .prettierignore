@@ -4,3 +4,4 @@ frontend/dist
 frontend/wailsjs
 build/bin
 go.sum
+.github/workflows/pullfrog.yml

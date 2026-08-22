@@ -41,10 +41,9 @@ The included demo system models an order flow:
 
 ```text
 order.created
-    ↓
-payment.charged
-    ├── inventory.reserved
-    ├── notification.sent
+    ├── payment.charged
+    │   ├── inventory.reserved
+    │   └── notification.sent
     └── order.cancelled
 ```
 
@@ -172,7 +171,7 @@ topology:
   - from: payment.charged
     to: notification.sent
 
-  - from: payment.charged
+  - from: order.created
     to: order.cancelled
 ```
 

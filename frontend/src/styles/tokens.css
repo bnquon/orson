@@ -1,0 +1,79 @@
+:root {
+  color-scheme: dark;
+
+  /* Brand primitives: change these to evolve the palette. */
+  --orson-coal: #15181b;
+  --orson-parchment: #eee9de;
+  --orson-ochre: #d68a3a;
+  --orson-lake: #4f8390;
+  --orson-fault: #d45f57;
+
+  /* Supporting primitives: components should use semantic aliases below. */
+  --orson-coal-raised: #1b1f23;
+  --orson-coal-elevated: #22272c;
+  --orson-coal-hover: #292f34;
+  --orson-border: #343a40;
+  --orson-border-subtle: #292e33;
+  --orson-text-muted: #aaa69d;
+  --orson-text-dim: #777770;
+  --orson-ochre-bright: #e09a4b;
+  --orson-lake-bright: #5d929e;
+  --orson-success: #719b78;
+  --orson-focus: #71a9b5;
+
+  /* Semantic colors: future components should consume these aliases. */
+  --color-bg: var(--orson-coal);
+  --color-surface: var(--orson-coal-raised);
+  --color-surface-raised: var(--orson-coal-elevated);
+  --color-surface-hover: var(--orson-coal-hover);
+  --color-border: var(--orson-border);
+  --color-border-subtle: var(--orson-border-subtle);
+  --color-text: var(--orson-parchment);
+  --color-text-muted: var(--orson-text-muted);
+  --color-text-dim: var(--orson-text-dim);
+  --color-text-inverse: var(--orson-coal);
+  --color-accent: var(--orson-ochre);
+  --color-accent-hover: var(--orson-ochre-bright);
+  --color-route: var(--orson-lake-bright);
+  --color-success: var(--orson-success);
+  --color-danger: var(--orson-fault);
+  --color-warning: var(--orson-ochre);
+  --color-focus: var(--orson-focus);
+
+  /* Typography */
+  --font-ui: 'Instrument Sans', system-ui, sans-serif;
+  --font-code: 'IBM Plex Mono', ui-monospace, monospace;
+  --text-xs: 0.6875rem;
+  --text-sm: 0.75rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+  --text-display: 1.75rem;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --line-tight: 1.2;
+  --line-normal: 1.5;
+  --line-code: 1.6;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+
+  /* Shape */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Motion */
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+}

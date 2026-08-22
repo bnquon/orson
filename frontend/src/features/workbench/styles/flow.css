@@ -1,0 +1,217 @@
+.flow-panel {
+  display: grid;
+  grid-template-rows: 39px minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.flow-panel__toolbar {
+  align-items: center;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border-subtle);
+  display: flex;
+  justify-content: space-between;
+  padding: 0 10px;
+}
+
+.flow-panel__toolbar strong,
+.flow-panel__toolbar span {
+  display: block;
+}
+
+.flow-panel__toolbar strong {
+  font-size: 10px;
+}
+
+.flow-panel__toolbar > div:first-child > span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.flow-panel__controls {
+  align-items: center;
+  display: flex;
+  gap: 3px;
+}
+
+.flow-panel__controls button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  height: 27px;
+  justify-content: center;
+  padding: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+  width: 27px;
+}
+
+.flow-panel__controls button:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.flow-panel__controls button:active {
+  background: var(--color-bg);
+  color: var(--color-accent-hover);
+}
+
+.flow-panel__controls > span {
+  color: var(--color-text-dim);
+  font-family: var(--font-code);
+  font-size: 9px;
+  min-width: 34px;
+  text-align: center;
+}
+
+.flow-panel__viewport {
+  min-height: 0;
+  overflow: auto;
+}
+
+.flow-map {
+  height: 410px;
+  min-width: 780px;
+  position: relative;
+}
+
+.flow-map__lane {
+  border-left: 1px solid var(--color-border-subtle);
+  color: var(--color-text-dim);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  padding-left: 8px;
+  position: absolute;
+  text-transform: uppercase;
+  top: 18px;
+}
+
+.flow-map__lane--root {
+  left: 24px;
+}
+
+.flow-map__lane--downstream {
+  left: 280px;
+}
+
+.flow-map__edge {
+  background: var(--color-border);
+  height: 1px;
+  position: absolute;
+  transform-origin: left center;
+}
+
+.flow-map__edge--root-payment {
+  left: 213px;
+  top: 211px;
+  width: 77px;
+}
+
+.flow-map__edge--payment-inventory {
+  left: 473px;
+  top: 211px;
+  transform: rotate(-28deg);
+  width: 95px;
+}
+
+.flow-map__edge--payment-notification {
+  left: 473px;
+  top: 211px;
+  transform: rotate(28deg);
+  width: 95px;
+}
+
+.flow-node {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+  min-height: 82px;
+  padding: 10px;
+  position: absolute;
+  text-align: left;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+  width: 190px;
+}
+
+.flow-node:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-text-dim);
+}
+
+.flow-node:active {
+  background: var(--color-bg);
+}
+
+.flow-node--selected {
+  background: color-mix(in srgb, var(--color-route) 9%, var(--color-surface));
+  border-color: var(--color-route);
+  box-shadow: inset 3px 0 var(--color-route);
+}
+
+.flow-node--root {
+  left: 24px;
+  top: 170px;
+}
+
+.flow-node--payment {
+  left: 283px;
+  top: 170px;
+}
+
+.flow-node--inventory {
+  left: 560px;
+  top: 72px;
+}
+
+.flow-node--notification {
+  left: 560px;
+  top: 268px;
+}
+
+.flow-node__topline {
+  align-items: center;
+  color: var(--color-success);
+  display: flex;
+  font-size: 9px;
+  justify-content: space-between;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.flow-node strong {
+  display: block;
+  font-family: var(--font-code);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  margin-top: 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-node__time {
+  color: var(--color-text-dim);
+  display: block;
+  font-family: var(--font-code);
+  font-size: 9px;
+  margin-top: 5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-panel__controls button,
+  .flow-node {
+    transition: none;
+  }
+}
