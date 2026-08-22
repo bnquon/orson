@@ -1,0 +1,37 @@
+{
+  "name": "orson",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare": "husky",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint frontend/src --max-warnings=0",
+    "lint:fix": "npm run lint -- --fix",
+    "typecheck": "tsc --noEmit -p frontend/tsconfig.json && tsc --noEmit -p frontend/tsconfig.node.json",
+    "check:exports": "knip",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm run check:exports",
+    "precommit": "lint-staged && npm run lint && npm run typecheck && npm run check:exports"
+  },
+  "lint-staged": {
+    "frontend/src/**/*.{ts,tsx}": [
+      "prettier --write",
+      "eslint --fix --max-warnings=0"
+    ],
+    "frontend/vite.config.ts": "prettier --write",
+    "*.{js,mjs,cjs,css,json,jsonc,md,yaml,yml,html}": "prettier --write",
+    "*.go": "gofmt -w"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.11.0",
+    "husky": "^9.1.7",
+    "knip": "^6.32.2",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0"
+  }
+}

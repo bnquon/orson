@@ -1,0 +1,9 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "ignoreBinaries": ["gofmt"],
+  "workspaces": {
+    "frontend": {
+      "ignore": ["wailsjs/**"]
+    }
+  }
+}
