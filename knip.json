@@ -1,9 +1,11 @@
 {
   "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "ignore": ["design-explorations/**"],
   "ignoreBinaries": ["gofmt"],
   "workspaces": {
     "frontend": {
-      "ignore": ["wailsjs/**"]
+      "ignore": ["wailsjs/**"],
+      "ignoreDependencies": ["@fontsource-variable/instrument-sans", "@fontsource/ibm-plex-mono"]
     }
   }
 }
