@@ -1,0 +1,13 @@
+{
+  "orderId": "ord_456",
+  "customerId": "cus_456",
+  "customerEmail": "developer@example.com",
+  "currency": "CAD",
+  "total": 799,
+  "items": [
+    {
+      "sku": "orson-mug",
+      "quantity": 2
+    }
+  ]
+}
