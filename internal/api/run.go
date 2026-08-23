@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
+
+const maxCaptureTimeoutSeconds = int64((1<<63 - 1) / int64(time.Second))
 
 type Header struct {
 	Key   string `json:"key"`
@@ -45,6 +48,9 @@ func (r RunRequest) Validate() error {
 	if r.CaptureTimeoutSeconds <= 0 {
 		return errors.New("capture timeout must be positive")
 	}
+	if int64(r.CaptureTimeoutSeconds) > maxCaptureTimeoutSeconds {
+		return errors.New("capture timeout is too large")
+	}
 
 	if !json.Valid([]byte(r.Payload)) {
 		return errors.New("payload must be valid JSON")
@@ -59,7 +65,7 @@ type EventRecord struct {
 	Value     string   `json:"value"`
 	Headers   []Header `json:"headers"`
 	Partition int32    `json:"partition"`
-	Offset    int64    `json:"offset"`
+	Offset    string   `json:"offset"`
 	Timestamp string   `json:"timestamp"`
 }
 

@@ -33,9 +33,9 @@ function isEventRecord(value: unknown): value is EventRecord {
     typeof value.value !== 'string' ||
     typeof value.timestamp !== 'string' ||
     typeof value.partition !== 'number' ||
-    typeof value.offset !== 'number' ||
+    typeof value.offset !== 'string' ||
+    !/^\d+$/.test(value.offset) ||
     !Number.isSafeInteger(value.partition) ||
-    !Number.isSafeInteger(value.offset) ||
     !Array.isArray(value.headers)
   ) {
     return false;

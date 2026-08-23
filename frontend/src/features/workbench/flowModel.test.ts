@@ -23,7 +23,7 @@ function record(topic: string, offset: number): EventRecord {
     value: '{}',
     headers: [],
     partition: 0,
-    offset,
+    offset: String(offset),
     timestamp: '2026-08-22T00:00:00Z',
   };
 }
@@ -82,7 +82,7 @@ describe('buildFlowViewModel', () => {
       run({ runId: 'run-1', status: 'in_progress', records: [first, latest] }),
     );
 
-    expect(model.nodes[1].record?.offset).toBe(12);
+    expect(model.nodes[1].record?.offset).toBe('12');
     expect(model.nodes[1].recordId).toBe(getRunRecordId('run-1', latest));
     expect(model.nodes[1].recordIds).toEqual([
       getRunRecordId('run-1', first),
@@ -128,6 +128,35 @@ describe('buildFlowViewModel', () => {
     expect(model.nodes[0].status).toBe('failed');
     expect(model.nodes.slice(1).every((node) => node.status === 'unwitnessed')).toBe(true);
     expect(model.edges[0].status).toBe('failed');
+  });
+
+  it('keeps the configured graph neutral when a run is rejected before acceptance', () => {
+    const model = buildFlowViewModel(
+      draft,
+      run({
+        status: 'failed',
+        error: { code: 'run_busy', message: 'run busy', retryable: true },
+      }),
+    );
+
+    expect(model.nodes.every((node) => node.status === 'configured')).toBe(true);
+    expect(model.edges.every((edge) => edge.status === 'configured')).toBe(true);
+  });
+
+  it('does not attach an old root record to a changed draft topic', () => {
+    const model = buildFlowViewModel(
+      { ...draft, rootTopic: 'order.updated' },
+      run({
+        runId: 'run-1',
+        status: 'completed',
+        rootRecord: record('order.created', 10),
+        records: [record('order.created', 10)],
+      }),
+    );
+
+    expect(model.nodes[0].topic).toBe('order.updated');
+    expect(model.nodes[0].status).toBe('unwitnessed');
+    expect(model.nodes[0].record).toBeNull();
   });
 
   it.each(['capture_failed', 'processing_failed'] as const)(

@@ -7,7 +7,7 @@ const validRecord = {
   value: '{}',
   headers: [],
   partition: 0,
-  offset: 1,
+  offset: '1',
   timestamp: '2026-08-23T00:00:00Z',
 };
 
@@ -21,6 +21,17 @@ describe('parseRunEvent', () => {
         record: validRecord,
       }),
     ).not.toBeNull();
+  });
+
+  it('preserves offsets larger than JavaScript safe integer range', () => {
+    const event = parseRunEvent({
+      runId: 'run-1',
+      sequence: 1,
+      kind: 'root_published',
+      record: { ...validRecord, offset: '9007199254740993' },
+    });
+
+    expect(event?.record?.offset).toBe('9007199254740993');
   });
 
   it.each([

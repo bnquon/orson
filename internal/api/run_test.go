@@ -57,3 +57,16 @@ func TestRunRequestValidateAcceptsValidJSONAndDistinctTopics(t *testing.T) {
 		t.Fatalf("Validate() failed: %v", err)
 	}
 }
+
+func TestRunRequestValidateRejectsTimeoutOverflow(t *testing.T) {
+	request := RunRequest{
+		RootTopic:             "order.created",
+		Payload:               "{}",
+		WatchedTopics:         []string{"payment.charged"},
+		CaptureTimeoutSeconds: int(maxCaptureTimeoutSeconds + 1),
+	}
+
+	if err := request.Validate(); err == nil {
+		t.Fatal("Validate() returned nil, want timeout overflow error")
+	}
+}

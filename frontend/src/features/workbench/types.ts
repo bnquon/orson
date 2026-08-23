@@ -56,7 +56,7 @@ export interface ObservedEvent {
   timestamp: string;
   elapsed: string;
   partition: number;
-  offset: number;
+  offset: string;
   metadata: string;
   headers: ReadonlyArray<Readonly<{ name: string; value: string }>>;
   payload: string;
@@ -81,7 +81,7 @@ export interface EventRecord {
   value: string;
   headers: EventRecordHeader[];
   partition: number;
-  offset: number;
+  offset: string;
   timestamp: string;
 }
 

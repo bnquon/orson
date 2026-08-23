@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
@@ -155,7 +156,7 @@ func toAPIRecord(record kafka.Record) api.EventRecord {
 		Value:     string(record.Message.Value),
 		Headers:   headers,
 		Partition: record.Partition,
-		Offset:    record.Offset,
+		Offset:    strconv.FormatInt(record.Offset, 10),
 		Timestamp: record.Timestamp.UTC().Format(time.RFC3339Nano),
 	}
 }

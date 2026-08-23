@@ -9,7 +9,7 @@ function record(topic: string, offset: number): EventRecord {
     value: `{ "topic": "${topic}" }`,
     headers: [{ key: 'x-correlation-id', value: 'run-1' }],
     partition: 0,
-    offset,
+    offset: String(offset),
     timestamp: '2026-08-22T00:00:00Z',
   };
 }

@@ -319,11 +319,16 @@ func (a *App) beginRun() (*run.Coordinator, context.Context, run.RunID, *api.API
 
 func (a *App) endRun(runID run.RunID) {
 	a.stateMu.Lock()
+	var cancel context.CancelFunc
 	if a.activeRun != nil && a.activeRun.id == runID {
+		cancel = a.activeRun.cancel
 		a.activeRun = nil
 		a.activeRuns--
 	}
 	a.stateMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	a.runWait.Done()
 }
 

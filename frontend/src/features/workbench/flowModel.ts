@@ -175,8 +175,8 @@ function recordsForTopic(
 
 export function buildFlowViewModel(draft: ScenarioDraft, run: RunState): FlowViewModel {
   const { rootTopic, watchedTopics } = normalizedTopics(draft);
-  const hasRun = run.status !== 'idle';
-  const rootRecord = run.rootRecord;
+  const hasRun = run.runId !== null;
+  const rootRecord = run.rootRecord?.topic === rootTopic ? run.rootRecord : null;
   const rootNode: FlowNode | null = rootTopic
     ? {
         id: `root:${rootTopic}`,
