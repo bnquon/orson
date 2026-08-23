@@ -75,6 +75,16 @@ The deeper product and architecture notes live in [PROJECT.md](PROJECT.md).
 - Docker
 - Wails CLI
 
+### Install the Wails CLI
+
+Orson uses Wails `v2.15.0`, matching the version pinned in `go.mod`:
+
+```bash
+go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+```
+
+Make sure Go's install directory is on your `PATH` so the `wails` command is available.
+
 ### Install dependencies
 
 From the repository root:
