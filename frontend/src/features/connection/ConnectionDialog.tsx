@@ -1,17 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import type { api } from '../../../wailsjs/go/models';
+import type { ApiError } from '../../api/result';
 import { Modal } from '../../components/Modal';
-import type { KafkaConnection } from '../workbench/types';
+import type { ConnectionAttemptState, ConnectionFormValues, ConnectionOperation } from './types';
+import { ConnectionActions } from './ConnectionActions';
 import { ConnectionForm } from './ConnectionForm';
-import type { ConnectionAttemptState, ConnectionFormValues } from './types';
+import './styles/connection.css';
 
 interface ConnectionDialogProps {
   open: boolean;
-  activeConnection: KafkaConnection;
+  activeConnection: api.ConnectionInfo;
   attempt: ConnectionAttemptState;
-  onAttemptChange: (attempt: ConnectionAttemptState) => void;
-  onConnected: (state: api.ConnectionState) => void;
-  onDisconnected: () => void;
+  operation: ConnectionOperation;
+  error: ApiError | null;
+  onConnect: (values: ConnectionFormValues) => void;
+  onDisconnect: () => void;
+  onClearErrors: () => void;
   onClose: () => void;
 }
 
@@ -19,12 +23,13 @@ export function ConnectionDialog({
   open,
   activeConnection,
   attempt,
-  onAttemptChange,
-  onConnected,
-  onDisconnected,
+  operation,
+  error,
+  onConnect,
+  onDisconnect,
+  onClearErrors,
   onClose,
 }: ConnectionDialogProps) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const initialValues = useMemo<ConnectionFormValues>(
     () => ({
       name: activeConnection.name,
@@ -35,22 +40,35 @@ export function ConnectionDialog({
     [activeConnection],
   );
 
+  if (!open) return null;
+
   return (
     <Modal
-      open={open}
+      open
       title="Kafka connection"
       description="Update the active session connection without leaving the workbench."
-      closeDisabled={isSubmitting}
+      closeDisabled={operation !== 'idle'}
       onClose={onClose}
+      footer={
+        <ConnectionActions
+          activeConnection={activeConnection}
+          formId="connection-dialog-form"
+          operation={operation}
+          onDisconnect={onDisconnect}
+        />
+      }
     >
       <ConnectionForm
         activeConnection={activeConnection}
         initialAttempt={attempt}
         initialValues={initialValues}
-        onAttemptChange={onAttemptChange}
-        onConnected={onConnected}
-        onDisconnected={onDisconnected}
-        onSubmittingChange={setIsSubmitting}
+        error={error}
+        operation={operation}
+        formId="connection-dialog-form"
+        showActions={false}
+        onConnect={onConnect}
+        onDisconnect={onDisconnect}
+        onClearErrors={onClearErrors}
       />
     </Modal>
   );

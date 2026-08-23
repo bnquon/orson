@@ -2,6 +2,10 @@ import type { ApiError } from '../../api/result';
 
 export type ConnectionAttemptStatus = 'disconnected' | 'connecting' | 'connected' | 'failed';
 
+export type ConnectionOperation = 'idle' | 'connecting' | 'disconnecting';
+
+export type StartupStatus = 'loading' | 'ready' | 'failed';
+
 export interface ConnectionAttemptState {
   status: ConnectionAttemptStatus;
   error: ApiError | null;
@@ -13,3 +17,7 @@ export interface ConnectionFormValues {
   clientId: string;
   dialTimeoutSeconds: string;
 }
+
+type ConnectionField = 'name' | `brokers.${number}` | 'clientId' | 'dialTimeoutSeconds';
+
+export type ConnectionFieldErrors = Partial<Record<ConnectionField, string>>;
