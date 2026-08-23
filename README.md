@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="YOUR_DEMO_VIDEO_URL">Watch the demo</a>
+  <video src="https://github.com/user-attachments/assets/61a024c2-7fb6-46f8-bc3e-9f0ae63a0313" controls width="100%"/>
 </p>
 
 ## Overview
@@ -31,16 +31,6 @@ order.created
 │   ├── inventory.reserved
 │   └── notification.sent
 └── order.cancelled
-```
-
-The video link above is intentionally a placeholder. Replace `YOUR_DEMO_VIDEO_URL` in both places
-after attaching the recording to the issue or post you want to share.
-
-Once a flow screenshot is available, add it at `docs/images/flow-view.png` and use it as the
-clickable video thumbnail:
-
-```md
-[![Watch the Orson demo](docs/images/flow-view.png)](YOUR_DEMO_VIDEO_URL)
 ```
 
 ## Current features
