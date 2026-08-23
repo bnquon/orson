@@ -1,4 +1,4 @@
-import { useRef, type Dispatch, type SetStateAction } from 'react';
+import { useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { Clock, Key, Plus, Trash, WarningCircle } from 'iconoir-react';
 import type {
   KafkaConnection,
@@ -14,6 +14,7 @@ interface ComposeConfigSectionProps {
   connection: KafkaConnection;
   draft: ScenarioDraft;
   setDraft: Dispatch<SetStateAction<ScenarioDraft>>;
+  rootTopicEditRef: MutableRefObject<string | null>;
   touched: TouchedState;
   validation: ValidationResult;
   onTouchField: (field: ValidatableField) => void;
@@ -24,12 +25,12 @@ export function ComposeConfigSection({
   connection,
   draft,
   setDraft,
+  rootTopicEditRef,
   touched,
   validation,
   onTouchField,
   onTouchWatchedTopic,
 }: ComposeConfigSectionProps) {
-  const rootTopicEditRef = useRef<string | null>(null);
   const watchedTopicEditRefs = useRef(new Map<string, string>());
   const showFieldError = (field: ValidatableField) => touched.fields[field] === true;
 
@@ -44,7 +45,13 @@ export function ComposeConfigSection({
       rootTopicEditRef.current = null;
       return;
     }
-    if (nextName.trim() === '') return;
+    const normalizedNextName = nextName.trim();
+    if (
+      normalizedNextName === '' ||
+      draft.watchedTopics.some((topic) => topic.name.trim() === normalizedNextName)
+    ) {
+      return;
+    }
 
     rootTopicEditRef.current = null;
     setDraft((current) => ({
@@ -66,7 +73,16 @@ export function ComposeConfigSection({
       watchedTopicEditRefs.current.delete(topicId);
       return;
     }
-    if (nextName.trim() === '') return;
+    const normalizedNextName = nextName.trim();
+    if (
+      normalizedNextName === '' ||
+      normalizedNextName === draft.rootTopic.trim() ||
+      draft.watchedTopics.some(
+        (topic) => topic.id !== topicId && topic.name.trim() === normalizedNextName,
+      )
+    ) {
+      return;
+    }
 
     watchedTopicEditRefs.current.delete(topicId);
     setDraft((current) => ({

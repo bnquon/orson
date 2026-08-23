@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { CheckCircle, DotArrowRight, WarningCircle } from 'iconoir-react';
 import { LoadingDots } from '../../components/LoadingDots';
 import { api } from '../../../wailsjs/go/models';
@@ -63,6 +63,7 @@ export function WorkbenchPage({
   const [touched, setTouched] = useState<TouchedState>(initialTouched);
   const [publishAttempted, setPublishAttempted] = useState(false);
   const [composeConfigHeight, setComposeConfigHeight] = useState<number | null>(null);
+  const rootTopicEditRef = useRef<string | null>(null);
   const [jsonValidation, setJsonValidation] = useState(() => ({
     payload: initialScenario.payload,
     error: getJsonError(initialScenario.payload),
@@ -239,6 +240,7 @@ export function WorkbenchPage({
             connection={connection}
             draft={draft}
             setDraft={setDraft}
+            rootTopicEditRef={rootTopicEditRef}
             activeEditorTab={activeEditorTab}
             onEditorTabChange={setActiveEditorTab}
             touched={touched}
