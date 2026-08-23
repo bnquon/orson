@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"orson/internal/api"
@@ -9,12 +12,13 @@ import (
 	"orson/internal/run"
 )
 
-// Run executes one root event and captures matching downstream records.
-// Expected failures are returned in the response envelope so the Wails
-// Promise can resolve normally instead of rejecting for application errors.
-func (a *App) Run(request api.RunRequest) api.RunResponse {
+const runEventName = "run:event"
+
+// StartRun validates and registers a run, then returns its ID before Kafka
+// capture or publishing completes. Runtime failures are delivered as events.
+func (a *App) StartRun(request api.RunRequest) api.RunStartResponse {
 	if err := request.Validate(); err != nil {
-		return api.RunFailure(api.NewError(
+		return api.RunStartFailure(api.NewError(
 			"invalid_request",
 			"The run configuration is invalid.",
 			err.Error(),
@@ -22,33 +26,107 @@ func (a *App) Run(request api.RunRequest) api.RunResponse {
 		))
 	}
 
-	coordinator, requestContext, apiErr := a.beginRun()
+	coordinator, requestContext, runID, apiErr := a.beginRun()
 	if apiErr != nil {
-		return api.RunFailure(apiErr)
+		return api.RunStartFailure(apiErr)
 	}
-	defer a.endRun()
 
-	result, err := coordinator.Run(requestContext, run.RunRequest{
-		RootMessage: kafka.Message{
-			Topic:   request.RootTopic,
-			Key:     []byte(request.MessageKey),
-			Value:   []byte(request.Payload),
-			Headers: toKafkaHeaders(request.Headers),
-		},
-		WatchedTopics:  request.WatchedTopics,
-		CaptureTimeout: time.Duration(request.CaptureTimeoutSeconds) * time.Second,
-	})
-	if err != nil {
-		log.Printf("run failed: %v", err)
-		return api.RunFailure(api.NewError(
-			"run_failed",
-			"The event run could not be completed.",
-			err.Error(),
-			true,
+	go func() {
+		defer a.endRun(runID)
+		err := coordinator.Run(requestContext, run.RunRequest{
+			RunID: runID,
+			RootMessage: kafka.Message{
+				Topic:   request.RootTopic,
+				Key:     []byte(request.MessageKey),
+				Value:   []byte(request.Payload),
+				Headers: toKafkaHeaders(request.Headers),
+			},
+			WatchedTopics:  request.WatchedTopics,
+			CaptureTimeout: time.Duration(request.CaptureTimeoutSeconds) * time.Second,
+		}, a.emitRunEvent)
+		if err != nil {
+			log.Printf("run failed before terminal event: %v", err)
+		}
+	}()
+
+	return api.RunStartSuccess(string(runID))
+}
+
+// StopRun requests cancellation of the active run. The terminal state is
+// delivered asynchronously through run:event.
+func (a *App) StopRun(runID string) api.RunControlResponse {
+	runID = strings.TrimSpace(runID)
+
+	a.stateMu.Lock()
+	active := a.activeRun
+	if active == nil || string(active.id) != runID || active.finished {
+		a.stateMu.Unlock()
+		return api.RunControlFailure(api.NewError(
+			"run_not_active",
+			"That run is no longer active.",
+			"Start a new run before trying to stop it.",
+			false,
 		))
 	}
+	active.cancel()
+	a.stateMu.Unlock()
 
-	return api.RunSuccess(toRunData(result))
+	return api.RunControlSuccess()
+}
+
+func (a *App) emitRunEvent(event run.Event) {
+	payload := api.RunEvent{
+		RunID:    string(event.RunID),
+		Sequence: event.Sequence,
+		Kind:     string(event.Kind),
+		Status:   string(event.Status),
+	}
+	if event.Record != nil {
+		record := toAPIRecord(*event.Record)
+		payload.Record = &record
+	}
+	if event.Failure != nil {
+		payload.Error = runFailureAPIError(event.Failure)
+	}
+
+	a.stateMu.Lock()
+	if event.Kind == run.EventFinished && a.activeRun != nil && a.activeRun.id == event.RunID {
+		a.activeRun.finished = true
+	}
+	ctx := a.ctx
+	emitter := a.emitEvent
+	a.stateMu.Unlock()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if emitter != nil {
+		emitter(ctx, runEventName, payload)
+	}
+}
+
+func runFailureAPIError(failure *run.Failure) *api.APIError {
+	if failure == nil {
+		return nil
+	}
+
+	code := "run_failed"
+	message := "The event run could not be completed."
+	switch failure.Stage {
+	case run.FailureStageTimeout, run.FailureStageCancellation:
+		return nil
+	case run.FailureStagePublish:
+		code = "publish_failed"
+		message = "The root event could not be published."
+	case run.FailureStageCapture:
+		code = "capture_failed"
+		message = "Kafka capture could not be completed."
+	case run.FailureStageProcessing:
+		code = "processing_failed"
+		message = "The event run could not be processed."
+	}
+
+	details := failure.Error()
+	return api.NewError(code, message, details, true)
 }
 
 func toKafkaHeaders(headers []api.Header) []kafka.Header {
@@ -61,19 +139,6 @@ func toKafkaHeaders(headers []api.Header) []kafka.Header {
 	}
 
 	return converted
-}
-
-func toRunData(result run.RunResult) api.RunData {
-	records := make([]api.EventRecord, 0, len(result.Records))
-	for _, record := range result.Records {
-		records = append(records, toAPIRecord(record))
-	}
-
-	return api.RunData{
-		CorrelationID: string(result.CorrelationID),
-		RootRecord:    toAPIRecord(result.RootRecord),
-		Records:       records,
-	}
 }
 
 func toAPIRecord(record kafka.Record) api.EventRecord {
@@ -91,7 +156,7 @@ func toAPIRecord(record kafka.Record) api.EventRecord {
 		Value:     string(record.Message.Value),
 		Headers:   headers,
 		Partition: record.Partition,
-		Offset:    record.Offset,
+		Offset:    strconv.FormatInt(record.Offset, 10),
 		Timestamp: record.Timestamp.UTC().Format(time.RFC3339Nano),
 	}
 }

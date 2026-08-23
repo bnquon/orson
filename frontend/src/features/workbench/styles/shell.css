@@ -24,6 +24,10 @@
   gap: 8px;
 }
 
+.workbench-topbar__group--right {
+  min-width: 0;
+}
+
 .workbench-brand {
   align-items: center;
   background: var(--color-accent);
@@ -61,6 +65,7 @@
   font-size: var(--text-sm);
   gap: 7px;
   height: 34px;
+  min-width: 0;
   padding: 0 8px;
   transition:
     background-color var(--duration-fast) var(--ease-standard),
@@ -100,10 +105,30 @@
   border-color: var(--color-border);
   font-family: var(--font-code);
   font-size: 10px;
+  max-width: 360px;
+  overflow: hidden;
+}
+
+.workbench-environment__name,
+.workbench-environment__broker {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-environment__name {
+  flex: 1 1 auto;
 }
 
 .workbench-environment__broker {
   color: var(--color-text-dim);
+  flex: 0 1 132px;
+  max-width: 132px;
+}
+
+.workbench-environment > svg {
+  flex: 0 0 auto;
 }
 
 .workbench-status-dot {
@@ -142,6 +167,7 @@
 .workbench-layout {
   display: grid;
   grid-template-columns: 44px 202px minmax(0, 1fr) 288px;
+  height: 100%;
   min-height: 0;
 }
 
@@ -533,6 +559,10 @@
   .workbench-environment__broker,
   .workbench-shortcut {
     display: none;
+  }
+
+  .workbench-environment {
+    max-width: 240px;
   }
 }
 

@@ -8,6 +8,8 @@ import (
 	"orson/internal/api"
 	"orson/internal/kafka"
 	"orson/internal/run"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const connectionBusyCode = "connection_busy"
@@ -20,6 +22,14 @@ type KafkaConnection interface {
 
 type KafkaConnector interface {
 	Connect(context.Context, kafka.Config) (KafkaConnection, error)
+}
+
+type runEventEmitter func(context.Context, string, api.RunEvent)
+
+type activeRunState struct {
+	id       run.RunID
+	cancel   context.CancelFunc
+	finished bool
 }
 
 type kafkaConnector struct{}
@@ -42,12 +52,18 @@ type App struct {
 	activeConnection *api.ConnectionInfo
 	coordinator      *run.Coordinator
 	activeRuns       int
+	activeRun        *activeRunState
 	shuttingDown     bool
 	latestAttempt    api.ConnectionAttempt
+	emitEvent        runEventEmitter
 }
 
 func NewApp() *App {
-	return newApp(kafkaConnector{})
+	app := newApp(kafkaConnector{})
+	app.emitEvent = func(ctx context.Context, name string, event api.RunEvent) {
+		runtime.EventsEmit(ctx, name, event)
+	}
+	return app
 }
 
 func newApp(connector KafkaConnector) *App {
@@ -263,18 +279,18 @@ func (a *App) GetConnectionStatus() api.ConnectionStatusResponse {
 	return api.ConnectionStatusSuccess(a.connectionStateLocked())
 }
 
-func (a *App) beginRun() (*run.Coordinator, context.Context, *api.APIError) {
+func (a *App) beginRun() (*run.Coordinator, context.Context, run.RunID, *api.APIError) {
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
 
 	if a.shuttingDown {
-		return nil, nil, connectionBusyError()
+		return nil, nil, "", connectionBusyError()
 	}
 	if a.activeRuns > 0 {
-		return nil, nil, runBusyError()
+		return nil, nil, "", runBusyError()
 	}
 	if a.coordinator == nil {
-		return nil, nil, apiConnectionNotConnectedError()
+		return nil, nil, "", apiConnectionNotConnectedError()
 	}
 
 	runContext := a.runCtx
@@ -285,15 +301,34 @@ func (a *App) beginRun() (*run.Coordinator, context.Context, *api.APIError) {
 		runContext = context.Background()
 	}
 
+	runID, err := run.NewRunID()
+	if err != nil {
+		return nil, nil, "", api.NewError(
+			"run_start_failed",
+			"The run could not be started.",
+			err.Error(),
+			true,
+		)
+	}
+	runContext, cancel := context.WithCancel(runContext)
 	a.activeRuns++
+	a.activeRun = &activeRunState{id: runID, cancel: cancel}
 	a.runWait.Add(1)
-	return a.coordinator, runContext, nil
+	return a.coordinator, runContext, runID, nil
 }
 
-func (a *App) endRun() {
+func (a *App) endRun(runID run.RunID) {
 	a.stateMu.Lock()
-	a.activeRuns--
+	var cancel context.CancelFunc
+	if a.activeRun != nil && a.activeRun.id == runID {
+		cancel = a.activeRun.cancel
+		a.activeRun = nil
+		a.activeRuns--
+	}
 	a.stateMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	a.runWait.Done()
 }
 

@@ -203,63 +203,18 @@ export namespace api {
 	        this.value = source["value"];
 	    }
 	}
-	export class EventRecord {
-	    topic: string;
-	    key: string;
-	    value: string;
-	    headers: Header[];
-	    partition: number;
-	    offset: number;
-	    timestamp: string;
+	export class RunControlResponse {
+	    ok: boolean;
+	    error?: APIError;
 	
 	    static createFrom(source: any = {}) {
-	        return new EventRecord(source);
+	        return new RunControlResponse(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.topic = source["topic"];
-	        this.key = source["key"];
-	        this.value = source["value"];
-	        this.headers = this.convertValues(source["headers"], Header);
-	        this.partition = source["partition"];
-	        this.offset = source["offset"];
-	        this.timestamp = source["timestamp"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	
-	export class RunData {
-	    correlationId: string;
-	    rootRecord: EventRecord;
-	    records: EventRecord[];
-	
-	    static createFrom(source: any = {}) {
-	        return new RunData(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.correlationId = source["correlationId"];
-	        this.rootRecord = this.convertValues(source["rootRecord"], EventRecord);
-	        this.records = this.convertValues(source["records"], EventRecord);
+	        this.ok = source["ok"];
+	        this.error = this.convertValues(source["error"], APIError);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -320,19 +275,31 @@ export namespace api {
 		    return a;
 		}
 	}
-	export class RunResponse {
+	export class RunStartData {
+	    runId: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RunStartData(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.runId = source["runId"];
+	    }
+	}
+	export class RunStartResponse {
 	    ok: boolean;
-	    data?: RunData;
+	    data?: RunStartData;
 	    error?: APIError;
 	
 	    static createFrom(source: any = {}) {
-	        return new RunResponse(source);
+	        return new RunStartResponse(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
-	        this.data = this.convertValues(source["data"], RunData);
+	        this.data = this.convertValues(source["data"], RunStartData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
 	

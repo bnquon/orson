@@ -1,17 +1,24 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CheckCircle, DotArrowRight, WarningCircle } from 'iconoir-react';
+import { LoadingDots } from '../../components/LoadingDots';
+import { api } from '../../../wailsjs/go/models';
 import { ComposePanel } from './components/ComposePanel';
 import { FlowPanel } from './components/FlowPanel';
 import { PreviousRunPanel } from './components/PreviousRunPanel';
 import { WorkbenchShell } from './components/WorkbenchShell';
-import { initialScenario, previousRun } from './fixtures';
+import { buildFlowViewModel, getRunRecordId } from './flowModel';
+import { initialScenario } from './fixtures';
+import { formatStatusLabel, isActiveRunStatus } from './runStatus';
+import { useRun } from './useRun';
 import type {
   ComposeEditorTab,
+  EventRecord,
   KafkaConnection,
   ScenarioDraft,
   TouchedState,
   ValidatableField,
   WorkspaceMode,
+  ObservedEvent,
 } from './types';
 import { getJsonError, validateScenario } from './validation';
 import './styles/controls.css';
@@ -21,6 +28,23 @@ const initialTouched: TouchedState = {
   watchedTopicIds: [],
   headerIds: [],
 };
+
+function toObservedEvent(runId: string, record: EventRecord, isRoot: boolean): ObservedEvent {
+  const id = getRunRecordId(runId, record);
+  return {
+    id,
+    name: isRoot ? 'Root event published' : record.topic,
+    topic: record.topic,
+    kind: isRoot ? ('root' as const) : ('downstream' as const),
+    timestamp: record.timestamp || 'Timestamp unavailable',
+    elapsed: '',
+    partition: record.partition,
+    offset: record.offset,
+    metadata: `Kafka · ${record.value.length} B · observed live`,
+    headers: record.headers.map((header) => ({ name: header.key, value: header.value })),
+    payload: record.value,
+  };
+}
 
 interface WorkbenchPageProps {
   connection: KafkaConnection;
@@ -36,7 +60,6 @@ export function WorkbenchPage({
   const [mode, setMode] = useState<WorkspaceMode>('compose');
   const [draft, setDraft] = useState<ScenarioDraft>(initialScenario);
   const [activeEditorTab, setActiveEditorTab] = useState<ComposeEditorTab>('payload');
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [touched, setTouched] = useState<TouchedState>(initialTouched);
   const [publishAttempted, setPublishAttempted] = useState(false);
   const [composeConfigHeight, setComposeConfigHeight] = useState<number | null>(null);
@@ -44,6 +67,7 @@ export function WorkbenchPage({
     payload: initialScenario.payload,
     error: getJsonError(initialScenario.payload),
   }));
+  const run = useRun();
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -58,7 +82,21 @@ export function WorkbenchPage({
     () => validateScenario(draft, connection, jsonValidation.error),
     [connection, draft, jsonValidation.error],
   );
-  const selectedEvent = previousRun.events.find((event) => event.id === selectedEventId) ?? null;
+  const liveRun = useMemo(
+    () => ({
+      id: run.state.runId ?? '—',
+      status: run.state.status,
+      error: run.state.error,
+      trackedEvents: run.state.trackedEvents,
+      events: run.state.records.map((record) =>
+        toObservedEvent(run.state.runId ?? 'pending', record, run.state.rootRecord === record),
+      ),
+    }),
+    [run.state],
+  );
+  const flowModel = useMemo(() => buildFlowViewModel(draft, run.state), [draft, run.state]);
+  const selectedEvent =
+    liveRun.events.find((event) => event.id === run.state.selectedRecordId) ?? null;
 
   const touchField = (field: ValidatableField) => {
     setTouched((current) => ({
@@ -115,10 +153,32 @@ export function WorkbenchPage({
       window.requestAnimationFrame(() => {
         document.getElementById(currentValidation.firstInvalidControlId ?? '')?.focus();
       });
+      return;
     }
+
+    void run.startRun(
+      new api.RunRequest({
+        rootTopic: draft.rootTopic.trim(),
+        messageKey: draft.messageKey,
+        payload: draft.payload,
+        headers: draft.headers.map((header) => ({ key: header.name, value: header.value })),
+        watchedTopics: draft.watchedTopics.map((topic) => topic.name.trim()),
+        captureTimeoutSeconds: Number(draft.captureTimeoutSeconds),
+      }),
+    );
   };
 
-  const composeAction = (
+  const isRunActive = isActiveRunStatus(run.state.status);
+  const composeAction = isRunActive ? (
+    <button
+      className="publish-button publish-button--stop"
+      type="button"
+      onClick={() => void run.stopRun()}
+      title="Stop the active run"
+    >
+      <LoadingDots size="inline" /> Stop
+    </button>
+  ) : (
     <>
       <span
         className={`publish-summary ${publishAttempted && validation.issueCount > 0 ? 'publish-summary--invalid' : ''}`}
@@ -159,8 +219,17 @@ export function WorkbenchPage({
         mode === 'compose' ? (
           composeAction
         ) : (
-          <span className="fixture-status">
-            <CheckCircle width={16} height={16} /> Previous run complete
+          <span className={`fixture-status fixture-status--${run.state.status}`}>
+            {isRunActive ? (
+              <LoadingDots size="status" />
+            ) : run.state.status === 'failed' ? (
+              <WarningCircle width={16} height={16} />
+            ) : (
+              <CheckCircle width={16} height={16} />
+            )}{' '}
+            {run.state.status === 'idle'
+              ? 'Configured flow'
+              : `Run ${formatStatusLabel(run.state.status)}`}
           </span>
         )
       }
@@ -185,20 +254,21 @@ export function WorkbenchPage({
           />
         ) : (
           <FlowPanel
-            events={previousRun.events}
-            selectedEventId={selectedEventId}
-            onSelectEvent={setSelectedEventId}
+            model={flowModel}
+            selectedRecordId={run.state.selectedRecordId}
+            onSelectRecord={(recordId) => run.selectRecord(recordId)}
           />
         )
       }
       previousRun={
         <PreviousRunPanel
-          run={previousRun}
-          selectedEventId={selectedEventId}
+          run={liveRun}
+          selectedEventId={run.state.selectedRecordId}
           selectedEvent={selectedEvent}
-          onSelectEvent={setSelectedEventId}
+          onSelectEvent={(recordId) => run.selectRecord(recordId)}
         />
       }
+      runStatus={formatStatusLabel(run.state.status)}
     />
   );
 }

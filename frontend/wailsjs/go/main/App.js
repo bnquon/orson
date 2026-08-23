@@ -14,6 +14,10 @@ export function GetConnectionStatus() {
   return window['go']['main']['App']['GetConnectionStatus']();
 }
 
-export function Run(arg1) {
-  return window['go']['main']['App']['Run'](arg1);
+export function StartRun(arg1) {
+  return window['go']['main']['App']['StartRun'](arg1);
+}
+
+export function StopRun(arg1) {
+  return window['go']['main']['App']['StopRun'](arg1);
 }

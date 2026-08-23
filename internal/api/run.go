@@ -1,9 +1,14 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 )
+
+const maxCaptureTimeoutSeconds = int64((1<<63 - 1) / int64(time.Second))
 
 type Header struct {
 	Key   string `json:"key"`
@@ -28,8 +33,27 @@ func (r RunRequest) Validate() error {
 		return errors.New("at least one watched topic is required")
 	}
 
+	seenTopics := make(map[string]struct{}, len(r.WatchedTopics))
+	for index, topic := range r.WatchedTopics {
+		topic = strings.TrimSpace(topic)
+		if topic == "" {
+			return fmt.Errorf("watched topic %d is required", index+1)
+		}
+		if _, exists := seenTopics[topic]; exists {
+			return fmt.Errorf("watched topic %q is duplicated", topic)
+		}
+		seenTopics[topic] = struct{}{}
+	}
+
 	if r.CaptureTimeoutSeconds <= 0 {
 		return errors.New("capture timeout must be positive")
+	}
+	if int64(r.CaptureTimeoutSeconds) > maxCaptureTimeoutSeconds {
+		return errors.New("capture timeout is too large")
+	}
+
+	if !json.Valid([]byte(r.Payload)) {
+		return errors.New("payload must be valid JSON")
 	}
 
 	return nil
@@ -41,31 +65,51 @@ type EventRecord struct {
 	Value     string   `json:"value"`
 	Headers   []Header `json:"headers"`
 	Partition int32    `json:"partition"`
-	Offset    int64    `json:"offset"`
+	Offset    string   `json:"offset"`
 	Timestamp string   `json:"timestamp"`
 }
 
-type RunData struct {
-	CorrelationID string        `json:"correlationId"`
-	RootRecord    EventRecord   `json:"rootRecord"`
-	Records       []EventRecord `json:"records"`
+type RunStartData struct {
+	RunID string `json:"runId"`
 }
 
-type RunResponse struct {
+type RunStartResponse struct {
+	OK    bool          `json:"ok"`
+	Data  *RunStartData `json:"data,omitempty"`
+	Error *APIError     `json:"error,omitempty"`
+}
+
+func RunStartSuccess(runID string) RunStartResponse {
+	return RunStartResponse{
+		OK:   true,
+		Data: &RunStartData{RunID: runID},
+	}
+}
+
+func RunStartFailure(err *APIError) RunStartResponse {
+	return RunStartResponse{
+		Error: err,
+	}
+}
+
+type RunControlResponse struct {
 	OK    bool      `json:"ok"`
-	Data  *RunData  `json:"data,omitempty"`
 	Error *APIError `json:"error,omitempty"`
 }
 
-func RunSuccess(data RunData) RunResponse {
-	return RunResponse{
-		OK:   true,
-		Data: &data,
-	}
+func RunControlSuccess() RunControlResponse {
+	return RunControlResponse{OK: true}
 }
 
-func RunFailure(err *APIError) RunResponse {
-	return RunResponse{
-		Error: err,
-	}
+func RunControlFailure(err *APIError) RunControlResponse {
+	return RunControlResponse{Error: err}
+}
+
+type RunEvent struct {
+	RunID    string       `json:"runId"`
+	Sequence uint64       `json:"sequence"`
+	Kind     string       `json:"kind"`
+	Status   string       `json:"status,omitempty"`
+	Record   *EventRecord `json:"record,omitempty"`
+	Error    *APIError    `json:"error,omitempty"`
 }

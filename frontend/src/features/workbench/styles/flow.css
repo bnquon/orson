@@ -14,20 +14,12 @@
   padding: 0 10px;
 }
 
-.flow-panel__toolbar strong,
-.flow-panel__toolbar span {
+.flow-panel__toolbar strong {
   display: block;
 }
 
 .flow-panel__toolbar strong {
   font-size: 10px;
-}
-
-.flow-panel__toolbar > div:first-child > span {
-  color: var(--color-text-muted);
-  font-size: 10px;
-  line-height: 1.4;
-  margin-top: 2px;
 }
 
 .flow-panel__controls {
@@ -71,61 +63,100 @@
   text-align: center;
 }
 
+.flow-panel__controls .flow-panel__zoom-value {
+  color: var(--color-text-dim);
+  font-family: var(--font-code);
+  font-size: 9px;
+  min-width: 40px;
+  width: auto;
+}
+
+.flow-panel__controls button:disabled {
+  color: var(--color-border);
+  cursor: default;
+}
+
+.flow-panel__controls button:disabled:hover {
+  background: transparent;
+  color: var(--color-border);
+}
+
 .flow-panel__viewport {
   min-height: 0;
   overflow: auto;
 }
 
-.flow-map {
-  height: 410px;
-  min-width: 780px;
+.flow-map__surface {
+  background-color: var(--color-bg);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-text-dim) 32%, transparent) 1px,
+    transparent 1px
+  );
+  background-position: 8px 8px;
+  background-size: 18px 18px;
   position: relative;
 }
 
-.flow-map__lane {
-  border-left: 1px solid var(--color-border-subtle);
-  color: var(--color-text-dim);
-  font-size: 9px;
-  letter-spacing: 0.08em;
-  padding-left: 8px;
+.flow-map {
   position: absolute;
-  text-transform: uppercase;
-  top: 18px;
 }
 
-.flow-map__lane--root {
-  left: 24px;
-}
-
-.flow-map__lane--downstream {
-  left: 280px;
+.flow-map__edges {
+  height: 100%;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 100%;
+  z-index: 0;
 }
 
 .flow-map__edge {
-  background: var(--color-border);
-  height: 1px;
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 1.5;
+}
+
+.flow-map__edge--configured {
+  stroke: color-mix(in srgb, var(--color-text-muted) 72%, var(--color-border));
+  stroke-dasharray: 3 5;
+}
+
+.flow-map__edge--in_progress {
+  stroke: var(--color-route);
+  stroke-dasharray: 5 5;
+}
+
+.flow-map__edge--completed {
+  stroke: var(--color-success);
+}
+
+.flow-map__edge--unwitnessed {
+  stroke: var(--color-warning);
+  stroke-dasharray: 3 5;
+}
+
+.flow-map__edge--failed {
+  stroke: var(--color-danger);
+  stroke-dasharray: 7 4;
+}
+
+.flow-map__empty {
+  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  left: 120px;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 320px;
+  padding: 8px 10px;
   position: absolute;
-  transform-origin: left center;
-}
-
-.flow-map__edge--root-payment {
-  left: 213px;
-  top: 211px;
-  width: 77px;
-}
-
-.flow-map__edge--payment-inventory {
-  left: 473px;
-  top: 211px;
-  transform: rotate(-28deg);
-  width: 95px;
-}
-
-.flow-map__edge--payment-notification {
-  left: 473px;
-  top: 211px;
-  transform: rotate(28deg);
-  width: 95px;
+  top: 294px;
+  z-index: 2;
 }
 
 .flow-node {
@@ -133,7 +164,6 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   color: var(--color-text);
-  cursor: pointer;
   min-height: 82px;
   padding: 10px;
   position: absolute;
@@ -143,51 +173,93 @@
     border-color var(--duration-fast) var(--ease-standard),
     box-shadow var(--duration-fast) var(--ease-standard);
   width: 190px;
+  z-index: 1;
 }
 
-.flow-node:hover {
+button.flow-node {
+  cursor: pointer;
+}
+
+button.flow-node:hover {
   background: var(--color-surface-hover);
   border-color: var(--color-text-dim);
 }
 
-.flow-node:active {
+button.flow-node:active {
   background: var(--color-bg);
 }
 
+.flow-node--configured {
+  border-color: color-mix(in srgb, var(--color-text-dim) 68%, var(--color-border));
+}
+
+.flow-node--in_progress {
+  border-color: color-mix(in srgb, var(--color-route) 70%, var(--color-border));
+}
+
+.flow-node--completed {
+  border-color: color-mix(in srgb, var(--color-success) 65%, var(--color-border));
+}
+
+.flow-node--unwitnessed {
+  border-color: color-mix(in srgb, var(--color-warning) 64%, var(--color-border));
+}
+
+.flow-node--failed {
+  border-color: color-mix(in srgb, var(--color-danger) 70%, var(--color-border));
+}
+
 .flow-node--selected {
-  background: color-mix(in srgb, var(--color-route) 9%, var(--color-surface));
-  border-color: var(--color-route);
-  box-shadow: inset 3px 0 var(--color-route);
-}
-
-.flow-node--root {
-  left: 24px;
-  top: 170px;
-}
-
-.flow-node--payment {
-  left: 283px;
-  top: 170px;
-}
-
-.flow-node--inventory {
-  left: 560px;
-  top: 72px;
-}
-
-.flow-node--notification {
-  left: 560px;
-  top: 268px;
+  background: var(--color-selection-surface);
+  border-color: var(--color-selection);
 }
 
 .flow-node__topline {
   align-items: center;
-  color: var(--color-success);
+  color: var(--color-text-muted);
   display: flex;
   font-size: 9px;
+  gap: 8px;
   justify-content: space-between;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.flow-node__status {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 4px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.flow-node__status--configured {
+  color: var(--color-text-dim);
+}
+
+.flow-node__status--unwitnessed {
+  color: var(--color-warning);
+}
+
+.flow-node__status--in_progress {
+  color: var(--color-route);
+}
+
+.flow-node__status--completed {
+  color: var(--color-success);
+}
+
+.flow-node__status--failed {
+  color: var(--color-danger);
+}
+
+.flow-node__status-mark {
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  display: inline-block;
+  height: 7px;
+  width: 7px;
 }
 
 .flow-node strong {
@@ -201,12 +273,14 @@
   white-space: nowrap;
 }
 
-.flow-node__time {
+.flow-node__record-state {
   color: var(--color-text-dim);
   display: block;
-  font-family: var(--font-code);
   font-size: 9px;
   margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @media (prefers-reduced-motion: reduce) {

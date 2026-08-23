@@ -22,6 +22,7 @@ interface WorkbenchShellProps {
   action: ReactNode;
   workspace: ReactNode;
   previousRun: ReactNode;
+  runStatus: string;
 }
 
 export function WorkbenchShell({
@@ -33,8 +34,14 @@ export function WorkbenchShell({
   action,
   workspace,
   previousRun,
+  runStatus,
 }: WorkbenchShellProps) {
   const [checkoutExpanded, setCheckoutExpanded] = useState(true);
+  const brokerSummary =
+    connection.brokers.length > 1
+      ? `${connection.brokers[0]} +${connection.brokers.length - 1}`
+      : (connection.brokers[0] ?? 'No broker');
+  const connectionDetails = `${connection.name} · ${connection.brokers.join(', ')}`;
 
   return (
     <div className="workbench-shell">
@@ -51,18 +58,19 @@ export function WorkbenchShell({
             <NavArrowDown width={16} height={16} />
           </button>
         </div>
-        <div className="workbench-topbar__group">
+        <div className="workbench-topbar__group workbench-topbar__group--right">
           <button
             className="workbench-environment"
             id="workbench-environment-selector"
             type="button"
-            aria-label="Active Kafka connection"
+            aria-label={`Active Kafka connection: ${connectionDetails}`}
             aria-expanded={connectionDialogOpen}
+            title={connectionDetails}
             onClick={onConnectionToggle}
           >
             <span className={`workbench-status-dot workbench-status-dot--${connection.status}`} />
-            <span>{connection.name}</span>
-            <span className="workbench-environment__broker">{connection.brokers.join(', ')}</span>
+            <span className="workbench-environment__name">{connection.name}</span>
+            <span className="workbench-environment__broker">{brokerSummary}</span>
             <NavArrowDown width={16} height={16} />
           </button>
           <button
@@ -253,7 +261,7 @@ export function WorkbenchShell({
       </div>
 
       <footer className="workbench-statusbar">
-        <span>Capture idle</span>
+        <span>Capture {runStatus}</span>
         <span>Scenario changes stay local</span>
       </footer>
     </div>

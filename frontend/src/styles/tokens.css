@@ -20,6 +20,7 @@
   --orson-lake-bright: #5d929e;
   --orson-success: #719b78;
   --orson-focus: #71a9b5;
+  --orson-selection: #b9a7ff;
 
   /* Semantic colors: future components should consume these aliases. */
   --color-bg: var(--orson-coal);
@@ -39,6 +40,8 @@
   --color-danger: var(--orson-fault);
   --color-warning: var(--orson-ochre);
   --color-focus: var(--orson-focus);
+  --color-selection: var(--orson-selection);
+  --color-selection-surface: color-mix(in srgb, var(--color-selection) 10%, var(--color-surface));
 
   /* Typography */
   --font-ui: 'Instrument Sans', system-ui, sans-serif;

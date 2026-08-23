@@ -99,10 +99,11 @@ func TestAppRejectsConnectionChangesDuringRun(t *testing.T) {
 		t.Fatalf("Connect() failed: %+v", response.Error)
 	}
 
-	runDone := make(chan api.RunResponse, 1)
+	runDone := make(chan api.RunStartResponse, 1)
 	go func() {
-		runDone <- app.Run(api.RunRequest{
+		runDone <- app.StartRun(api.RunRequest{
 			RootTopic:             "order.created",
+			Payload:               "{}",
 			WatchedTopics:         []string{"payment.charged"},
 			CaptureTimeoutSeconds: 5,
 		})
@@ -129,9 +130,27 @@ func TestAppRejectsConnectionChangesDuringRun(t *testing.T) {
 
 	close(releaseRead)
 	select {
-	case <-runDone:
+	case response := <-runDone:
+		if !response.OK {
+			t.Fatalf("StartRun() failed: %+v", response.Error)
+		}
 	case <-time.After(time.Second):
 		t.Fatal("run did not finish after capture release")
+	}
+	deadline := time.After(time.Second)
+	for {
+		app.stateMu.Lock()
+		active := app.activeRuns
+		app.stateMu.Unlock()
+		if active == 0 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("run did not release active state")
+		default:
+			time.Sleep(time.Millisecond)
+		}
 	}
 
 	if response := app.Disconnect(); !response.OK {
@@ -153,12 +172,13 @@ func TestAppRejectsOverlappingRuns(t *testing.T) {
 		t.Fatalf("Connect() failed: %+v", response.Error)
 	}
 
-	if _, _, apiErr := app.beginRun(); apiErr != nil {
+	_, _, runID, apiErr := app.beginRun()
+	if apiErr != nil {
 		t.Fatalf("first beginRun() failed: %+v", apiErr)
 	}
-	defer app.endRun()
+	defer app.endRun(runID)
 
-	if _, _, apiErr := app.beginRun(); apiErr == nil || apiErr.Code != runBusyCode {
+	if _, _, _, apiErr := app.beginRun(); apiErr == nil || apiErr.Code != runBusyCode {
 		t.Fatalf("second beginRun() error = %+v, want %q", apiErr, runBusyCode)
 	}
 }
@@ -180,8 +200,9 @@ func TestAppShutdownWaitsForActiveRunBeforeClosingConnection(t *testing.T) {
 		t.Fatalf("Connect() failed: %+v", response.Error)
 	}
 
-	go app.Run(api.RunRequest{
+	go app.StartRun(api.RunRequest{
 		RootTopic:             "order.created",
+		Payload:               "{}",
 		WatchedTopics:         []string{"payment.charged"},
 		CaptureTimeoutSeconds: 5,
 	})
@@ -206,6 +227,71 @@ func TestAppShutdownWaitsForActiveRunBeforeClosingConnection(t *testing.T) {
 
 	if !active.isClosed() {
 		t.Fatal("shutdown did not close the active connection")
+	}
+}
+
+func TestAppStartRunReturnsIDAndStopRunEmitsCancellation(t *testing.T) {
+	readStarted := make(chan struct{})
+	active := &fakeKafkaConnection{
+		readFromOffsets: func(ctx context.Context, _ []kafka.PartitionOffset, _ func(kafka.Record) error) error {
+			close(readStarted)
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	}
+	connector := &fakeKafkaConnector{connections: []KafkaConnection{active}}
+	app := newApp(connector)
+	app.startup(context.Background())
+	defer app.shutdown(context.Background())
+	events := make(chan api.RunEvent, 8)
+	app.emitEvent = func(_ context.Context, _ string, event api.RunEvent) {
+		events <- event
+	}
+
+	if response := app.Connect(validConnectionRequest("Local Kafka")); !response.OK {
+		t.Fatalf("Connect() failed: %+v", response.Error)
+	}
+
+	start := app.StartRun(api.RunRequest{
+		RootTopic:             "order.created",
+		Payload:               "{}",
+		WatchedTopics:         []string{"payment.charged"},
+		CaptureTimeoutSeconds: 5,
+	})
+	if !start.OK || start.Data == nil || start.Data.RunID == "" {
+		t.Fatalf("StartRun() = %+v, want an immediate run ID", start)
+	}
+
+	select {
+	case <-readStarted:
+	case <-time.After(time.Second):
+		t.Fatal("run did not reach capture")
+	}
+
+	if response := app.StopRun(start.Data.RunID); !response.OK {
+		t.Fatalf("StopRun() failed: %+v", response.Error)
+	}
+	if response := app.StopRun(start.Data.RunID); !response.OK {
+		t.Fatalf("repeated StopRun() failed: %+v", response.Error)
+	}
+
+	var finished api.RunEvent
+	deadline := time.After(time.Second)
+	for finished.Kind != "finished" {
+		select {
+		case event := <-events:
+			finished = event
+		case <-deadline:
+			t.Fatal("run did not emit a terminal event")
+		}
+	}
+	if finished.Status != "cancelled" {
+		t.Fatalf("finished status = %q, want cancelled", finished.Status)
+	}
+
+	response := app.StopRun(start.Data.RunID)
+	if response.Error == nil || response.Error.Code != "run_not_active" {
+		t.Fatalf("StopRun() after completion = %+v, want run_not_active", response.Error)
 	}
 }
 
@@ -280,8 +366,10 @@ func (f *fakeKafkaConnection) PublishMessage(_ context.Context, message kafka.Me
 func (f *fakeKafkaConnection) ReadFromOffsets(
 	ctx context.Context,
 	offsets []kafka.PartitionOffset,
+	onReady func(),
 	onRecord func(kafka.Record) error,
 ) error {
+	onReady()
 	if f.readFromOffsets != nil {
 		return f.readFromOffsets(ctx, offsets, onRecord)
 	}
