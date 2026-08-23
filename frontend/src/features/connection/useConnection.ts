@@ -9,6 +9,10 @@ import type {
   ConnectionOperation,
   StartupStatus,
 } from './types';
+import {
+  isReconciliationConfirmed,
+  type ConnectionReconciliation,
+} from './connectionReconciliation';
 import { selectDialogError, selectSetupError } from './errorSelection';
 
 const initialAttempt: ConnectionAttemptState = {
@@ -78,7 +82,7 @@ export function useConnection(): ConnectionController {
   }, []);
 
   const reconcileStatus = useCallback(
-    async (requestId: number) => {
+    async (requestId: number, expected: ConnectionReconciliation) => {
       const result = await getConnectionStatus();
       if (!isCurrent(requestId)) return result;
 
@@ -92,8 +96,10 @@ export function useConnection(): ConnectionController {
       }
 
       applyState(result.data);
-      setConnectionError(null);
-      setBridgeError(null);
+      if (isReconciliationConfirmed(result.data, expected)) {
+        setConnectionError(null);
+        setBridgeError(null);
+      }
       return result;
     },
     [applyState, isCurrent],
@@ -144,6 +150,7 @@ export function useConnection(): ConnectionController {
   const connectToKafka = useCallback(
     async (values: ConnectionFormValues) => {
       const requestId = ++requestIdRef.current;
+      const request = toRequest(values);
       setOperation('connecting');
       setConnectionError(null);
       setBridgeError(null);
@@ -151,7 +158,7 @@ export function useConnection(): ConnectionController {
       setStartupStatus('ready');
       setLatestAttempt({ status: 'connecting', error: null });
 
-      const result = await connect(toRequest(values));
+      const result = await connect(request);
       if (!isCurrent(requestId)) return result;
 
       setOperation('idle');
@@ -160,7 +167,7 @@ export function useConnection(): ConnectionController {
         if (isBridgeError(result.error)) {
           setLatestAttempt({ status: 'failed', error: null });
           setBridgeError(result.error);
-          void reconcileStatus(requestId);
+          void reconcileStatus(requestId, { kind: 'connect', request });
         } else {
           setLatestAttempt({ status: 'failed', error: result.error });
           setConnectionError(result.error);
@@ -190,7 +197,7 @@ export function useConnection(): ConnectionController {
     if (!result.ok) {
       if (isBridgeError(result.error)) {
         setBridgeError(result.error);
-        void reconcileStatus(requestId);
+        void reconcileStatus(requestId, { kind: 'disconnect' });
       } else {
         setConnectionError(result.error);
       }
