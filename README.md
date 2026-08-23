@@ -1,7 +1,13 @@
-<h1 align="center">
-  <img src="docs/images/orson-icon.png" width="72" alt="Orson icon" align="middle" />
-  Orson
-</h1>
+<table align="center" border="0" cellpadding="0" cellspacing="0">
+  <tr>
+    <td valign="middle">
+      <img src="docs/images/orson-icon.png" width="72" alt="Orson icon" />
+    </td>
+    <td valign="middle">
+      <h1>Orson</h1>
+    </td>
+  </tr>
+</table>
 
 <p align="center">
   A local-first desktop Kafka event-flow debugger.
