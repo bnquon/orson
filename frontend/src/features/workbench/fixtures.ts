@@ -8,6 +8,12 @@ export const initialScenario: ScenarioDraft = {
     { id: 'topic-notification-sent', name: 'notification.sent' },
     { id: 'topic-order-cancelled', name: 'order.cancelled' },
   ],
+  topology: [
+    { id: 'edge-order-payment', from: 'order.created', to: 'payment.charged' },
+    { id: 'edge-order-cancelled', from: 'order.created', to: 'order.cancelled' },
+    { id: 'edge-payment-inventory', from: 'payment.charged', to: 'inventory.reserved' },
+    { id: 'edge-payment-notification', from: 'payment.charged', to: 'notification.sent' },
+  ],
   messageKey: 'ord_123',
   headers: [
     {

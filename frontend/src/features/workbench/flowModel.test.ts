@@ -9,6 +9,13 @@ const draft: ScenarioDraft = {
     { id: 'payment', name: 'payment.charged' },
     { id: 'inventory', name: 'inventory.reserved' },
     { id: 'notification', name: 'notification.sent' },
+    { id: 'cancelled', name: 'order.cancelled' },
+  ],
+  topology: [
+    { id: 'order-payment', from: 'order.created', to: 'payment.charged' },
+    { id: 'order-cancelled', from: 'order.created', to: 'order.cancelled' },
+    { id: 'payment-inventory', from: 'payment.charged', to: 'inventory.reserved' },
+    { id: 'payment-notification', from: 'payment.charged', to: 'notification.sent' },
   ],
   messageKey: 'order-1',
   headers: [],
@@ -32,17 +39,201 @@ function run(overrides: Partial<RunState> = {}): RunState {
   return { ...initialRunState, ...overrides };
 }
 
+function edgePairs(model: ReturnType<typeof buildFlowViewModel>): string[][] {
+  return model.edges.map((edge) => [edge.sourceId, edge.targetId]);
+}
+
 describe('buildFlowViewModel', () => {
-  it('shows the configured graph before a run', () => {
+  it('builds the configured order-flow topology with deterministic depth layout', () => {
     const model = buildFlowViewModel(draft, run());
 
-    expect(model.nodes.map((node) => node.status)).toEqual([
-      'configured',
-      'configured',
-      'configured',
-      'configured',
+    expect(model.nodes.map((node) => node.id)).toEqual([
+      'root:order.created',
+      'watched:payment.charged',
+      'watched:inventory.reserved',
+      'watched:notification.sent',
+      'watched:order.cancelled',
     ]);
+    expect(edgePairs(model)).toEqual([
+      ['root:order.created', 'watched:payment.charged'],
+      ['root:order.created', 'watched:order.cancelled'],
+      ['watched:payment.charged', 'watched:inventory.reserved'],
+      ['watched:payment.charged', 'watched:notification.sent'],
+    ]);
+
+    const nodes = new Map(model.nodes.map((node) => [node.topic, node]));
+    expect(nodes.get('order.created')?.layout.left).toBe(120);
+    expect(nodes.get('payment.charged')?.layout.left).toBe(480);
+    expect(nodes.get('order.cancelled')?.layout.left).toBe(480);
+    expect(nodes.get('inventory.reserved')?.layout.left).toBe(840);
+    expect(nodes.get('notification.sent')?.layout.left).toBe(840);
+    expect(nodes.get('payment.charged')?.layout.top).toBeLessThan(
+      nodes.get('order.cancelled')?.layout.top ?? 0,
+    );
+  });
+
+  it('keeps the cancellation branch explicit and separate from payment children', () => {
+    const model = buildFlowViewModel(draft, run());
+
+    expect(
+      model.edges.find(
+        (edge) =>
+          edge.sourceId === 'root:order.created' && edge.targetId === 'watched:order.cancelled',
+      ),
+    ).toMatchObject({
+      sourceId: 'root:order.created',
+      targetId: 'watched:order.cancelled',
+    });
+    expect(model.edges.filter((edge) => edge.sourceId === 'root:order.created')).toHaveLength(2);
+    expect(model.edges.filter((edge) => edge.sourceId === 'watched:payment.charged')).toHaveLength(
+      2,
+    );
+  });
+
+  it('does not imply edges for disconnected watched topics', () => {
+    const model = buildFlowViewModel(
+      {
+        ...draft,
+        watchedTopics: [
+          { id: 'payment', name: 'payment.charged' },
+          { id: 'inventory', name: 'inventory.reserved' },
+          { id: 'orphan', name: 'orphan.sent' },
+        ],
+        topology: [{ id: 'order-payment', from: 'order.created', to: 'payment.charged' }],
+      },
+      run(),
+    );
+
+    expect(edgePairs(model)).toEqual([['root:order.created', 'watched:payment.charged']]);
+    expect(model.nodes.map((node) => node.topic)).toContain('orphan.sent');
+    expect(new Set(model.nodes.map((node) => `${node.layout.left}:${node.layout.top}`)).size).toBe(
+      model.nodes.length,
+    );
+  });
+
+  it('derives unique edge IDs from normalized source and target topics', () => {
+    const model = buildFlowViewModel(
+      {
+        ...draft,
+        topology: [
+          { id: 'shared-id', from: 'order.created', to: 'payment.charged' },
+          { id: 'shared-id', from: 'payment.charged', to: 'inventory.reserved' },
+        ],
+      },
+      run(),
+    );
+
+    expect(model.edges.map((edge) => edge.id)).toEqual([
+      'edge:order.created->payment.charged',
+      'edge:payment.charged->inventory.reserved',
+    ]);
+    expect(new Set(model.edges.map((edge) => edge.id)).size).toBe(model.edges.length);
+  });
+
+  it('does not render a watched node duplicate when it matches the root topic', () => {
+    const model = buildFlowViewModel(
+      {
+        ...draft,
+        watchedTopics: [
+          { id: 'root-copy', name: ' order.created ' },
+          { id: 'payment', name: 'payment.charged' },
+        ],
+        topology: [{ id: 'root-payment', from: 'order.created', to: 'payment.charged' }],
+      },
+      run(),
+    );
+
+    expect(model.nodes.map((node) => node.id)).toEqual([
+      'root:order.created',
+      'watched:payment.charged',
+    ]);
+  });
+
+  it('rejects a multi-node cycle while keeping the configured nodes visible', () => {
+    const model = buildFlowViewModel(
+      {
+        ...draft,
+        watchedTopics: [
+          { id: 'a', name: 'a' },
+          { id: 'b', name: 'b' },
+          { id: 'c', name: 'c' },
+        ],
+        topology: [
+          { id: 'root-a', from: 'order.created', to: 'a' },
+          { id: 'a-b', from: 'a', to: 'b' },
+          { id: 'b-c', from: 'b', to: 'c' },
+          { id: 'c-a', from: 'c', to: 'a' },
+        ],
+      },
+      run(),
+    );
+
+    expect(model.nodes.map((node) => node.topic)).toEqual(['order.created', 'a', 'b', 'c']);
+    expect(model.edges).toEqual([]);
+  });
+
+  it('routes skip-level edges through an express lane above intermediate nodes', () => {
+    const model = buildFlowViewModel(
+      {
+        ...draft,
+        watchedTopics: [
+          { id: 'a', name: 'a' },
+          { id: 'b', name: 'b' },
+        ],
+        topology: [
+          { id: 'root-a', from: 'order.created', to: 'a' },
+          { id: 'a-b', from: 'a', to: 'b' },
+          { id: 'root-b', from: 'order.created', to: 'b' },
+        ],
+      },
+      run(),
+    );
+
+    const skipLevelEdge = model.edges.find(
+      (edge) => edge.sourceId === 'root:order.created' && edge.targetId === 'watched:b',
+    );
+    expect(skipLevelEdge?.path).toBe('M 310 149 L 310 64 L 840 64 L 840 149');
+  });
+
+  it('ignores empty, unknown, self-referencing, and duplicate topology edges', () => {
+    const model = buildFlowViewModel(
+      {
+        ...draft,
+        topology: [
+          { id: 'valid', from: ' order.created ', to: ' payment.charged ' },
+          { id: 'duplicate', from: 'order.created', to: 'payment.charged' },
+          { id: 'empty-source', from: ' ', to: 'payment.charged' },
+          { id: 'empty-target', from: 'order.created', to: '' },
+          { id: 'unknown-source', from: 'unknown', to: 'payment.charged' },
+          { id: 'unknown-target', from: 'order.created', to: 'unknown' },
+          { id: 'self', from: 'payment.charged', to: 'payment.charged' },
+        ],
+      },
+      run(),
+    );
+
+    expect(model.edges).toHaveLength(1);
+    expect(model.edges[0]).toMatchObject({
+      id: 'edge:order.created->payment.charged',
+      sourceId: 'root:order.created',
+      targetId: 'watched:payment.charged',
+    });
+  });
+
+  it('handles empty topology and a root with no valid outgoing edges', () => {
+    const model = buildFlowViewModel({ ...draft, topology: [] }, run());
+
+    expect(model.nodes).toHaveLength(5);
+    expect(model.edges).toEqual([]);
+    expect(model.nodes[0].layout.left).toBe(120);
+  });
+
+  it('preserves configured statuses before a run', () => {
+    const model = buildFlowViewModel(draft, run());
+
+    expect(model.nodes.every((node) => node.status === 'configured')).toBe(true);
     expect(model.edges.map((edge) => edge.status)).toEqual([
+      'configured',
       'configured',
       'configured',
       'configured',
@@ -70,23 +261,36 @@ describe('buildFlowViewModel', () => {
       'in_progress',
       'in_progress',
       'in_progress',
+      'in_progress',
     ]);
+    expect(model.edges.every((edge) => edge.status === 'in_progress')).toBe(true);
     expect(model.nodes[0].recordId).toBe(getRunRecordId('run-1', root));
   });
 
-  it('uses the latest matching record for a watched node', () => {
-    const first = record('payment.charged', 11);
-    const latest = record('payment.charged', 12);
+  it('derives completed and unwitnessed edge statuses from target nodes', () => {
+    const root = record('order.created', 10);
+    const payment = record('payment.charged', 11);
     const model = buildFlowViewModel(
       draft,
-      run({ runId: 'run-1', status: 'in_progress', records: [first, latest] }),
+      run({
+        runId: 'run-1',
+        status: 'completed',
+        rootRecord: root,
+        records: [root, payment],
+        trackedEvents: [
+          { topic: 'payment.charged', status: 'completed' },
+          { topic: 'inventory.reserved', status: 'unwitnessed' },
+          { topic: 'notification.sent', status: 'unwitnessed' },
+          { topic: 'order.cancelled', status: 'unwitnessed' },
+        ],
+      }),
     );
 
-    expect(model.nodes[1].record?.offset).toBe('12');
-    expect(model.nodes[1].recordId).toBe(getRunRecordId('run-1', latest));
-    expect(model.nodes[1].recordIds).toEqual([
-      getRunRecordId('run-1', first),
-      getRunRecordId('run-1', latest),
+    expect(model.edges.map((edge) => edge.status)).toEqual([
+      'completed',
+      'unwitnessed',
+      'unwitnessed',
+      'unwitnessed',
     ]);
   });
 
@@ -111,6 +315,21 @@ describe('buildFlowViewModel', () => {
     },
   );
 
+  it('marks processing failures on all affected routes', () => {
+    const model = buildFlowViewModel(
+      draft,
+      run({
+        runId: 'run-1',
+        status: 'failed',
+        error: { code: 'processing_failed', message: 'processing failed', retryable: true },
+        trackedEvents: draft.watchedTopics.map(({ name }) => ({ topic: name, status: 'failed' })),
+      }),
+    );
+
+    expect(model.nodes.every((node) => node.status === 'failed')).toBe(true);
+    expect(model.edges.every((edge) => edge.status === 'failed')).toBe(true);
+  });
+
   it('keeps publish failures on the root route instead of making downstream nodes failed', () => {
     const model = buildFlowViewModel(
       draft,
@@ -128,6 +347,12 @@ describe('buildFlowViewModel', () => {
     expect(model.nodes[0].status).toBe('failed');
     expect(model.nodes.slice(1).every((node) => node.status === 'unwitnessed')).toBe(true);
     expect(model.edges[0].status).toBe('failed');
+    expect(model.edges.map((edge) => edge.status)).toEqual([
+      'failed',
+      'failed',
+      'unwitnessed',
+      'unwitnessed',
+    ]);
   });
 
   it('keeps the configured graph neutral when a run is rejected before acceptance', () => {
@@ -143,7 +368,49 @@ describe('buildFlowViewModel', () => {
     expect(model.edges.every((edge) => edge.status === 'configured')).toBe(true);
   });
 
-  it('does not attach an old root record to a changed draft topic', () => {
+  it('uses the latest matching record and preserves all record IDs for selection', () => {
+    const first = record('payment.charged', 11);
+    const latest = record('payment.charged', 12);
+    const model = buildFlowViewModel(
+      draft,
+      run({ runId: 'run-1', status: 'in_progress', records: [first, latest] }),
+    );
+
+    expect(model.nodes[1].record?.offset).toBe('12');
+    expect(model.nodes[1].recordId).toBe(getRunRecordId('run-1', latest));
+    expect(model.nodes[1].recordIds).toEqual([
+      getRunRecordId('run-1', first),
+      getRunRecordId('run-1', latest),
+    ]);
+  });
+
+  it('terminates forward connector paths at node boundaries', () => {
+    const model = buildFlowViewModel(draft, run());
+    const nodes = new Map(model.nodes.map((node) => [node.id, node]));
+
+    for (const edge of model.edges) {
+      const source = nodes.get(edge.sourceId);
+      const target = nodes.get(edge.targetId);
+      expect(source).toBeDefined();
+      expect(target).toBeDefined();
+      if (source === undefined || target === undefined) {
+        throw new Error('Flow edge references a missing node');
+      }
+      expect(source.layout.left).toBeLessThan(target.layout.left);
+      expect(edge.path).toMatch(
+        new RegExp(
+          `^M ${source.layout.left + source.layout.width} ${source.layout.top + source.layout.height / 2}`,
+        ),
+      );
+      expect(
+        edge.path.endsWith(
+          ` ${target.layout.left} ${target.layout.top + target.layout.height / 2}`,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('does not attach stale root records after the draft topic changes', () => {
     const model = buildFlowViewModel(
       { ...draft, rootTopic: 'order.updated' },
       run({
@@ -157,47 +424,11 @@ describe('buildFlowViewModel', () => {
     expect(model.nodes[0].topic).toBe('order.updated');
     expect(model.nodes[0].status).toBe('unwitnessed');
     expect(model.nodes[0].record).toBeNull();
+    expect(model.edges.map((edge) => edge.id)).toEqual([
+      'edge:payment.charged->inventory.reserved',
+      'edge:payment.charged->notification.sent',
+    ]);
   });
-
-  it('does not show the old root as a watched record after the draft changes', () => {
-    const root = record('order.created', 10);
-    const model = buildFlowViewModel(
-      {
-        ...draft,
-        rootTopic: 'order.updated',
-        watchedTopics: [{ id: 'old-root', name: 'order.created' }],
-      },
-      run({
-        runId: 'run-1',
-        status: 'completed',
-        rootRecord: root,
-        records: [root],
-        trackedEvents: [{ topic: 'order.created', status: 'unwitnessed' }],
-      }),
-    );
-
-    expect(model.nodes[1].topic).toBe('order.created');
-    expect(model.nodes[1].record).toBeNull();
-    expect(model.nodes[1].status).toBe('unwitnessed');
-  });
-
-  it.each(['capture_failed', 'processing_failed'] as const)(
-    'marks unresolved nodes failed for %s',
-    (code) => {
-      const model = buildFlowViewModel(
-        draft,
-        run({
-          runId: 'run-1',
-          status: 'failed',
-          error: { code, message: code, retryable: true },
-          trackedEvents: draft.watchedTopics.map(({ name }) => ({ topic: name, status: 'failed' })),
-        }),
-      );
-
-      expect(model.nodes.slice(1).every((node) => node.status === 'failed')).toBe(true);
-      expect(model.edges.every((edge) => edge.status === 'failed')).toBe(true);
-    },
-  );
 
   it('deduplicates and ignores empty watched topics', () => {
     const model = buildFlowViewModel(
@@ -215,6 +446,12 @@ describe('buildFlowViewModel', () => {
     expect(model.nodes.map((node) => node.id)).toEqual([
       'root:order.created',
       'watched:payment.charged',
+    ]);
+    expect(model.edges).toEqual([
+      expect.objectContaining({
+        sourceId: 'root:order.created',
+        targetId: 'watched:payment.charged',
+      }),
     ]);
   });
 });

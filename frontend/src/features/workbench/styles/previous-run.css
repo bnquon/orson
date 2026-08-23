@@ -37,15 +37,15 @@
 }
 
 .previous-run__summary {
-  align-items: center;
+  align-items: stretch;
   border-bottom: 1px solid var(--color-border);
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  gap: 8px;
   padding: 9px 11px;
 }
 
 .previous-run__summary strong,
-.previous-run__summary > div > span {
+.previous-run__summary > div:first-child > span {
   display: block;
 }
 
@@ -55,7 +55,7 @@
   font-weight: var(--weight-medium);
 }
 
-.previous-run__summary > div > span {
+.previous-run__summary > div:first-child > span {
   color: var(--color-text-dim);
   font-size: 9px;
   margin-top: 3px;
@@ -69,10 +69,21 @@
 
 .previous-run__status {
   align-items: center;
+  border-top: 1px solid var(--color-border-subtle);
   color: var(--color-text-muted);
-  display: inline-flex;
+  display: flex;
   font-size: 10px;
-  gap: 4px;
+  gap: 6px;
+  min-height: 24px;
+  padding-top: 7px;
+  white-space: nowrap;
+}
+
+.previous-run__status-indicator {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 16px;
+  justify-content: center;
 }
 
 .previous-run__status--completed {

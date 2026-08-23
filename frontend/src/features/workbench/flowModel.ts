@@ -1,4 +1,10 @@
-import type { EventRecord, RunState, ScenarioDraft, TrackedEvent } from './types';
+import type {
+  EventRecord,
+  RunState,
+  ScenarioDraft,
+  ScenarioTopologyEdge,
+  TrackedEvent,
+} from './types';
 import { isActiveRunStatus, runFailureStage, terminalRunStatuses } from './runStatus';
 
 export type FlowStatus = 'configured' | 'in_progress' | 'completed' | 'unwitnessed' | 'failed';
@@ -40,30 +46,22 @@ export interface FlowViewModel {
 
 interface FlowLayoutConfig {
   canvasWidth: number;
-  root: FlowLayout;
-  firstWatched: FlowLayout;
-  downstream: { left: number; firstTop: number; rowGap: number };
+  firstColumnLeft: number;
+  firstRowTop: number;
+  columnGap: number;
+  rowGap: number;
   nodeWidth: number;
   nodeHeight: number;
 }
 
-interface FlowTopologyConfig {
-  rootFanOut: 'first-watched';
-  downstreamFanOut: 'first-watched';
-}
-
 const layoutConfig: FlowLayoutConfig = {
   canvasWidth: 1200,
-  root: { left: 120, top: 108, width: 190, height: 82 },
-  firstWatched: { left: 480, top: 108, width: 190, height: 82 },
-  downstream: { left: 840, firstTop: 72, rowGap: 196 },
+  firstColumnLeft: 120,
+  firstRowTop: 108,
+  columnGap: 360,
+  rowGap: 196,
   nodeWidth: 190,
   nodeHeight: 82,
-};
-
-const topologyConfig: FlowTopologyConfig = {
-  rootFanOut: 'first-watched',
-  downstreamFanOut: 'first-watched',
 };
 
 export function getRunRecordId(runId: string, record: EventRecord): string {
@@ -83,12 +81,90 @@ function normalizedTopics(draft: ScenarioDraft): { rootTopic: string; watchedTop
 
   for (const configuredTopic of draft.watchedTopics) {
     const topic = configuredTopic.name.trim();
-    if (topic === '' || seen.has(topic)) continue;
+    if (topic === '' || topic === rootTopic || seen.has(topic)) continue;
     seen.add(topic);
     watchedTopics.push(topic);
   }
 
   return { rootTopic, watchedTopics };
+}
+
+function normalizedTopologyEdgeId(from: string, to: string): string {
+  return `edge:${from}->${to}`;
+}
+
+function isAcyclic(topology: ScenarioTopologyEdge[], topics: Set<string>): boolean {
+  const outgoing = new Map<string, string[]>();
+  const incoming = new Map<string, number>([...topics].map((topic) => [topic, 0]));
+
+  for (const edge of topology) {
+    const targets = outgoing.get(edge.from) ?? [];
+    targets.push(edge.to);
+    outgoing.set(edge.from, targets);
+    incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
+  }
+
+  const pending = [...topics].filter((topic) => incoming.get(topic) === 0);
+  let visitedCount = 0;
+
+  while (pending.length > 0) {
+    const topic = pending.shift();
+    if (topic === undefined) continue;
+    visitedCount += 1;
+
+    for (const target of outgoing.get(topic) ?? []) {
+      const nextIncoming = (incoming.get(target) ?? 0) - 1;
+      incoming.set(target, nextIncoming);
+      if (nextIncoming === 0) pending.push(target);
+    }
+  }
+
+  return visitedCount === topics.size;
+}
+
+function normalizedTopology(
+  rootTopic: string,
+  watchedTopics: string[],
+  configuredEdges: ScenarioTopologyEdge[],
+): ScenarioTopologyEdge[] {
+  const availableTopics = new Set<string>([
+    ...(rootTopic === '' ? [] : [rootTopic]),
+    ...watchedTopics,
+  ]);
+  const seenEdges = new Set<string>();
+
+  const normalizedEdges = configuredEdges.flatMap((configuredEdge) => {
+    const from = configuredEdge.from.trim();
+    const to = configuredEdge.to.trim();
+    const edgeKey = `${from}->${to}`;
+
+    if (
+      from === '' ||
+      to === '' ||
+      from === to ||
+      to === rootTopic ||
+      !availableTopics.has(from) ||
+      !availableTopics.has(to) ||
+      seenEdges.has(edgeKey)
+    ) {
+      // TODO: Support non-forward edges with an obstacle-aware router before
+      // allowing them into the fixed SVG layout.
+      return [];
+    }
+
+    seenEdges.add(edgeKey);
+    return [
+      {
+        id: normalizedTopologyEdgeId(from, to),
+        from,
+        to,
+      },
+    ];
+  });
+
+  // A cyclic topology cannot be represented by the current forward-only layout.
+  // Keep the nodes visible, but avoid rendering a misleading partial topology.
+  return isAcyclic(normalizedEdges, availableTopics) ? normalizedEdges : [];
 }
 
 function trackedFor(topic: string, trackedEvents: TrackedEvent[]): TrackedEvent | undefined {
@@ -124,26 +200,96 @@ function statusForWatched(
   return 'configured';
 }
 
-function layoutForWatched(index: number): FlowLayout {
-  if (index === 0) return layoutConfig.firstWatched;
-  return {
-    left: layoutConfig.downstream.left,
-    top: layoutConfig.downstream.firstTop + (index - 1) * layoutConfig.downstream.rowGap,
-    width: layoutConfig.nodeWidth,
-    height: layoutConfig.nodeHeight,
-  };
+function depthsFor(topics: string[], topology: ScenarioTopologyEdge[]): Map<string, number> {
+  const outgoing = new Map<string, string[]>();
+  const incoming = new Map<string, number>();
+
+  for (const edge of topology) {
+    const targets = outgoing.get(edge.from) ?? [];
+    targets.push(edge.to);
+    outgoing.set(edge.from, targets);
+    incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
+  }
+
+  const depths = new Map<string, number>(topics.map((topic) => [topic, 0]));
+  const remainingIncoming = new Map<string, number>(
+    topics.map((topic) => [topic, incoming.get(topic) ?? 0]),
+  );
+  const pending = topics.filter((topic) => remainingIncoming.get(topic) === 0);
+
+  while (pending.length > 0) {
+    const topic = pending.shift();
+    if (topic === undefined) continue;
+
+    for (const target of outgoing.get(topic) ?? []) {
+      depths.set(target, Math.max(depths.get(target) ?? 0, (depths.get(topic) ?? 0) + 1));
+      const nextIncoming = (remainingIncoming.get(target) ?? 0) - 1;
+      remainingIncoming.set(target, nextIncoming);
+      if (nextIncoming === 0) pending.push(target);
+    }
+  }
+
+  // Topology normalization removes cycle-closing edges. This fallback keeps any
+  // unexpected malformed input renderable without allowing an infinite traversal.
+  for (const topic of topics) {
+    if ((remainingIncoming.get(topic) ?? 0) > 0) depths.set(topic, 0);
+  }
+
+  return depths;
 }
 
-function edgePath(source: FlowLayout, target: FlowLayout): string {
-  const sourceX = source.left + source.width;
+function layoutsFor(topics: string[], topology: ScenarioTopologyEdge[]): Map<string, FlowLayout> {
+  const depths = depthsFor(topics, topology);
+  const topicsByDepth = new Map<number, string[]>();
+
+  for (const topic of topics) {
+    const depth = depths.get(topic) ?? 0;
+    const columnTopics = topicsByDepth.get(depth) ?? [];
+    columnTopics.push(topic);
+    topicsByDepth.set(depth, columnTopics);
+  }
+
+  const layouts = new Map<string, FlowLayout>();
+  for (const [depth, columnTopics] of topicsByDepth) {
+    columnTopics.forEach((topic, siblingIndex) => {
+      layouts.set(topic, {
+        left: layoutConfig.firstColumnLeft + depth * layoutConfig.columnGap,
+        top: layoutConfig.firstRowTop + siblingIndex * layoutConfig.rowGap,
+        width: layoutConfig.nodeWidth,
+        height: layoutConfig.nodeHeight,
+      });
+    });
+  }
+
+  return layouts;
+}
+
+function edgePath(source: FlowLayout, target: FlowLayout, nodeLayouts: FlowLayout[]): string {
+  const sourceRight = source.left + source.width;
   const sourceY = source.top + source.height / 2;
-  const targetX = target.left;
+  const targetLeft = target.left;
+  const targetRight = target.left + target.width;
   const targetY = target.top + target.height / 2;
 
-  if (sourceY === targetY) return `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
+  if (target.left > source.left) {
+    if (target.left - source.left > layoutConfig.columnGap) {
+      const expressLaneTop = Math.max(
+        24,
+        Math.min(...nodeLayouts.map((layout) => layout.top)) - 44,
+      );
+      return `M ${sourceRight} ${sourceY} L ${sourceRight} ${expressLaneTop} L ${targetLeft} ${expressLaneTop} L ${targetLeft} ${targetY}`;
+    }
 
-  const controlOffset = Math.max(44, (targetX - sourceX) / 2);
-  return `M ${sourceX} ${sourceY} C ${sourceX + controlOffset} ${sourceY}, ${targetX - controlOffset} ${targetY}, ${targetX} ${targetY}`;
+    if (sourceY === targetY) return `M ${sourceRight} ${sourceY} L ${targetLeft} ${targetY}`;
+
+    const controlOffset = Math.max(44, (targetLeft - sourceRight) / 2);
+    return `M ${sourceRight} ${sourceY} C ${sourceRight + controlOffset} ${sourceY}, ${targetLeft - controlOffset} ${targetY}, ${targetLeft} ${targetY}`;
+  }
+
+  // TODO: Replace this defensive fallback with obstacle-aware routing when
+  // non-forward topology edges become supported.
+  const routingX = Math.max(sourceRight, targetRight) + 44;
+  return `M ${sourceRight} ${sourceY} L ${routingX} ${sourceY} L ${routingX} ${targetY} L ${targetRight} ${targetY}`;
 }
 
 function edgeStatus(source: FlowNode, target: FlowNode): FlowStatus {
@@ -175,9 +321,13 @@ function recordsForTopic(
 
 export function buildFlowViewModel(draft: ScenarioDraft, run: RunState): FlowViewModel {
   const { rootTopic, watchedTopics } = normalizedTopics(draft);
+  const topics = rootTopic === '' ? watchedTopics : [rootTopic, ...watchedTopics];
+  const topology = normalizedTopology(rootTopic, watchedTopics, draft.topology);
+  const layouts = layoutsFor(topics, topology);
   const hasRun = run.runId !== null;
   const actualRootRecord = run.rootRecord;
   const rootRecord = actualRootRecord?.topic === rootTopic ? actualRootRecord : null;
+
   const rootNode: FlowNode | null = rootTopic
     ? {
         id: `root:${rootTopic}`,
@@ -189,11 +339,11 @@ export function buildFlowViewModel(draft: ScenarioDraft, run: RunState): FlowVie
           rootRecord !== null && run.runId !== null ? getRunRecordId(run.runId, rootRecord) : null,
         recordIds:
           rootRecord !== null && run.runId !== null ? [getRunRecordId(run.runId, rootRecord)] : [],
-        layout: layoutConfig.root,
+        layout: layouts.get(rootTopic) as FlowLayout,
       }
     : null;
 
-  const watchedNodes = watchedTopics.map((topic, index): FlowNode => {
+  const watchedNodes = watchedTopics.map((topic): FlowNode => {
     const records = recordsForTopic(run.records, topic, actualRootRecord);
     const record = latestRecordForTopic(run.records, topic, actualRootRecord);
     return {
@@ -205,47 +355,40 @@ export function buildFlowViewModel(draft: ScenarioDraft, run: RunState): FlowVie
       recordId: record !== null && run.runId !== null ? getRunRecordId(run.runId, record) : null,
       recordIds:
         run.runId === null ? [] : records.map((item) => getRunRecordId(run.runId as string, item)),
-      layout: layoutForWatched(index),
+      layout: layouts.get(topic) as FlowLayout,
     };
   });
 
   const nodes = rootNode === null ? watchedNodes : [rootNode, ...watchedNodes];
+  const nodesByTopic = new Map(nodes.map((node) => [node.topic, node]));
+  const nodeLayouts = nodes.map((node) => node.layout);
   const edges: FlowEdge[] = [];
-  const firstWatched = watchedNodes[0];
 
-  if (
-    rootNode !== null &&
-    firstWatched !== undefined &&
-    topologyConfig.rootFanOut === 'first-watched'
-  ) {
+  for (const configuredEdge of topology) {
+    const source = nodesByTopic.get(configuredEdge.from);
+    const target = nodesByTopic.get(configuredEdge.to);
+    if (source === undefined || target === undefined) continue;
+
     edges.push({
-      id: `${rootNode.id}->${firstWatched.id}`,
-      sourceId: rootNode.id,
-      targetId: firstWatched.id,
-      status: edgeStatus(rootNode, firstWatched),
-      path: edgePath(rootNode.layout, firstWatched.layout),
+      id: configuredEdge.id,
+      sourceId: source.id,
+      targetId: target.id,
+      status: edgeStatus(source, target),
+      path: edgePath(source.layout, target.layout, nodeLayouts),
     });
-  }
-
-  if (firstWatched !== undefined && topologyConfig.downstreamFanOut === 'first-watched') {
-    for (const target of watchedNodes.slice(1)) {
-      edges.push({
-        id: `${firstWatched.id}->${target.id}`,
-        sourceId: firstWatched.id,
-        targetId: target.id,
-        status: edgeStatus(firstWatched, target),
-        path: edgePath(firstWatched.layout, target.layout),
-      });
-    }
   }
 
   const maxNodeBottom = nodes.reduce(
     (bottom, node) => Math.max(bottom, node.layout.top + node.layout.height),
     0,
   );
+  const maxNodeRight = nodes.reduce(
+    (right, node) => Math.max(right, node.layout.left + node.layout.width),
+    0,
+  );
 
   return {
-    width: layoutConfig.canvasWidth,
+    width: Math.max(layoutConfig.canvasWidth, maxNodeRight + layoutConfig.firstColumnLeft),
     height: Math.max(410, maxNodeBottom + 72),
     nodes,
     edges,
