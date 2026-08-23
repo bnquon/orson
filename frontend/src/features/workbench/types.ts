@@ -60,11 +60,66 @@ export interface ObservedEvent {
   metadata: string;
   headers: ReadonlyArray<Readonly<{ name: string; value: string }>>;
   payload: string;
-  position: 'root' | 'payment' | 'inventory' | 'notification';
 }
 
 export interface ObservedRun {
   id: string;
-  duration: string;
+  status: RunStatus;
   events: ObservedEvent[];
+  trackedEvents: TrackedEvent[];
+  error: ApiError | null;
+}
+
+interface EventRecordHeader {
+  key: string;
+  value: string;
+}
+
+export interface EventRecord {
+  topic: string;
+  key: string;
+  value: string;
+  headers: EventRecordHeader[];
+  partition: number;
+  offset: number;
+  timestamp: string;
+}
+
+export type RunStatus =
+  'idle' | 'starting' | 'in_progress' | 'completed' | 'timed_out' | 'cancelled' | 'failed';
+
+type TrackedEventStatus = 'in_progress' | 'completed' | 'unwitnessed' | 'failed';
+
+export interface TrackedEvent {
+  topic: string;
+  status: TrackedEventStatus;
+}
+
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: string;
+  retryable: boolean;
+}
+
+type RunEventKind = 'started' | 'ready' | 'root_published' | 'message' | 'finished';
+
+export interface RunEvent {
+  runId: string;
+  sequence: number;
+  kind: RunEventKind;
+  status?: RunStatus;
+  record?: EventRecord;
+  error?: ApiError;
+}
+
+export interface RunState {
+  runId: string | null;
+  status: RunStatus;
+  rootRecord: EventRecord | null;
+  records: EventRecord[];
+  trackedEvents: TrackedEvent[];
+  selectedRecordId: string | null;
+  error: ApiError | null;
+  lastSequence: number;
 }

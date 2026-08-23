@@ -2,14 +2,17 @@
   background: var(--color-surface);
   border-left: 1px solid var(--color-border);
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  height: 100%;
   min-width: 0;
   overflow: hidden;
 }
 
 .previous-run__body {
   display: grid;
-  grid-template-rows: minmax(0, 60fr) minmax(0, 40fr);
+  grid-template-rows: minmax(0, 13fr) minmax(0, 7fr);
+  grid-row: 4;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
@@ -64,22 +67,79 @@
   gap: 5px;
 }
 
-.previous-run__complete {
+.previous-run__status {
   align-items: center;
-  color: var(--color-success);
+  color: var(--color-text-muted);
   display: inline-flex;
   font-size: 10px;
   gap: 4px;
 }
 
+.previous-run__status--completed {
+  color: var(--color-success);
+}
+
+.previous-run__status--starting,
+.previous-run__status--in_progress {
+  color: var(--color-route);
+}
+
+.previous-run__status--timed_out {
+  color: var(--color-warning);
+}
+
+.previous-run__status--cancelled {
+  color: var(--color-warning);
+}
+
+.previous-run__status--idle {
+  color: var(--color-text-muted);
+}
+
+.previous-run__status--failed {
+  color: var(--color-danger);
+}
+
+.previous-run__error {
+  background: color-mix(in srgb, var(--color-danger) 8%, var(--color-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--color-danger) 30%, var(--color-border));
+  color: var(--color-danger);
+  display: grid;
+  font-size: 10px;
+  gap: 3px;
+  line-height: 1.4;
+  padding: 8px 11px;
+}
+
+.previous-run__error span {
+  color: var(--color-text-muted);
+  font-family: var(--font-code);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
 .previous-run__timeline {
+  min-height: 0;
   overflow: auto;
   padding: 9px 8px 12px 11px;
+}
+
+.previous-run__empty {
+  color: var(--color-text-dim);
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 4px 5px 14px;
+}
+
+.timeline-events {
+  display: flex;
+  flex-direction: column;
 }
 
 .timeline-event {
   background: transparent;
   border: 0;
+  border-left: 2px solid transparent;
   border-radius: var(--radius-sm);
   color: var(--color-text-muted);
   cursor: pointer;
@@ -106,7 +166,8 @@
 }
 
 .timeline-event--selected {
-  background: color-mix(in srgb, var(--color-route) 8%, var(--color-surface));
+  background: var(--color-selection-surface);
+  border-left-color: var(--color-selection);
   color: var(--color-text);
 }
 
@@ -116,7 +177,7 @@
   position: relative;
 }
 
-.timeline-event:not(:last-child) .timeline-event__track::after {
+.timeline-events > .timeline-event:not(:last-child) .timeline-event__track::after {
   background: var(--color-border);
   content: '';
   height: calc(100% + 9px);
@@ -134,12 +195,6 @@
   position: relative;
   width: 11px;
   z-index: 1;
-}
-
-.timeline-event--selected .timeline-event__dot {
-  background: var(--color-route);
-  border-color: var(--color-route);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-route) 20%, transparent);
 }
 
 .timeline-event__body {
@@ -184,6 +239,59 @@
   font-size: 9px;
   gap: 4px;
   margin-top: 5px;
+}
+
+.tracked-events {
+  border-top: 1px solid var(--color-border-subtle);
+  margin: 16px 5px 0;
+  padding-top: 12px;
+}
+
+.tracked-events__label {
+  color: var(--color-text-dim);
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tracked-event {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  font-family: var(--font-code);
+  font-size: 9px;
+  gap: 8px;
+  justify-content: space-between;
+  padding: 7px 0 0;
+}
+
+.tracked-event > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tracked-event__status {
+  color: var(--color-text-dim);
+  flex: 0 0 auto;
+  text-transform: capitalize;
+}
+
+.tracked-event__status--completed {
+  color: var(--color-success);
+}
+
+.tracked-event__status--in_progress {
+  color: var(--color-route);
+}
+
+.tracked-event__status--unwitnessed {
+  color: var(--color-warning);
+}
+
+.tracked-event__status--failed {
+  color: var(--color-danger);
 }
 
 @media (prefers-reduced-motion: reduce) {

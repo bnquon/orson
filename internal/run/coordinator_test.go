@@ -3,245 +3,189 @@ package run
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
 	"orson/internal/kafka"
 )
 
-func TestCoordinatorRunUsesTimeoutAndExcludesRootRecord(t *testing.T) {
-	client := &coordinatorKafkaClient{
-		published: make(chan struct{}),
-	}
+func TestCoordinatorEmitsOrderedEventsAndFiltersUnrelatedRecords(t *testing.T) {
+	client := newEventKafkaClient()
 	coordinator, err := NewCoordinator(client)
 	if err != nil {
 		t.Fatalf("NewCoordinator() failed: %v", err)
 	}
 
-	result, err := coordinator.Run(context.Background(), RunRequest{
+	events := runCoordinator(t, coordinator, RunRequest{
+		RunID: RunID("run-1"),
 		RootMessage: kafka.Message{
 			Topic: "order.created",
 			Value: []byte("root"),
 		},
-		WatchedTopics:  []string{"order.created", "payment.charged"},
-		CaptureTimeout: 100 * time.Millisecond,
+		WatchedTopics:  []string{"payment.charged"},
+		CaptureTimeout: 30 * time.Millisecond,
 	})
-	if err != nil {
-		t.Fatalf("Run() failed: %v", err)
-	}
 
-	if result.CorrelationID == "" {
-		t.Fatal("Run() returned an empty correlation ID")
+	if len(events) != 5 {
+		t.Fatalf("event count = %d, want 5", len(events))
 	}
-	if len(result.Records) != 1 {
-		t.Fatalf("Run() returned %d records, want 1 downstream record", len(result.Records))
+	wantKinds := []EventKind{EventStarted, EventReady, EventRootPublished, EventMessage, EventFinished}
+	for index, event := range events {
+		if event.Kind != wantKinds[index] {
+			t.Errorf("event %d kind = %q, want %q", index, event.Kind, wantKinds[index])
+		}
+		if event.Sequence != uint64(index+1) {
+			t.Errorf("event %d sequence = %d, want %d", index, event.Sequence, index+1)
+		}
 	}
-	if result.Records[0].Message.Topic != "payment.charged" {
-		t.Fatalf("captured topic = %q, want payment.charged", result.Records[0].Message.Topic)
+	if events[3].Record == nil || events[3].Record.Message.Topic != "payment.charged" {
+		t.Fatalf("message event = %+v, want payment.charged", events[3].Record)
 	}
-
-	if len(client.publishedMessage.Headers) != 1 {
-		t.Fatalf("published message has %d headers, want 1", len(client.publishedMessage.Headers))
+	if events[4].Status != RunStatusTimedOut {
+		t.Fatalf("finished status = %q, want timed_out", events[4].Status)
 	}
-	if client.publishedMessage.Headers[0].Key != CorrelationIDHeader {
-		t.Fatalf("published header key = %q, want %q", client.publishedMessage.Headers[0].Key, CorrelationIDHeader)
-	}
-	if string(client.publishedMessage.Headers[0].Value) != string(result.CorrelationID) {
-		t.Fatalf("published correlation ID = %q, want %q", client.publishedMessage.Headers[0].Value, result.CorrelationID)
+	if events[4].Failure == nil || events[4].Failure.Stage != FailureStageTimeout {
+		t.Fatalf("finished failure = %+v, want timeout stage", events[4].Failure)
 	}
 }
 
-func TestCoordinatorRunWaitsForCaptureWhenPublishingFails(t *testing.T) {
-	captureStarted := make(chan struct{})
-	releaseCapture := make(chan struct{})
-	captureFinished := make(chan struct{})
-	client := &captureLifecycleClient{
-		captureStarted:  captureStarted,
-		releaseCapture:  releaseCapture,
-		captureFinished: captureFinished,
-		publishErr:      errors.New("publish failed"),
-	}
-	coordinator, err := NewCoordinator(client)
-	if err != nil {
-		t.Fatalf("NewCoordinator() failed: %v", err)
-	}
-
-	runDone := make(chan error, 1)
-	go func() {
-		_, runErr := coordinator.Run(context.Background(), RunRequest{
-			RootMessage: kafka.Message{
-				Topic: "order.created",
-			},
-			WatchedTopics:  []string{"payment.charged"},
-			CaptureTimeout: time.Second,
-		})
-		runDone <- runErr
-	}()
-
-	select {
-	case <-captureStarted:
-	case <-time.After(time.Second):
-		t.Fatal("capture did not start")
-	}
-
-	select {
-	case err := <-runDone:
-		t.Fatalf("Run() returned before capture finished: %v", err)
-	case <-time.After(25 * time.Millisecond):
-	}
-
-	close(releaseCapture)
-
-	if err := <-runDone; err == nil || err.Error() != "coordinator publishing root message: publish failed" {
-		t.Fatalf("Run() error = %v, want publish failure", err)
-	}
-
-	select {
-	case <-captureFinished:
-	default:
-		t.Fatal("capture was not finished before Run() returned")
-	}
-}
-
-func TestCoordinatorRunWaitsForCaptureWhenParentIsCanceled(t *testing.T) {
-	captureStarted := make(chan struct{})
-	releaseCapture := make(chan struct{})
-	captureFinished := make(chan struct{})
-	client := &captureLifecycleClient{
-		captureStarted:  captureStarted,
-		releaseCapture:  releaseCapture,
-		captureFinished: captureFinished,
-	}
+func TestCoordinatorCancellationEmitsOneTerminalEvent(t *testing.T) {
+	client := newEventKafkaClient()
+	client.holdCapture = true
 	coordinator, err := NewCoordinator(client)
 	if err != nil {
 		t.Fatalf("NewCoordinator() failed: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	runDone := make(chan error, 1)
+	eventsCh := make(chan []Event, 1)
 	go func() {
-		_, runErr := coordinator.Run(ctx, RunRequest{
-			RootMessage: kafka.Message{
-				Topic: "order.created",
-			},
+		events := make([]Event, 0)
+		_ = coordinator.Run(ctx, RunRequest{
+			RunID:          RunID("run-2"),
+			RootMessage:    kafka.Message{Topic: "order.created"},
 			WatchedTopics:  []string{"payment.charged"},
 			CaptureTimeout: time.Second,
-		})
-		runDone <- runErr
+		}, func(event Event) { events = append(events, event) })
+		eventsCh <- events
 	}()
 
-	select {
-	case <-captureStarted:
-	case <-time.After(time.Second):
-		t.Fatal("capture did not start")
-	}
-
+	<-client.ready
 	cancel()
-
-	select {
-	case err := <-runDone:
-		t.Fatalf("Run() returned before capture finished: %v", err)
-	case <-time.After(25 * time.Millisecond):
+	events := <-eventsCh
+	if len(events) == 0 || events[len(events)-1].Status != RunStatusCancelled {
+		t.Fatalf("events = %+v, want cancelled terminal event", events)
 	}
-
-	close(releaseCapture)
-
-	if err := <-runDone; !errors.Is(err, context.Canceled) {
-		t.Fatalf("Run() error = %v, want context canceled", err)
+	finished := 0
+	for _, event := range events {
+		if event.Kind == EventFinished {
+			finished++
+		}
 	}
-
-	select {
-	case <-captureFinished:
-	default:
-		t.Fatal("capture was not finished before Run() returned")
+	if finished != 1 {
+		t.Fatalf("finished event count = %d, want 1", finished)
+	}
+	if events[len(events)-1].Failure == nil || events[len(events)-1].Failure.Stage != FailureStageCancellation {
+		t.Fatalf("finished failure = %+v, want cancellation stage", events[len(events)-1].Failure)
 	}
 }
 
-type captureLifecycleClient struct {
-	captureStarted  chan struct{}
-	releaseCapture  chan struct{}
-	captureFinished chan struct{}
-	publishErr      error
+func TestCoordinatorEmitsPublishFailure(t *testing.T) {
+	client := newEventKafkaClient()
+	client.publishErr = errors.New("publish failed")
+	coordinator, err := NewCoordinator(client)
+	if err != nil {
+		t.Fatalf("NewCoordinator() failed: %v", err)
+	}
+
+	events := runCoordinator(t, coordinator, RunRequest{
+		RunID:          RunID("run-3"),
+		RootMessage:    kafka.Message{Topic: "order.created"},
+		WatchedTopics:  []string{"payment.charged"},
+		CaptureTimeout: time.Second,
+	})
+	finished := events[len(events)-1]
+	if finished.Status != RunStatusFailed || finished.Failure == nil || finished.Failure.Stage != FailureStagePublish {
+		t.Fatalf("finished event = %+v, want publish failure", finished)
+	}
 }
 
-func (c *captureLifecycleClient) ReadEndOffsets(context.Context, []string) ([]kafka.PartitionOffset, error) {
-	return []kafka.PartitionOffset{{
-		Topic:     "payment.charged",
-		Partition: 0,
-		Offset:    1,
-	}}, nil
+func runCoordinator(t *testing.T, coordinator *Coordinator, request RunRequest) []Event {
+	t.Helper()
+	events := make([]Event, 0)
+	if err := coordinator.Run(context.Background(), request, func(event Event) {
+		events = append(events, event)
+	}); err != nil {
+		t.Fatalf("Coordinator.Run() failed: %v", err)
+	}
+	return events
 }
 
-func (c *captureLifecycleClient) PublishMessage(context.Context, kafka.Message) (kafka.Record, error) {
-	return kafka.Record{}, c.publishErr
+type eventKafkaClient struct {
+	ready       chan struct{}
+	holdCapture bool
+	publishErr  error
+	published   chan struct{}
+	message     kafka.Message
+	readyOnce   sync.Once
+	publishOnce sync.Once
 }
 
-func (c *captureLifecycleClient) ReadFromOffsets(
-	context.Context,
-	[]kafka.PartitionOffset,
-	func(kafka.Record) error,
-) error {
-	close(c.captureStarted)
-	<-c.releaseCapture
-	close(c.captureFinished)
-	return context.Canceled
+func newEventKafkaClient() *eventKafkaClient {
+	return &eventKafkaClient{
+		ready:     make(chan struct{}),
+		published: make(chan struct{}),
+	}
 }
 
-var _ KafkaClient = (*captureLifecycleClient)(nil)
-
-type coordinatorKafkaClient struct {
-	published        chan struct{}
-	publishedMessage kafka.Message
+func (c *eventKafkaClient) ReadEndOffsets(context.Context, []string) ([]kafka.PartitionOffset, error) {
+	return []kafka.PartitionOffset{{Topic: "payment.charged", Partition: 0, Offset: 1}}, nil
 }
 
-func (c *coordinatorKafkaClient) ReadEndOffsets(context.Context, []string) ([]kafka.PartitionOffset, error) {
-	return []kafka.PartitionOffset{{
-		Topic:     "order.created",
-		Partition: 0,
-		Offset:    10,
-	}}, nil
+func (c *eventKafkaClient) PublishMessage(_ context.Context, message kafka.Message) (kafka.Record, error) {
+	if c.publishErr != nil {
+		return kafka.Record{}, c.publishErr
+	}
+	c.message = message
+	if c.published == nil {
+		c.published = make(chan struct{})
+	}
+	c.publishOnce.Do(func() { close(c.published) })
+	return kafka.Record{Message: message, Partition: 0, Offset: 10}, nil
 }
 
-func (c *coordinatorKafkaClient) PublishMessage(_ context.Context, message kafka.Message) (kafka.Record, error) {
-	c.publishedMessage = message
-	close(c.published)
-
-	return kafka.Record{
-		Message:   message,
-		Partition: 0,
-		Offset:    10,
-	}, nil
-}
-
-func (c *coordinatorKafkaClient) ReadFromOffsets(
+func (c *eventKafkaClient) ReadFromOffsets(
 	ctx context.Context,
 	_ []kafka.PartitionOffset,
+	onReady func(),
 	onRecord func(kafka.Record) error,
 ) error {
-	<-c.published
+	onReady()
+	c.readyOnce.Do(func() { close(c.ready) })
 
-	if err := onRecord(kafka.Record{
-		Message:   c.publishedMessage,
-		Partition: 0,
-		Offset:    10,
-	}); err != nil {
-		return err
-	}
-
-	if err := onRecord(kafka.Record{
-		Message: kafka.Message{
-			Topic:   "payment.charged",
-			Value:   []byte("downstream"),
-			Headers: c.publishedMessage.Headers,
-		},
-		Partition: 0,
-		Offset:    11,
-	}); err != nil {
-		return err
+	if !c.holdCapture {
+		select {
+		case <-c.published:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+		if err := onRecord(kafka.Record{Message: c.message, Partition: 0, Offset: 10}); err != nil {
+			return err
+		}
+		if err := onRecord(kafka.Record{
+			Message:   kafka.Message{Topic: "payment.charged", Headers: c.message.Headers},
+			Partition: 0,
+			Offset:    11,
+		}); err != nil {
+			return err
+		}
+		<-ctx.Done()
+		return ctx.Err()
 	}
 
 	<-ctx.Done()
 	return ctx.Err()
 }
 
-var _ KafkaClient = (*coordinatorKafkaClient)(nil)
+var _ KafkaClient = (*eventKafkaClient)(nil)

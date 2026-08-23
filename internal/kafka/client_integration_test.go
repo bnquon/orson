@@ -98,7 +98,7 @@ func TestKafkaIntegration(t *testing.T) {
 		readerErrors := make(chan error, 1)
 
 		go func() {
-			err := client.ReadFromOffsets(captureCtx, startingOffsets, func(record Record) error {
+			err := client.ReadFromOffsets(captureCtx, startingOffsets, func() {}, func(record Record) error {
 				for _, header := range record.Message.Headers {
 					if header.Key == "x-correlation-id" && string(header.Value) == correlationID {
 						capturedRecords <- record

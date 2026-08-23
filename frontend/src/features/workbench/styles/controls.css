@@ -117,6 +117,17 @@
   border-color: var(--color-text-inverse);
 }
 
+.publish-button--stop {
+  background: var(--color-surface-raised);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.publish-button--stop:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-text-dim);
+}
+
 .publish-summary,
 .fixture-status {
   align-items: center;
@@ -136,6 +147,24 @@
   border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 5px 8px;
+}
+
+.fixture-status--starting,
+.fixture-status--in_progress {
+  color: var(--color-route);
+}
+
+.fixture-status--timed_out,
+.fixture-status--cancelled {
+  color: var(--color-warning);
+}
+
+.fixture-status--failed {
+  color: var(--color-danger);
+}
+
+.fixture-status--idle {
+  color: var(--color-text-muted);
 }
 
 @media (prefers-reduced-motion: reduce) {

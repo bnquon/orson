@@ -8,4 +8,6 @@ export function Disconnect():Promise<api.ConnectionStatusResponse>;
 
 export function GetConnectionStatus():Promise<api.ConnectionStatusResponse>;
 
-export function Run(arg1:api.RunRequest):Promise<api.RunResponse>;
+export function StartRun(arg1:api.RunRequest):Promise<api.RunStartResponse>;
+
+export function StopRun(arg1:string):Promise<api.RunControlResponse>;

@@ -1,5 +1,7 @@
-import { CheckCircle, Clock } from 'iconoir-react';
+import { CheckCircle, Clock, WarningCircle } from 'iconoir-react';
+import { LoadingDots } from '../../../components/LoadingDots';
 import type { ObservedEvent, ObservedRun } from '../types';
+import { formatStatusLabel, isActiveRunStatus } from '../runStatus';
 import { EventInspector } from './EventInspector';
 import '../styles/previous-run.css';
 
@@ -16,50 +18,82 @@ export function PreviousRunPanel({
   selectedEvent,
   onSelectEvent,
 }: PreviousRunPanelProps) {
+  const active = isActiveRunStatus(run.status);
+  const statusLabel = formatStatusLabel(run.status);
+  const statusIcon = ['failed', 'timed_out', 'cancelled'].includes(run.status) ? (
+    <WarningCircle width={16} height={16} />
+  ) : (
+    <CheckCircle width={16} height={16} />
+  );
+
   return (
-    <aside className="previous-run" aria-label="Previous run">
+    <aside className="previous-run" aria-label="Live run activity">
       <header className="previous-run__header">
-        <span className="previous-run__eyebrow">Previous run</span>
+        <span className="previous-run__eyebrow">Live run</span>
         <h2>Chronological sequence</h2>
       </header>
       <div className="previous-run__summary">
         <div>
           <strong>{run.id}</strong>
           <span className="previous-run__metadata">
-            <span>{run.events.length} events</span>
+            <span>{run.events.length} observed</span>
             <span aria-hidden="true">·</span>
-            <span>{run.duration}</span>
+            <span>{run.trackedEvents.length} tracked</span>
           </span>
         </div>
-        <span className="previous-run__complete">
-          <CheckCircle width={16} height={16} /> Complete
+        <span className={`previous-run__status previous-run__status--${run.status}`}>
+          {active ? <LoadingDots size="status" /> : statusIcon} {statusLabel}
         </span>
       </div>
+      {run.error !== null ? (
+        <div className="previous-run__error" role="alert">
+          <strong>{run.error.message}</strong>
+          {run.error.details ? <span>{run.error.details}</span> : null}
+        </div>
+      ) : null}
       <div className="previous-run__body">
         <div className="previous-run__timeline workbench-scroll-region">
-          {run.events.map((event) => (
-            <button
-              className={`timeline-event ${selectedEventId === event.id ? 'timeline-event--selected' : ''}`}
-              type="button"
-              key={event.id}
-              aria-pressed={selectedEventId === event.id}
-              onClick={() => onSelectEvent(event.id)}
-            >
-              <span className="timeline-event__track">
-                <span className="timeline-event__dot" />
-              </span>
-              <span className="timeline-event__body">
-                <span className="timeline-event__line">
-                  <strong>{event.topic}</strong>
-                  <span>{event.elapsed}</span>
-                </span>
-                <span className="timeline-event__name">{event.name}</span>
-                <span className="timeline-event__time">
-                  <Clock width={16} height={16} /> {event.timestamp}
-                </span>
-              </span>
-            </button>
-          ))}
+          {run.events.length === 0 ? (
+            <p className="previous-run__empty">Start a run to see live Kafka records here.</p>
+          ) : (
+            <div className="timeline-events">
+              {run.events.map((event) => (
+                <button
+                  className={`timeline-event ${selectedEventId === event.id ? 'timeline-event--selected' : ''}`}
+                  type="button"
+                  key={event.id}
+                  aria-pressed={selectedEventId === event.id}
+                  onClick={() => onSelectEvent(event.id)}
+                >
+                  <span className="timeline-event__track">
+                    <span className="timeline-event__dot" />
+                  </span>
+                  <span className="timeline-event__body">
+                    <span className="timeline-event__line">
+                      <strong>{event.topic}</strong>
+                    </span>
+                    <span className="timeline-event__name">{event.name}</span>
+                    <span className="timeline-event__time">
+                      <Clock width={16} height={16} /> {event.timestamp}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {run.trackedEvents.length > 0 ? (
+            <section className="tracked-events" aria-label="Tracked event statuses">
+              <span className="tracked-events__label">Tracked topics</span>
+              {run.trackedEvents.map((event) => (
+                <div className="tracked-event" key={event.topic}>
+                  <span>{event.topic}</span>
+                  <span className={`tracked-event__status tracked-event__status--${event.status}`}>
+                    {formatStatusLabel(event.status)}
+                  </span>
+                </div>
+              ))}
+            </section>
+          ) : null}
         </div>
         <EventInspector event={selectedEvent} />
       </div>

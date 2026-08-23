@@ -13,6 +13,7 @@ import (
 func (c *Client) ReadFromOffsets(
 	ctx context.Context,
 	startingOffsets []PartitionOffset,
+	onReady func(),
 	onRecord func(Record) error,
 ) error {
 	if len(startingOffsets) == 0 {
@@ -21,6 +22,9 @@ func (c *Client) ReadFromOffsets(
 
 	if onRecord == nil {
 		return errors.New("record callback is required")
+	}
+	if onReady == nil {
+		return errors.New("ready callback is required")
 	}
 
 	partitions := make(map[string]map[int32]kgo.Offset)
@@ -67,6 +71,7 @@ func (c *Client) ReadFromOffsets(
 	// TODO: Use a dedicated franz client per capture session when concurrent
 	// coordinator runs need to be supported.
 	defer c.franz.RemoveConsumePartitions(consumePartitions)
+	onReady()
 
 	for {
 		fetches := c.franz.PollFetches(ctx)
