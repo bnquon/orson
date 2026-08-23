@@ -4,9 +4,10 @@ import { ComposePanel } from './components/ComposePanel';
 import { FlowPanel } from './components/FlowPanel';
 import { PreviousRunPanel } from './components/PreviousRunPanel';
 import { WorkbenchShell } from './components/WorkbenchShell';
-import { activeConnection, initialScenario, previousRun } from './fixtures';
+import { initialScenario, previousRun } from './fixtures';
 import type {
   ComposeEditorTab,
+  KafkaConnection,
   ScenarioDraft,
   TouchedState,
   ValidatableField,
@@ -21,7 +22,17 @@ const initialTouched: TouchedState = {
   headerIds: [],
 };
 
-export function WorkbenchPage() {
+interface WorkbenchPageProps {
+  connection: KafkaConnection;
+  connectionDialogOpen: boolean;
+  onConnectionToggle: () => void;
+}
+
+export function WorkbenchPage({
+  connection,
+  connectionDialogOpen,
+  onConnectionToggle,
+}: WorkbenchPageProps) {
   const [mode, setMode] = useState<WorkspaceMode>('compose');
   const [draft, setDraft] = useState<ScenarioDraft>(initialScenario);
   const [activeEditorTab, setActiveEditorTab] = useState<ComposeEditorTab>('payload');
@@ -44,8 +55,8 @@ export function WorkbenchPage() {
 
   const jsonValidationPending = jsonValidation.payload !== draft.payload;
   const validation = useMemo(
-    () => validateScenario(draft, activeConnection, jsonValidation.error),
-    [draft, jsonValidation.error],
+    () => validateScenario(draft, connection, jsonValidation.error),
+    [connection, draft, jsonValidation.error],
   );
   const selectedEvent = previousRun.events.find((event) => event.id === selectedEventId) ?? null;
 
@@ -77,7 +88,7 @@ export function WorkbenchPage() {
   const handlePublish = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const currentJsonError = getJsonError(draft.payload);
-    const currentValidation = validateScenario(draft, activeConnection, currentJsonError);
+    const currentValidation = validateScenario(draft, connection, currentJsonError);
 
     setJsonValidation({ payload: draft.payload, error: currentJsonError });
     setPublishAttempted(true);
@@ -130,7 +141,7 @@ export function WorkbenchPage() {
         className="publish-button"
         type="submit"
         form="compose-form"
-        title={`Publish to ${activeConnection.environment} · ${activeConnection.broker}`}
+        title={`Publish to ${connection.name} · ${connection.brokers.join(', ')}`}
       >
         Publish <DotArrowRight width={20} height={20} strokeWidth={1.5} />
       </button>
@@ -139,9 +150,11 @@ export function WorkbenchPage() {
 
   return (
     <WorkbenchShell
-      connection={activeConnection}
+      connection={connection}
+      connectionDialogOpen={connectionDialogOpen}
       mode={mode}
       onModeChange={setMode}
+      onConnectionToggle={onConnectionToggle}
       action={
         mode === 'compose' ? (
           composeAction
@@ -154,7 +167,7 @@ export function WorkbenchPage() {
       workspace={
         mode === 'compose' ? (
           <ComposePanel
-            connection={activeConnection}
+            connection={connection}
             draft={draft}
             setDraft={setDraft}
             activeEditorTab={activeEditorTab}

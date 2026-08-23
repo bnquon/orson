@@ -1,0 +1,115 @@
+.modal-backdrop {
+  align-items: center;
+  animation: modal-backdrop-in var(--duration-normal) var(--ease-standard);
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px 16px;
+  position: fixed;
+  z-index: 100;
+}
+
+.modal-dialog {
+  animation: modal-dialog-in var(--duration-normal) var(--ease-standard);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.34);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: calc(100vh - 48px);
+  outline: none;
+  overflow: hidden;
+  width: min(600px, calc(100vw - 32px));
+}
+
+.modal-header {
+  align-items: start;
+  border-bottom: 1px solid var(--color-border-subtle);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 18px 20px 16px;
+}
+
+.modal-header h2 {
+  font-size: 16px;
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.modal-header p {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+  margin: 4px 0 0;
+}
+
+.modal-close {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 30px;
+  justify-content: center;
+  padding: 0;
+  width: 30px;
+}
+
+.modal-close:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.modal-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.modal-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 20px 20px;
+}
+
+.modal-body .connection-form {
+  gap: 15px;
+}
+
+.modal-footer {
+  border-top: 1px solid var(--color-border-subtle);
+  padding: 14px 20px;
+}
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal-dialog {
+    animation: none;
+  }
+}

@@ -15,8 +15,10 @@ import '../styles/shell.css';
 
 interface WorkbenchShellProps {
   connection: KafkaConnection;
+  connectionDialogOpen: boolean;
   mode: WorkspaceMode;
   onModeChange: (mode: WorkspaceMode) => void;
+  onConnectionToggle: () => void;
   action: ReactNode;
   workspace: ReactNode;
   previousRun: ReactNode;
@@ -24,8 +26,10 @@ interface WorkbenchShellProps {
 
 export function WorkbenchShell({
   connection,
+  connectionDialogOpen,
   mode,
   onModeChange,
+  onConnectionToggle,
   action,
   workspace,
   previousRun,
@@ -46,16 +50,17 @@ export function WorkbenchShell({
           </button>
         </div>
         <div className="workbench-topbar__group">
-          {/* TODO: Open the Wails-backed environment selector once connection management exists. */}
           <button
             className="workbench-environment"
             id="workbench-environment-selector"
             type="button"
             aria-label="Active Kafka connection"
+            aria-expanded={connectionDialogOpen}
+            onClick={onConnectionToggle}
           >
             <span className={`workbench-status-dot workbench-status-dot--${connection.status}`} />
-            <span>{connection.environment}</span>
-            <span className="workbench-environment__broker">{connection.broker}</span>
+            <span>{connection.name}</span>
+            <span className="workbench-environment__broker">{connection.brokers.join(', ')}</span>
             <NavArrowDown width={16} height={16} />
           </button>
           <button

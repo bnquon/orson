@@ -63,7 +63,7 @@ export function ComposeConfigSection({
           <span id="compose-connection-error">
             {validation.fieldErrors.connection ?? 'The active workspace connection is unavailable.'}
           </span>
-          {/* TODO: Open the Wails-backed environment selector once connection management exists. */}
+          {/* Defensive fallback: the app normally gates the workbench until this is connected. */}
           <button type="button" onClick={() => focusControl('workbench-environment-selector')}>
             Review connection
           </button>

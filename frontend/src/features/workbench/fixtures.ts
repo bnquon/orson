@@ -1,12 +1,4 @@
-import type { KafkaConnection, ObservedRun, ScenarioDraft } from './types';
-
-export const activeConnection: KafkaConnection = {
-  id: 'connection-local-kafka',
-  name: 'Local Kafka',
-  environment: 'Local',
-  broker: 'localhost:9092',
-  status: 'connected',
-};
+import type { ObservedRun, ScenarioDraft } from './types';
 
 export const initialScenario: ScenarioDraft = {
   rootTopic: 'order.created',
