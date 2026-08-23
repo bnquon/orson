@@ -5,7 +5,7 @@
 <h1 align="center">Orson</h1>
 
 <p align="center">
-  A desktop Kafka event-flow debugger.
+  A local-first desktop Kafka event-flow debugger.
 </p>
 
 <p align="center">
@@ -18,6 +18,9 @@ Orson helps developers understand what happens after publishing a Kafka event.
 
 It captures related downstream events, displays them on a live timeline and flow graph, and lets
 you inspect each message's payload, headers, partition, and offset.
+
+Orson runs on your machine and connects directly to the Kafka broker you configure. Your payloads
+and captured events are not uploaded to an Orson cloud service or analytics pipeline.
 
 ## Demo
 
