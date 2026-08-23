@@ -2,14 +2,12 @@ export type WorkspaceMode = 'compose' | 'flow';
 
 export type ComposeEditorTab = 'headers' | 'payload';
 
-type ConnectionStatus = 'connected' | 'disconnected';
-
 export interface KafkaConnection {
-  id: string;
   name: string;
-  environment: string;
-  broker: string;
-  status: ConnectionStatus;
+  brokers: string[];
+  clientId: string;
+  dialTimeoutSeconds: number;
+  status: 'connected';
 }
 
 interface WatchedTopic {

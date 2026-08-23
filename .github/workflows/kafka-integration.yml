@@ -1,0 +1,46 @@
+name: Kafka integration
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: kafka-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  kafka:
+    name: Kafka integration tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start Kafka
+        run: docker compose -f integration/kafka/compose.yaml up -d --wait kafka
+
+      - name: Initialize Kafka topics
+        run: docker compose -f integration/kafka/compose.yaml run --rm kafka-init
+
+      - name: Run Kafka integration tests
+        run: go test -tags=integration ./internal/kafka -v
+
+      - name: Show Kafka logs on failure
+        if: failure()
+        run: docker compose -f integration/kafka/compose.yaml logs kafka kafka-init
+
+      - name: Stop Kafka
+        if: always()
+        run: docker compose -f integration/kafka/compose.yaml down -v
