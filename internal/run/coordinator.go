@@ -67,7 +67,20 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest) (RunResult, e
 	defer stopCapture()
 
 	recordsCh := make(chan kafka.Record, 16)
-	captureErrorsCh := make(chan error, 1)
+	captureDoneCh := make(chan error, 1)
+	captureFinished := false
+	var captureErr error
+	waitForCapture := func() error {
+		if captureFinished {
+			return captureErr
+		}
+
+		stopCapture()
+		captureErr = <-captureDoneCh
+		captureFinished = true
+		return captureErr
+	}
+	defer waitForCapture()
 
 	go func() {
 		err := c.kafkaClient.ReadFromOffsets(
@@ -87,13 +100,14 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest) (RunResult, e
 			},
 		)
 
-		captureErrorsCh <- err
+		captureDoneCh <- err
 	}()
 
 	// 5. Publish the root message after the capture reader is running.
 	rootRecord, err := c.kafkaClient.PublishMessage(ctx, rootMessage)
 
 	if err != nil {
+		waitForCapture()
 		return RunResult{}, fmt.Errorf("coordinator publishing root message: %w", err)
 	}
 
@@ -108,7 +122,9 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest) (RunResult, e
 		case record := <-recordsCh:
 			result.Records = append(result.Records, record)
 
-		case err := <-captureErrorsCh:
+		case err := <-captureDoneCh:
+			captureErr = err
+			captureFinished = true
 			if err != nil &&
 				!errors.Is(err, context.Canceled) &&
 				!errors.Is(err, context.DeadlineExceeded) {
@@ -125,6 +141,7 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest) (RunResult, e
 			return excludeRootRecord(result), nil
 
 		case <-ctx.Done():
+			waitForCapture()
 			return excludeRootRecord(result), ctx.Err()
 		}
 	}

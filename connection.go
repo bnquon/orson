@@ -11,6 +11,7 @@ import (
 )
 
 const connectionBusyCode = "connection_busy"
+const runBusyCode = "run_busy"
 
 type KafkaConnection interface {
 	run.KafkaClient
@@ -269,6 +270,9 @@ func (a *App) beginRun() (*run.Coordinator, context.Context, *api.APIError) {
 	if a.shuttingDown {
 		return nil, nil, connectionBusyError()
 	}
+	if a.activeRuns > 0 {
+		return nil, nil, runBusyError()
+	}
 	if a.coordinator == nil {
 		return nil, nil, apiConnectionNotConnectedError()
 	}
@@ -322,6 +326,15 @@ func connectionBusyError() *api.APIError {
 		connectionBusyCode,
 		"The Kafka connection cannot change during an active run.",
 		"Wait for the current run to finish, then try again.",
+		true,
+	)
+}
+
+func runBusyError() *api.APIError {
+	return api.NewError(
+		runBusyCode,
+		"A run is already active.",
+		"Wait for the current run to finish before starting another.",
 		true,
 	)
 }

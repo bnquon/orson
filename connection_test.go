@@ -142,6 +142,27 @@ func TestAppRejectsConnectionChangesDuringRun(t *testing.T) {
 	}
 }
 
+func TestAppRejectsOverlappingRuns(t *testing.T) {
+	active := &fakeKafkaConnection{}
+	connector := &fakeKafkaConnector{connections: []KafkaConnection{active}}
+	app := newApp(connector)
+	app.startup(context.Background())
+	defer app.shutdown(context.Background())
+
+	if response := app.Connect(validConnectionRequest("Local Kafka")); !response.OK {
+		t.Fatalf("Connect() failed: %+v", response.Error)
+	}
+
+	if _, _, apiErr := app.beginRun(); apiErr != nil {
+		t.Fatalf("first beginRun() failed: %+v", apiErr)
+	}
+	defer app.endRun()
+
+	if _, _, apiErr := app.beginRun(); apiErr == nil || apiErr.Code != runBusyCode {
+		t.Fatalf("second beginRun() error = %+v, want %q", apiErr, runBusyCode)
+	}
+}
+
 func TestAppShutdownWaitsForActiveRunBeforeClosingConnection(t *testing.T) {
 	readStarted := make(chan struct{})
 	active := &fakeKafkaConnection{
