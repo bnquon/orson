@@ -1,8 +1,7 @@
-<p align="center">
-  <img src="docs/images/orson-icon.png" width="128" alt="Orson icon" />
-</p>
-
-<h1 align="center">Orson</h1>
+<h1 align="center">
+  <img src="docs/images/orson-icon.png" width="72" alt="Orson icon" align="middle" />
+  Orson
+</h1>
 
 <p align="center">
   A local-first desktop Kafka event-flow debugger.
