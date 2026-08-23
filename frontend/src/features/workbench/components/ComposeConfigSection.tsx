@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import { Clock, Key, Plus, Trash, WarningCircle } from 'iconoir-react';
 import type {
   KafkaConnection,
@@ -7,12 +7,14 @@ import type {
   ValidatableField,
   ValidationResult,
 } from '../types';
+import { removeTopologyTopic, renameTopologyTopic } from '../draftEditing';
 import { focusControl } from './focusControl';
 
 interface ComposeConfigSectionProps {
   connection: KafkaConnection;
   draft: ScenarioDraft;
   setDraft: Dispatch<SetStateAction<ScenarioDraft>>;
+  rootTopicEditRef: MutableRefObject<string | null>;
   touched: TouchedState;
   validation: ValidationResult;
   onTouchField: (field: ValidatableField) => void;
@@ -23,12 +25,71 @@ export function ComposeConfigSection({
   connection,
   draft,
   setDraft,
+  rootTopicEditRef,
   touched,
   validation,
   onTouchField,
   onTouchWatchedTopic,
 }: ComposeConfigSectionProps) {
+  const watchedTopicEditRefs = useRef(new Map<string, string>());
   const showFieldError = (field: ValidatableField) => touched.fields[field] === true;
+
+  const beginRootTopicEdit = () => {
+    if (rootTopicEditRef.current === null) rootTopicEditRef.current = draft.rootTopic;
+  };
+
+  const commitRootTopicEdit = (nextName: string) => {
+    const previousName = rootTopicEditRef.current;
+    if (previousName === null) return;
+    if (previousName.trim() === nextName.trim()) {
+      rootTopicEditRef.current = null;
+      return;
+    }
+    const normalizedNextName = nextName.trim();
+    if (
+      normalizedNextName === '' ||
+      draft.watchedTopics.some((topic) => topic.name.trim() === normalizedNextName)
+    ) {
+      return;
+    }
+
+    rootTopicEditRef.current = null;
+    setDraft((current) => ({
+      ...current,
+      topology: renameTopologyTopic(current.topology, previousName, nextName),
+    }));
+  };
+
+  const beginWatchedTopicEdit = (topicId: string, topicName: string) => {
+    if (!watchedTopicEditRefs.current.has(topicId)) {
+      watchedTopicEditRefs.current.set(topicId, topicName);
+    }
+  };
+
+  const commitWatchedTopicEdit = (topicId: string, nextName: string) => {
+    const previousName = watchedTopicEditRefs.current.get(topicId);
+    if (previousName === undefined) return;
+    if (previousName.trim() === nextName.trim()) {
+      watchedTopicEditRefs.current.delete(topicId);
+      return;
+    }
+    const normalizedNextName = nextName.trim();
+    if (
+      normalizedNextName === '' ||
+      normalizedNextName === draft.rootTopic.trim() ||
+      draft.watchedTopics.some(
+        (topic) => topic.id !== topicId && topic.name.trim() === normalizedNextName,
+      )
+    ) {
+      return;
+    }
+
+    watchedTopicEditRefs.current.delete(topicId);
+    setDraft((current) => ({
+      ...current,
+      topology: renameTopologyTopic(current.topology, previousName, nextName),
+    }));
+  };
 
   const addWatchedTopic = () => {
     const id = crypto.randomUUID();
@@ -40,10 +101,19 @@ export function ComposeConfigSection({
   };
 
   const removeWatchedTopic = (topicId: string) => {
+    const removedTopic = draft.watchedTopics.find((topic) => topic.id === topicId);
     const index = draft.watchedTopics.findIndex((topic) => topic.id === topicId);
     const remaining = draft.watchedTopics.filter((topic) => topic.id !== topicId);
     const nextTopic = remaining[Math.min(index, remaining.length - 1)];
-    setDraft((current) => ({ ...current, watchedTopics: remaining }));
+    watchedTopicEditRefs.current.delete(topicId);
+    setDraft((current) => ({
+      ...current,
+      watchedTopics: remaining,
+      topology:
+        removedTopic === undefined
+          ? current.topology
+          : removeTopologyTopic(current.topology, removedTopic.name),
+    }));
     focusControl(
       nextTopic === undefined ? 'compose-add-watched-topic' : `watched-topic-${nextTopic.id}`,
     );
@@ -83,10 +153,14 @@ export function ComposeConfigSection({
                 : ''
             }
             value={draft.rootTopic}
+            onFocus={beginRootTopicEdit}
             onChange={(event) =>
               setDraft((current) => ({ ...current, rootTopic: event.target.value }))
             }
-            onBlur={() => onTouchField('rootTopic')}
+            onBlur={(event) => {
+              commitRootTopicEdit(event.currentTarget.value);
+              onTouchField('rootTopic');
+            }}
             aria-invalid={
               showFieldError('rootTopic') && validation.fieldErrors.rootTopic !== undefined
             }
@@ -175,6 +249,7 @@ export function ComposeConfigSection({
                     id={`watched-topic-${topic.id}`}
                     className={showError && error !== undefined ? 'compose-control--invalid' : ''}
                     value={topic.name}
+                    onFocus={() => beginWatchedTopicEdit(topic.id, topic.name)}
                     onChange={(event) =>
                       setDraft((current) => ({
                         ...current,
@@ -183,7 +258,10 @@ export function ComposeConfigSection({
                         ),
                       }))
                     }
-                    onBlur={() => onTouchWatchedTopic(topic.id)}
+                    onBlur={(event) => {
+                      commitWatchedTopicEdit(topic.id, event.currentTarget.value);
+                      onTouchWatchedTopic(topic.id);
+                    }}
                     aria-label="Watched downstream topic"
                     aria-invalid={showError && error !== undefined}
                     aria-describedby={`watched-topic-error-${topic.id}`}

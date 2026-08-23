@@ -26,16 +26,11 @@
 }
 
 .connection-page__mark {
-  align-items: center;
-  background: var(--color-accent);
   border-radius: var(--radius-sm);
-  color: var(--color-text-inverse);
   display: inline-flex;
-  font-family: var(--font-code);
-  font-size: 12px;
-  font-weight: var(--weight-bold);
   height: 24px;
-  justify-content: center;
+  object-fit: cover;
+  overflow: hidden;
   width: 24px;
 }
 

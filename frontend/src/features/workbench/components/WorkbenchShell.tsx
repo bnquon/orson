@@ -11,6 +11,7 @@ import {
 } from 'iconoir-react';
 import type { KafkaConnection, WorkspaceMode } from '../types';
 import { handleTabListKeyDown } from './tabKeyboard';
+import orsonIcon from '../../../assets/orson-icon.png';
 import '../styles/shell.css';
 
 interface WorkbenchShellProps {
@@ -47,9 +48,7 @@ export function WorkbenchShell({
     <div className="workbench-shell">
       <header className="workbench-topbar">
         <div className="workbench-topbar__group">
-          <span className="workbench-brand" aria-label="Orson">
-            O
-          </span>
+          <img className="workbench-brand" src={orsonIcon} alt="" aria-hidden="true" />
           <span className="workbench-wordmark">orson</span>
           <span className="workbench-separator">/</span>
           <button className="workbench-project-switcher" type="button">

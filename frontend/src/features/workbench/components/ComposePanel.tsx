@@ -4,6 +4,7 @@ import type {
   Dispatch,
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
+  MutableRefObject,
   PointerEvent as ReactPointerEvent,
   SetStateAction,
 } from 'react';
@@ -23,6 +24,7 @@ interface ComposePanelProps {
   connection: KafkaConnection;
   draft: ScenarioDraft;
   setDraft: Dispatch<SetStateAction<ScenarioDraft>>;
+  rootTopicEditRef: MutableRefObject<string | null>;
   activeEditorTab: ComposeEditorTab;
   onEditorTabChange: (tab: ComposeEditorTab) => void;
   touched: TouchedState;
@@ -51,6 +53,7 @@ export function ComposePanel({
   connection,
   draft,
   setDraft,
+  rootTopicEditRef,
   activeEditorTab,
   onEditorTabChange,
   touched,
@@ -151,6 +154,7 @@ export function ComposePanel({
         connection={connection}
         draft={draft}
         setDraft={setDraft}
+        rootTopicEditRef={rootTopicEditRef}
         touched={touched}
         validation={validation}
         onTouchField={onTouchField}

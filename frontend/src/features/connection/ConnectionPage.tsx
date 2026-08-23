@@ -6,6 +6,7 @@ import type {
   StartupStatus,
 } from './types';
 import type { ApiError } from '../../api/result';
+import orsonIcon from '../../assets/orson-icon.png';
 import './styles/connection.css';
 
 interface ConnectionPageProps {
@@ -33,7 +34,7 @@ export function ConnectionPage({
     <div className="connection-page">
       <header className="connection-page__header">
         <div className="connection-page__brand">
-          <span className="connection-page__mark">O</span>
+          <img className="connection-page__mark" src={orsonIcon} alt="" aria-hidden="true" />
           <span className="connection-page__wordmark">orson</span>
           <span className="connection-page__divider">/</span>
           <span>Kafka connection</span>

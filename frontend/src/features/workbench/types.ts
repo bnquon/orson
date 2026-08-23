@@ -15,6 +15,12 @@ interface WatchedTopic {
   name: string;
 }
 
+export interface ScenarioTopologyEdge {
+  id: string;
+  from: string;
+  to: string;
+}
+
 interface KafkaHeader {
   id: string;
   name: string;
@@ -25,6 +31,7 @@ interface KafkaHeader {
 export interface ScenarioDraft {
   rootTopic: string;
   watchedTopics: WatchedTopic[];
+  topology: ScenarioTopologyEdge[];
   messageKey: string;
   headers: KafkaHeader[];
   payload: string;

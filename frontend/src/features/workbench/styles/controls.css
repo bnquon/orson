@@ -118,14 +118,21 @@
 }
 
 .publish-button--stop {
-  background: var(--color-surface-raised);
-  border-color: var(--color-border);
-  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-danger) 16%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-danger) 72%, var(--color-border));
+  color: var(--color-danger);
 }
 
 .publish-button--stop:hover {
-  background: var(--color-surface-hover);
-  border-color: var(--color-text-dim);
+  background: color-mix(in srgb, var(--color-danger) 26%, var(--color-surface));
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.publish-button--stop:active {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: var(--color-text-inverse);
 }
 
 .publish-summary,

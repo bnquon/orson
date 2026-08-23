@@ -12,6 +12,25 @@ interface PreviousRunPanelProps {
   onSelectEvent: (eventId: string) => void;
 }
 
+function activityMessage(status: ObservedRun['status']): string {
+  switch (status) {
+    case 'starting':
+      return 'Starting capture';
+    case 'in_progress':
+      return 'Capturing events';
+    case 'completed':
+      return 'Capture complete';
+    case 'timed_out':
+      return 'Capture timed out';
+    case 'cancelled':
+      return 'Capture cancelled';
+    case 'failed':
+      return 'Capture failed';
+    case 'idle':
+      return 'Ready to capture';
+  }
+}
+
 export function PreviousRunPanel({
   run,
   selectedEventId,
@@ -19,7 +38,6 @@ export function PreviousRunPanel({
   onSelectEvent,
 }: PreviousRunPanelProps) {
   const active = isActiveRunStatus(run.status);
-  const statusLabel = formatStatusLabel(run.status);
   const statusIcon = ['failed', 'timed_out', 'cancelled'].includes(run.status) ? (
     <WarningCircle width={16} height={16} />
   ) : (
@@ -41,9 +59,16 @@ export function PreviousRunPanel({
             <span>{run.trackedEvents.length} tracked</span>
           </span>
         </div>
-        <span className={`previous-run__status previous-run__status--${run.status}`}>
-          {active ? <LoadingDots size="status" /> : statusIcon} {statusLabel}
-        </span>
+        <div
+          className={`previous-run__status previous-run__status--${run.status}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="previous-run__status-indicator" aria-hidden="true">
+            {active ? <LoadingDots size="status" /> : statusIcon}
+          </span>
+          <span>{activityMessage(run.status)}</span>
+        </div>
       </div>
       {run.error !== null ? (
         <div className="previous-run__error" role="alert">
