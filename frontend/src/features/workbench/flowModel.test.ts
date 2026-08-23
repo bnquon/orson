@@ -159,6 +159,28 @@ describe('buildFlowViewModel', () => {
     expect(model.nodes[0].record).toBeNull();
   });
 
+  it('does not show the old root as a watched record after the draft changes', () => {
+    const root = record('order.created', 10);
+    const model = buildFlowViewModel(
+      {
+        ...draft,
+        rootTopic: 'order.updated',
+        watchedTopics: [{ id: 'old-root', name: 'order.created' }],
+      },
+      run({
+        runId: 'run-1',
+        status: 'completed',
+        rootRecord: root,
+        records: [root],
+        trackedEvents: [{ topic: 'order.created', status: 'unwitnessed' }],
+      }),
+    );
+
+    expect(model.nodes[1].topic).toBe('order.created');
+    expect(model.nodes[1].record).toBeNull();
+    expect(model.nodes[1].status).toBe('unwitnessed');
+  });
+
   it.each(['capture_failed', 'processing_failed'] as const)(
     'marks unresolved nodes failed for %s',
     (code) => {

@@ -176,7 +176,8 @@ function recordsForTopic(
 export function buildFlowViewModel(draft: ScenarioDraft, run: RunState): FlowViewModel {
   const { rootTopic, watchedTopics } = normalizedTopics(draft);
   const hasRun = run.runId !== null;
-  const rootRecord = run.rootRecord?.topic === rootTopic ? run.rootRecord : null;
+  const actualRootRecord = run.rootRecord;
+  const rootRecord = actualRootRecord?.topic === rootTopic ? actualRootRecord : null;
   const rootNode: FlowNode | null = rootTopic
     ? {
         id: `root:${rootTopic}`,
@@ -193,8 +194,8 @@ export function buildFlowViewModel(draft: ScenarioDraft, run: RunState): FlowVie
     : null;
 
   const watchedNodes = watchedTopics.map((topic, index): FlowNode => {
-    const records = recordsForTopic(run.records, topic, rootRecord);
-    const record = latestRecordForTopic(run.records, topic, rootRecord);
+    const records = recordsForTopic(run.records, topic, actualRootRecord);
+    const record = latestRecordForTopic(run.records, topic, actualRootRecord);
     return {
       id: `watched:${topic}`,
       topic,
