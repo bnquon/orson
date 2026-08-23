@@ -313,9 +313,31 @@
 }
 
 .scenario-row__chevron {
-  font-size: 15px;
+  align-items: center;
+  display: inline-flex;
   text-align: center;
+  transform: rotate(-90deg);
+  transition: transform var(--duration-normal) var(--ease-standard);
   width: 16px;
+}
+
+.scenario-row__chevron--expanded {
+  transform: rotate(0deg);
+}
+
+.scenario-folder-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--duration-normal) var(--ease-standard);
+}
+
+.scenario-folder-content--expanded {
+  grid-template-rows: 1fr;
+}
+
+.scenario-folder-content__inner {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .scenario-row__count {
@@ -525,6 +547,11 @@
   }
 
   .mode-switch::before {
+    transition: none;
+  }
+
+  .scenario-row__chevron,
+  .scenario-folder-content {
     transition: none;
   }
 

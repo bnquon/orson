@@ -119,6 +119,16 @@
   padding: 0 10px;
 }
 
+.connection-startup-status {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  font-family: var(--font-code);
+  font-size: 10px;
+  gap: 8px;
+  min-height: 28px;
+}
+
 .connection-attempt--connecting {
   border-color: color-mix(in srgb, var(--color-warning) 55%, var(--color-border));
   color: var(--color-warning);
@@ -177,6 +187,17 @@
   line-height: 1.5;
   margin: 4px 0 0;
   overflow-wrap: anywhere;
+}
+
+.connection-field-error {
+  color: var(--color-danger);
+  font-family: var(--font-code);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.connection-field input[aria-invalid='true'] {
+  border-color: color-mix(in srgb, var(--color-danger) 60%, var(--color-border));
 }
 
 .connection-fields {
@@ -240,6 +261,13 @@
   gap: 7px;
 }
 
+.connection-broker-input {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
+}
+
 .connection-icon-button {
   align-items: center;
   background: transparent;
@@ -285,6 +313,11 @@
   color: var(--color-text);
 }
 
+.connection-add-broker:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .connection-help {
   color: var(--color-text-muted);
   font-size: 11px;
@@ -309,10 +342,15 @@
 
 .connection-primary-button,
 .connection-secondary-button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  justify-content: center;
   border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 10px;
   min-height: 32px;
+  min-width: 92px;
   padding: 0 12px;
 }
 
@@ -332,6 +370,32 @@
   background: transparent;
   border: 1px solid var(--color-border);
   color: var(--color-text-muted);
+}
+
+.connection-retry-button {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--font-code);
+  font-size: 9px;
+  gap: 6px;
+  margin-top: 9px;
+  min-height: 28px;
+  padding: 0 9px;
+}
+
+.connection-retry-button:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.connection-retry-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .connection-secondary-button:hover:not(:disabled) {

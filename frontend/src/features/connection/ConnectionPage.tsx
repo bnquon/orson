@@ -1,20 +1,33 @@
-import type { api } from '../../../wailsjs/go/models';
 import { ConnectionForm } from './ConnectionForm';
-import type { ConnectionAttemptState } from './types';
+import type {
+  ConnectionAttemptState,
+  ConnectionFormValues,
+  ConnectionOperation,
+  StartupStatus,
+} from './types';
+import type { ApiError } from '../../api/result';
 import './styles/connection.css';
 
 interface ConnectionPageProps {
   attempt: ConnectionAttemptState;
-  onAttemptChange: (attempt: ConnectionAttemptState) => void;
-  onConnected: (state: api.ConnectionState) => void;
-  onDisconnected: () => void;
+  startupStatus: StartupStatus;
+  error: ApiError | null;
+  operation: ConnectionOperation;
+  onConnect: (values: ConnectionFormValues) => void;
+  onDisconnect: () => void;
+  onRetryStartup: () => void;
+  onClearErrors: () => void;
 }
 
 export function ConnectionPage({
   attempt,
-  onAttemptChange,
-  onConnected,
-  onDisconnected,
+  startupStatus,
+  error,
+  operation,
+  onConnect,
+  onDisconnect,
+  onRetryStartup,
+  onClearErrors,
 }: ConnectionPageProps) {
   return (
     <div className="connection-page">
@@ -44,9 +57,14 @@ export function ConnectionPage({
               clientId: 'orson',
               dialTimeoutSeconds: '5',
             }}
-            onAttemptChange={onAttemptChange}
-            onConnected={onConnected}
-            onDisconnected={onDisconnected}
+            startupStatus={startupStatus}
+            error={error}
+            operation={operation}
+            formId="connection-setup-form"
+            onConnect={onConnect}
+            onDisconnect={onDisconnect}
+            onRetryStartup={onRetryStartup}
+            onClearErrors={onClearErrors}
           />
         </section>
       </main>

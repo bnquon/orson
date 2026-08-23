@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   Database,
   Folder,
@@ -34,6 +34,8 @@ export function WorkbenchShell({
   workspace,
   previousRun,
 }: WorkbenchShellProps) {
+  const [checkoutExpanded, setCheckoutExpanded] = useState(true);
+
   return (
     <div className="workbench-shell">
       <header className="workbench-topbar">
@@ -85,15 +87,6 @@ export function WorkbenchShell({
           >
             AC
           </button>
-          <button className="project-rail__item" type="button" aria-label="Ledger API">
-            LA
-          </button>
-          <button className="project-rail__item" type="button" aria-label="Parcel Service">
-            PS
-          </button>
-          <button className="project-rail__item" type="button" aria-label="Add project">
-            <Plus width={20} height={20} />
-          </button>
           <span className="project-rail__spacer" />
           <button className="project-rail__item" type="button" aria-label="Settings">
             <Settings width={20} height={20} />
@@ -128,30 +121,50 @@ export function WorkbenchShell({
               <Plus width={16} height={16} />
             </button>
           </div>
-          <button className="scenario-row scenario-row--folder" type="button">
-            <NavArrowDown width={16} height={16} /> <Folder width={16} height={16} /> Checkout
+          <button
+            className="scenario-row scenario-row--folder"
+            type="button"
+            aria-expanded={checkoutExpanded}
+            aria-controls="checkout-scenarios"
+            onClick={() => setCheckoutExpanded((expanded) => !expanded)}
+          >
+            <span
+              className={`scenario-row__chevron ${checkoutExpanded ? 'scenario-row__chevron--expanded' : ''}`}
+              aria-hidden="true"
+            >
+              <NavArrowDown width={16} height={16} />
+            </span>
+            <Folder width={16} height={16} /> Checkout
           </button>
-          <button className="scenario-row scenario-row--child scenario-row--active" type="button">
-            <span className="scenario-row__kind">EVT</span> Order placed
-          </button>
-          <button className="scenario-row scenario-row--child" type="button">
-            <span className="scenario-row__kind">EVT</span> Payment failed
-          </button>
-          <button className="scenario-row scenario-row--child" type="button">
-            <span className="scenario-row__kind">EVT</span> Cart abandoned
-          </button>
-          <button className="scenario-row scenario-row--folder" type="button">
-            <span className="scenario-row__chevron">›</span> <Folder width={16} height={16} />{' '}
-            Customers
-          </button>
-          <button className="scenario-row scenario-row--folder" type="button">
-            <span className="scenario-row__chevron">›</span> <Folder width={16} height={16} />{' '}
-            Inventory
-          </button>
-          <button className="scenario-row scenario-row--folder" type="button">
-            <span className="scenario-row__chevron">›</span> <Folder width={16} height={16} />{' '}
-            Fulfillment
-          </button>
+          <div
+            className={`scenario-folder-content ${checkoutExpanded ? 'scenario-folder-content--expanded' : ''}`}
+            id="checkout-scenarios"
+            aria-hidden={!checkoutExpanded}
+          >
+            <div className="scenario-folder-content__inner">
+              <button
+                className="scenario-row scenario-row--child scenario-row--active"
+                type="button"
+                tabIndex={checkoutExpanded ? 0 : -1}
+              >
+                <span className="scenario-row__kind">EVT</span> Order placed
+              </button>
+              <button
+                className="scenario-row scenario-row--child"
+                type="button"
+                tabIndex={checkoutExpanded ? 0 : -1}
+              >
+                <span className="scenario-row__kind">EVT</span> Payment failed
+              </button>
+              <button
+                className="scenario-row scenario-row--child"
+                type="button"
+                tabIndex={checkoutExpanded ? 0 : -1}
+              >
+                <span className="scenario-row__kind">EVT</span> Cart abandoned
+              </button>
+            </div>
+          </div>
           <div className="scenario-sidebar__label">Project activity</div>
           <button className="scenario-row" type="button">
             <Terminal width={16} height={16} /> Recent sends{' '}
