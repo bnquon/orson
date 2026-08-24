@@ -117,7 +117,7 @@ func TestLoadRejectsEmptyAndDuplicateWatchedTopics(t *testing.T) {
 }
 
 func TestLoadReportsParserSourceLocation(t *testing.T) {
-	_, err := loadFixture(t, "malformed.yaml")
+	_, err := loadFixture(t, "malformed.yaml.invalid")
 	loadErr := assertLoadErrorStage(t, err, "yaml_parse")
 	if loadErr.Issues[0].Line == 0 {
 		t.Fatalf("parser issue location = %d:%d, want YAML source line", loadErr.Issues[0].Line, loadErr.Issues[0].Column)
