@@ -1,0 +1,18 @@
+name: topology-cycle
+publish:
+  topic: root.topic
+  payload: {}
+watch:
+  - first.topic
+  - second.topic
+correlation:
+  header: x-correlation-id
+capture:
+  timeout: 5s
+topology:
+  - from: root.topic
+    to: first.topic
+  - from: first.topic
+    to: second.topic
+  - from: second.topic
+    to: first.topic

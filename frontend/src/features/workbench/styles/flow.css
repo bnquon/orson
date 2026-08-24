@@ -143,22 +143,6 @@
   stroke-dasharray: 7 4;
 }
 
-.flow-map__empty {
-  background: color-mix(in srgb, var(--color-surface) 90%, transparent);
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  font-size: 10px;
-  left: 120px;
-  line-height: 1.5;
-  margin: 0;
-  max-width: 320px;
-  padding: 8px 10px;
-  position: absolute;
-  top: 294px;
-  z-index: 2;
-}
-
 .flow-node {
   background: var(--color-surface);
   border: 1px solid var(--color-border);

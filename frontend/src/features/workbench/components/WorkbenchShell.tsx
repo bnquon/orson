@@ -8,6 +8,7 @@ import {
   Search,
   Settings,
   Terminal,
+  WarningCircle,
 } from 'iconoir-react';
 import type { KafkaConnection, WorkspaceMode } from '../types';
 import { handleTabListKeyDown } from './tabKeyboard';
@@ -16,6 +17,11 @@ import '../styles/shell.css';
 
 interface WorkbenchShellProps {
   connection: KafkaConnection;
+  scenarioName: string;
+  scenarioRootTopic: string;
+  scenarioWarningCount: number;
+  scenarioWarningsDismissed: boolean;
+  onRestoreScenarioWarnings: () => void;
   connectionDialogOpen: boolean;
   mode: WorkspaceMode;
   onModeChange: (mode: WorkspaceMode) => void;
@@ -28,6 +34,11 @@ interface WorkbenchShellProps {
 
 export function WorkbenchShell({
   connection,
+  scenarioName,
+  scenarioRootTopic,
+  scenarioWarningCount,
+  scenarioWarningsDismissed,
+  onRestoreScenarioWarnings,
   connectionDialogOpen,
   mode,
   onModeChange,
@@ -239,9 +250,20 @@ export function WorkbenchShell({
                 </button>
               </div>
               <div className="workspace-toolbar__scenario">
-                <strong>Order placed</strong>
-                <small>order.created</small>
+                <strong>{scenarioName}</strong>
+                <small>{scenarioRootTopic}</small>
               </div>
+              {scenarioWarningCount > 0 && scenarioWarningsDismissed ? (
+                <button
+                  className="scenario-warning-indicator"
+                  type="button"
+                  aria-label={`Show ${scenarioWarningCount} scenario warning${scenarioWarningCount === 1 ? '' : 's'}`}
+                  title="Show scenario warnings"
+                  onClick={onRestoreScenarioWarnings}
+                >
+                  <WarningCircle width={16} height={16} />
+                </button>
+              ) : null}
             </div>
             <div className="workspace-toolbar__action">{action}</div>
           </div>

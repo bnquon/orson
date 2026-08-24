@@ -6,8 +6,8 @@ import { ComposePanel } from './components/ComposePanel';
 import { FlowPanel } from './components/FlowPanel';
 import { PreviousRunPanel } from './components/PreviousRunPanel';
 import { WorkbenchShell } from './components/WorkbenchShell';
+import { ScenarioDiagnostics } from './components/ScenarioLoadState';
 import { buildFlowViewModel, getRunRecordId } from './flowModel';
-import { initialScenario } from './fixtures';
 import { formatStatusLabel, isActiveRunStatus } from './runStatus';
 import { useRun } from './useRun';
 import type {
@@ -19,6 +19,7 @@ import type {
   ValidatableField,
   WorkspaceMode,
   ObservedEvent,
+  LoadedScenario,
 } from './types';
 import { getJsonError, validateScenario } from './validation';
 import './styles/controls.css';
@@ -48,25 +49,32 @@ function toObservedEvent(runId: string, record: EventRecord, isRoot: boolean): O
 
 interface WorkbenchPageProps {
   connection: KafkaConnection;
+  scenario: LoadedScenario;
   connectionDialogOpen: boolean;
   onConnectionToggle: () => void;
 }
 
 export function WorkbenchPage({
   connection,
+  scenario,
   connectionDialogOpen,
   onConnectionToggle,
 }: WorkbenchPageProps) {
   const [mode, setMode] = useState<WorkspaceMode>('compose');
-  const [draft, setDraft] = useState<ScenarioDraft>(initialScenario);
+  const [draft, setDraft] = useState<ScenarioDraft>(() => scenario.draft);
   const [activeEditorTab, setActiveEditorTab] = useState<ComposeEditorTab>('payload');
   const [touched, setTouched] = useState<TouchedState>(initialTouched);
   const [publishAttempted, setPublishAttempted] = useState(false);
   const [composeConfigHeight, setComposeConfigHeight] = useState<number | null>(null);
+  const scenarioIdentity = `${scenario.name}\u0000${scenario.sourceFilename}`;
+  const [warningDismissal, setWarningDismissal] = useState({
+    scenarioIdentity,
+    dismissed: false,
+  });
   const rootTopicEditRef = useRef<string | null>(null);
   const [jsonValidation, setJsonValidation] = useState(() => ({
-    payload: initialScenario.payload,
-    error: getJsonError(initialScenario.payload),
+    payload: scenario.draft.payload,
+    error: getJsonError(scenario.draft.payload),
   }));
   const run = useRun();
 
@@ -77,6 +85,11 @@ export function WorkbenchPage({
 
     return () => window.clearTimeout(timeoutId);
   }, [draft.payload]);
+
+  const scenarioWarningsDismissed =
+    warningDismissal.scenarioIdentity === scenarioIdentity && warningDismissal.dismissed;
+  const dismissScenarioWarnings = () => setWarningDismissal({ scenarioIdentity, dismissed: true });
+  const restoreScenarioWarnings = () => setWarningDismissal({ scenarioIdentity, dismissed: false });
 
   const jsonValidationPending = jsonValidation.payload !== draft.payload;
   const validation = useMemo(
@@ -124,8 +137,7 @@ export function WorkbenchPage({
     }));
   };
 
-  const handlePublish = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const publishRun = () => {
     const currentJsonError = getJsonError(draft.payload);
     const currentValidation = validateScenario(draft, connection, currentJsonError);
 
@@ -145,6 +157,7 @@ export function WorkbenchPage({
     });
 
     if (currentValidation.firstInvalidControlId !== null) {
+      if (mode === 'flow') setMode('compose');
       if (Object.keys(currentValidation.headerErrors).length > 0) {
         setActiveEditorTab('headers');
       } else if (currentValidation.fieldErrors.payload !== undefined) {
@@ -169,8 +182,13 @@ export function WorkbenchPage({
     );
   };
 
+  const handlePublish = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    publishRun();
+  };
+
   const isRunActive = isActiveRunStatus(run.state.status);
-  const composeAction = isRunActive ? (
+  const publishAction = isRunActive ? (
     <button
       className="publish-button publish-button--stop"
       type="button"
@@ -200,8 +218,9 @@ export function WorkbenchPage({
       </span>
       <button
         className="publish-button"
-        type="submit"
-        form="compose-form"
+        type={mode === 'compose' ? 'submit' : 'button'}
+        form={mode === 'compose' ? 'compose-form' : undefined}
+        onClick={mode === 'flow' ? publishRun : undefined}
         title={`Publish to ${connection.name} · ${connection.brokers.join(', ')}`}
       >
         Publish <DotArrowRight width={20} height={20} strokeWidth={1.5} />
@@ -209,57 +228,60 @@ export function WorkbenchPage({
     </>
   );
 
+  const scenarioDiagnostics = (
+    <ScenarioDiagnostics
+      warnings={scenario.warnings}
+      sourceFilename={scenario.sourceFilename}
+      dismissed={scenarioWarningsDismissed}
+      onDismiss={dismissScenarioWarnings}
+    />
+  );
+
   return (
     <WorkbenchShell
       connection={connection}
+      scenarioName={scenario.name}
+      scenarioRootTopic={scenario.draft.rootTopic}
+      scenarioWarningCount={scenario.warnings.length}
+      scenarioWarningsDismissed={scenarioWarningsDismissed}
+      onRestoreScenarioWarnings={restoreScenarioWarnings}
       connectionDialogOpen={connectionDialogOpen}
       mode={mode}
       onModeChange={setMode}
       onConnectionToggle={onConnectionToggle}
-      action={
-        mode === 'compose' ? (
-          composeAction
-        ) : (
-          <span className={`fixture-status fixture-status--${run.state.status}`}>
-            {isRunActive ? (
-              <LoadingDots size="status" />
-            ) : run.state.status === 'failed' ? (
-              <WarningCircle width={16} height={16} />
-            ) : (
-              <CheckCircle width={16} height={16} />
-            )}{' '}
-            {run.state.status === 'idle'
-              ? 'Configured flow'
-              : `Run ${formatStatusLabel(run.state.status)}`}
-          </span>
-        )
-      }
+      action={publishAction}
       workspace={
         mode === 'compose' ? (
-          <ComposePanel
-            connection={connection}
-            draft={draft}
-            setDraft={setDraft}
-            rootTopicEditRef={rootTopicEditRef}
-            activeEditorTab={activeEditorTab}
-            onEditorTabChange={setActiveEditorTab}
-            touched={touched}
-            validation={validation}
-            jsonError={jsonValidation.error}
-            jsonValidationPending={jsonValidationPending}
-            configHeight={composeConfigHeight}
-            onConfigHeightChange={setComposeConfigHeight}
-            onTouchField={touchField}
-            onTouchWatchedTopic={touchWatchedTopic}
-            onTouchHeader={touchHeader}
-            onSubmit={handlePublish}
-          />
+          <>
+            {scenarioDiagnostics}
+            <ComposePanel
+              connection={connection}
+              draft={draft}
+              setDraft={setDraft}
+              rootTopicEditRef={rootTopicEditRef}
+              activeEditorTab={activeEditorTab}
+              onEditorTabChange={setActiveEditorTab}
+              touched={touched}
+              validation={validation}
+              jsonError={jsonValidation.error}
+              jsonValidationPending={jsonValidationPending}
+              configHeight={composeConfigHeight}
+              onConfigHeightChange={setComposeConfigHeight}
+              onTouchField={touchField}
+              onTouchWatchedTopic={touchWatchedTopic}
+              onTouchHeader={touchHeader}
+              onSubmit={handlePublish}
+            />
+          </>
         ) : (
-          <FlowPanel
-            model={flowModel}
-            selectedRecordId={run.state.selectedRecordId}
-            onSelectRecord={(recordId) => run.selectRecord(recordId)}
-          />
+          <>
+            {scenarioDiagnostics}
+            <FlowPanel
+              model={flowModel}
+              selectedRecordId={run.state.selectedRecordId}
+              onSelectRecord={(recordId) => run.selectRecord(recordId)}
+            />
+          </>
         )
       }
       previousRun={

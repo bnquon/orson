@@ -1,0 +1,24 @@
+name: topology-warnings
+publish:
+  topic: order.created
+  payload: {}
+watch:
+  - payment.charged
+  - inventory.reserved
+correlation:
+  header: x-correlation-id
+capture:
+  timeout: 5s
+topology:
+  - from: order.created
+    to: payment.charged
+  - from: payment.charged
+    to: inventory.reserved
+  - from: order.created
+    to: payment.charged
+  - from: payment.charged
+    to: payment.charged
+  - from: unknown
+    to: inventory.reserved
+  - from: order.created
+    to: ''

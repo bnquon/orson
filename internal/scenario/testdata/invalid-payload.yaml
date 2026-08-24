@@ -1,0 +1,11 @@
+name: invalid-payload
+publish:
+  topic: root.topic
+  payload:
+    [not, a, scalar]: value
+watch:
+  - watched.topic
+correlation:
+  header: x-correlation-id
+capture:
+  timeout: 5s

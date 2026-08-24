@@ -1,0 +1,8 @@
+name: missing-watch
+publish:
+  topic: root.topic
+  payload: {}
+correlation:
+  header: x-correlation-id
+capture:
+  timeout: 5s

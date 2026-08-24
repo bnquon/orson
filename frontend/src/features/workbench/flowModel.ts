@@ -40,8 +40,6 @@ export interface FlowViewModel {
   height: number;
   nodes: FlowNode[];
   edges: FlowEdge[];
-  hasRun: boolean;
-  hasObservedRecords: boolean;
 }
 
 interface FlowLayoutConfig {
@@ -392,7 +390,5 @@ export function buildFlowViewModel(draft: ScenarioDraft, run: RunState): FlowVie
     height: Math.max(410, maxNodeBottom + 72),
     nodes,
     edges,
-    hasRun,
-    hasObservedRecords: run.records.length > 0,
   };
 }
