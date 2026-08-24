@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	_ "embed"
+	"errors"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -10,9 +13,109 @@ import (
 	"orson/internal/api"
 	"orson/internal/kafka"
 	"orson/internal/run"
+	"orson/internal/scenario"
 )
 
 const runEventName = "run:event"
+
+//go:embed scenarios/order-flow.yaml
+var bundledScenarioYAML []byte
+
+// TODO [Scenario]: replace this fixed bundled asset with workspace-selected
+// scenario loading when user-owned scenario files are introduced.
+const bundledScenarioFilename = "scenarios/order-flow.yaml"
+
+// LoadBundledScenario loads the read-only demo scenario packaged with the
+// application. It does not require a Kafka connection.
+func (a *App) LoadBundledScenario() api.ScenarioResponse {
+	loaded, err := scenario.Load(bundledScenarioFilename, bundledScenarioYAML)
+	if err != nil {
+		return api.ScenarioFailure(scenarioLoadAPIError(err))
+	}
+
+	timeoutSeconds, err := scenario.CaptureTimeoutSeconds(loaded.CaptureTimeout)
+	if err != nil {
+		return api.ScenarioFailure(api.NewError(
+			"scenario_validation_failed",
+			"The bundled scenario configuration is invalid.",
+			fmt.Sprintf("%s: %v", loaded.SourceFilename, err),
+			false,
+		))
+	}
+
+	warnings := make([]api.ScenarioWarning, 0, len(loaded.Warnings))
+	for _, warning := range loaded.Warnings {
+		warnings = append(warnings, api.ScenarioWarning{
+			Code:           warning.Code,
+			Message:        warning.Message,
+			SourceFilename: loaded.SourceFilename,
+			Line:           warning.Line,
+			Column:         warning.Column,
+		})
+	}
+
+	topology := make([]api.ScenarioTopologyEdge, 0, len(loaded.Topology))
+	for _, edge := range loaded.Topology {
+		topology = append(topology, api.ScenarioTopologyEdge{
+			ID:   edge.ID,
+			From: edge.From,
+			To:   edge.To,
+		})
+	}
+
+	return api.ScenarioSuccess(api.ScenarioData{
+		Name:              loaded.Name,
+		SourceFilename:    loaded.SourceFilename,
+		PublishTopic:      loaded.PublishTopic,
+		PublishPayload:    loaded.PublishPayload,
+		WatchedTopics:     append([]string(nil), loaded.WatchedTopics...),
+		CorrelationHeader: loaded.CorrelationHeader,
+		CaptureTimeoutSec: timeoutSeconds,
+		Topology:          topology,
+		Warnings:          warnings,
+	})
+}
+
+func scenarioLoadAPIError(err error) *api.APIError {
+	var loadErr *scenario.LoadError
+	if !errors.As(err, &loadErr) {
+		return api.NewError(
+			"scenario_load_failed",
+			"The bundled scenario could not be loaded.",
+			err.Error(),
+			false,
+		)
+	}
+
+	code := "scenario_validation_failed"
+	message := "The bundled scenario configuration is invalid."
+	if loadErr.Stage == "yaml_parse" {
+		code = "scenario_parse_failed"
+		message = "The bundled scenario YAML could not be parsed."
+	}
+
+	fieldErrors := make(map[string]string, len(loadErr.Issues))
+	details := make([]string, 0, len(loadErr.Issues))
+	for _, issue := range loadErr.Issues {
+		location := bundledScenarioFilename
+		if issue.Line > 0 {
+			location += fmt.Sprintf(":%d", issue.Line)
+			if issue.Column > 0 {
+				location += fmt.Sprintf(":%d", issue.Column)
+			}
+		}
+		field := issue.Path
+		if field == "" {
+			field = issue.Code
+		}
+		fieldErrors[field] = fmt.Sprintf("%s: %s", location, issue.Message)
+		details = append(details, fmt.Sprintf("%s: %s", location, issue.Message))
+	}
+
+	apiErr := api.NewError(code, message, strings.Join(details, "\n"), false)
+	apiErr.FieldErrors = fieldErrors
+	return apiErr
+}
 
 // StartRun validates and registers a run, then returns its ID before Kafka
 // capture or publishing completes. Runtime failures are delivered as events.

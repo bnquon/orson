@@ -1,0 +1,8 @@
+name: missing-capture-timeout
+publish:
+  topic: root.topic
+  payload: {}
+watch:
+  - watched.topic
+correlation:
+  header: x-correlation-id

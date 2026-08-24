@@ -7,6 +7,8 @@ import { useConnection } from './features/connection/useConnection';
 import type { ConnectionFormValues } from './features/connection/types';
 import { WorkbenchPage } from './features/workbench/WorkbenchPage';
 import type { KafkaConnection } from './features/workbench/types';
+import { ScenarioLoadState } from './features/workbench/components/ScenarioLoadState';
+import { useScenario } from './features/workbench/useScenario';
 
 function toWorkbenchConnection(info: api.ConnectionInfo): KafkaConnection {
   return {
@@ -20,6 +22,7 @@ function toWorkbenchConnection(info: api.ConnectionInfo): KafkaConnection {
 
 function App() {
   const connection = useConnection();
+  const scenario = useScenario();
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false);
   const activeConnection = useMemo(
     () =>
@@ -52,10 +55,19 @@ function App() {
           onRetryStartup={() => void connection.retryStartup()}
           onClearErrors={() => connection.clearTransientErrors()}
         />
+      ) : scenario.status === 'loading' ? (
+        <ScenarioLoadState status="loading" />
+      ) : scenario.status === 'failed' ? (
+        <ScenarioLoadState
+          status="failed"
+          error={scenario.error}
+          onRetry={() => void scenario.retry()}
+        />
       ) : (
         <>
           <WorkbenchPage
             connection={activeConnection}
+            scenario={scenario.scenario!}
             connectionDialogOpen={connectionDialogOpen}
             onConnectionToggle={() => setConnectionDialogOpen((open) => !open)}
           />

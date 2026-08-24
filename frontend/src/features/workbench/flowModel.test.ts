@@ -1,26 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { buildFlowViewModel, getRunRecordId } from './flowModel';
+import { initialScenario } from './fixtures';
 import { initialRunState } from './runReducer';
 import type { EventRecord, RunState, ScenarioDraft } from './types';
 
 const draft: ScenarioDraft = {
-  rootTopic: 'order.created',
-  watchedTopics: [
-    { id: 'payment', name: 'payment.charged' },
-    { id: 'inventory', name: 'inventory.reserved' },
-    { id: 'notification', name: 'notification.sent' },
-    { id: 'cancelled', name: 'order.cancelled' },
-  ],
-  topology: [
-    { id: 'order-payment', from: 'order.created', to: 'payment.charged' },
-    { id: 'order-cancelled', from: 'order.created', to: 'order.cancelled' },
-    { id: 'payment-inventory', from: 'payment.charged', to: 'inventory.reserved' },
-    { id: 'payment-notification', from: 'payment.charged', to: 'notification.sent' },
-  ],
+  ...initialScenario,
   messageKey: 'order-1',
   headers: [],
   payload: '{}',
-  captureTimeoutSeconds: '10',
 };
 
 function record(topic: string, offset: number): EventRecord {

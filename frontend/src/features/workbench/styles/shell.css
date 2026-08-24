@@ -522,8 +522,16 @@
 
 .workspace-view {
   animation: workspace-view-enter var(--duration-fast) var(--ease-standard);
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.workspace-view > .compose-panel,
+.workspace-view > .flow-panel {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 @keyframes workspace-view-enter {

@@ -1,0 +1,8 @@
+name: missing-correlation-header
+publish:
+  topic: root.topic
+  payload: {}
+watch:
+  - watched.topic
+capture:
+  timeout: 5s

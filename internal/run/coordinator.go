@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
+// TODO [Correlation]: thread the loaded scenario correlation header through
+// StartRun and the coordinator instead of using the current MVP default.
 const CorrelationIDHeader = "x-correlation-id"
 
 type Coordinator struct {

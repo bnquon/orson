@@ -38,6 +38,22 @@ export interface ScenarioDraft {
   captureTimeoutSeconds: string;
 }
 
+export interface ScenarioWarning {
+  code: string;
+  message: string;
+  sourceFilename: string;
+  line: number;
+  column: number;
+}
+
+export interface LoadedScenario {
+  name: string;
+  sourceFilename: string;
+  correlationHeader: string;
+  draft: ScenarioDraft;
+  warnings: ScenarioWarning[];
+}
+
 export type ValidatableField =
   'connection' | 'rootTopic' | 'watchedTopics' | 'headers' | 'payload' | 'captureTimeoutSeconds';
 

@@ -92,12 +92,7 @@ export function FlowPanel({ model, selectedRecordId, onSelectRecord }: FlowPanel
       </header>
       <div className="flow-panel__viewport workbench-scroll-region" ref={viewportRef}>
         <div className="flow-map__surface" style={surfaceStyle}>
-          <div
-            className="flow-map"
-            ref={canvasRef}
-            style={canvasStyle}
-            aria-describedby={model.hasObservedRecords ? undefined : 'flow-map-status'}
-          >
+          <div className="flow-map" ref={canvasRef} style={canvasStyle}>
             <svg
               className="flow-map__edges"
               width={model.width}
@@ -147,13 +142,6 @@ export function FlowPanel({ model, selectedRecordId, onSelectRecord }: FlowPanel
                 </div>
               );
             })}
-            {!model.hasObservedRecords ? (
-              <p className="flow-map__empty" id="flow-map-status" role="status">
-                {model.hasRun
-                  ? 'No Kafka records observed yet. The configured flow will update as the run progresses.'
-                  : 'Configured flow. Start a run to observe Kafka records and inspect them here.'}
-              </p>
-            ) : null}
           </div>
         </div>
       </div>
