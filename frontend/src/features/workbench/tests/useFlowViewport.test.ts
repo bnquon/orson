@@ -4,7 +4,7 @@ import {
   clampFlowZoom,
   FLOW_ZOOM_MAX,
   FLOW_ZOOM_MIN,
-} from './useFlowViewport';
+} from '../useFlowViewport';
 
 describe('flow viewport calculations', () => {
   it('clamps zoom to the supported range', () => {

@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ScenarioRows } from './ScenarioBrowser';
-import { ScenarioDiagnostics } from './ScenarioLoadState';
-import type { ScenarioDescriptor, ScenarioWarning } from '../types';
+import { ScenarioRows } from '../../components/ScenarioBrowser';
+import { ScenarioDiagnostics } from '../../components/ScenarioLoadState';
+import type { ScenarioDescriptor, ScenarioWarning } from '../../types';
 
 const warning: ScenarioWarning = {
   code: 'missing_correlation_header',

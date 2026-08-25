@@ -318,6 +318,67 @@ func TestLocalRegistrySaveAsRegistersNewActiveSourceOnlyAfterWrite(t *testing.T)
 	}
 }
 
+func TestLocalRegistrySaveAsRejectsSymlinkTargetWithoutChangingReferent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink permissions vary on Windows")
+	}
+	directory := t.TempDir()
+	referent := filepath.Join(directory, "notes.txt")
+	alias := filepath.Join(directory, "scenario.yaml")
+	original := []byte("keep this file unchanged\n")
+	if err := os.WriteFile(referent, original, 0o600); err != nil {
+		t.Fatalf("WriteFile(referent) failed: %v", err)
+	}
+	if err := os.Symlink(referent, alias); err != nil {
+		t.Fatalf("Symlink() failed: %v", err)
+	}
+	registry := NewLocalRegistry(nil)
+
+	_, _, err := registry.SaveAs(alias, orderedLocalDraft())
+	assertFileErrorCode(t, err, "scenario_symlink_target_unsupported")
+	written, readErr := os.ReadFile(referent)
+	if readErr != nil {
+		t.Fatalf("ReadFile(referent) failed: %v", readErr)
+	}
+	if string(written) != string(original) {
+		t.Fatalf("symlink referent was overwritten: %q", written)
+	}
+	if len(registry.List()) != 0 {
+		t.Fatalf("rejected SaveAs registered source: %+v", registry.List())
+	}
+}
+
+func TestLocalRegistrySaveRechecksFingerprintBeforeRename(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "changed-during-save.yaml")
+	writeTestScenario(t, target, validCatalogYAML("original"))
+	files := &failureLocalFileSystem{OSFileSystem: OSFileSystem{}}
+	registry := NewLocalRegistry(files)
+	descriptor, _, err := registry.Import(target)
+	if err != nil {
+		t.Fatalf("Import() failed: %v", err)
+	}
+	external := []byte(validCatalogYAML("external"))
+	files.afterChmod = func() {
+		if writeErr := os.WriteFile(target, external, 0o600); writeErr != nil {
+			t.Fatalf("WriteFile(external edit) failed: %v", writeErr)
+		}
+	}
+
+	_, _, err = registry.Save(descriptor.ID, orderedLocalDraft())
+	assertFileErrorCode(t, err, "scenario_file_changed")
+	written, readErr := os.ReadFile(target)
+	if readErr != nil {
+		t.Fatalf("ReadFile(target) failed: %v", readErr)
+	}
+	if string(written) != string(external) {
+		t.Fatalf("external edit was overwritten: %q", written)
+	}
+	if registry.List()[0].LocalStatus != LocalStatusChanged {
+		t.Fatalf("LocalStatus = %q, want changed", registry.List()[0].LocalStatus)
+	}
+}
+
 func TestLocalRegistryMarksMissingImportedFileWithoutRemovingSessionEntry(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "missing.yaml")
@@ -364,7 +425,7 @@ func TestSafeWriteReportsEveryInjectedFilesystemStage(t *testing.T) {
 			test.configure(files)
 			registry := NewLocalRegistry(files)
 
-			err := registry.safeWrite(target, []byte(validCatalogYAML("replacement")))
+			err := registry.safeWrite(target, []byte(validCatalogYAML("replacement")), "")
 			fileErr := assertFileErrorCode(t, err, "scenario_write_failed")
 			if !strings.Contains(fileErr.Message, test.wantMessage) {
 				t.Fatalf("safeWrite() message = %q, want stage containing %q", fileErr.Message, test.wantMessage)
@@ -381,7 +442,7 @@ func TestSafeWriteDoesNotFailAfterRenameCommits(t *testing.T) {
 	registry := NewLocalRegistry(files)
 	replacement := []byte(validCatalogYAML("replacement"))
 
-	if err := registry.safeWrite(target, replacement); err != nil {
+	if err := registry.safeWrite(target, replacement, ""); err != nil {
 		t.Fatalf("safeWrite() reported failure after rename committed: %v", err)
 	}
 	written, err := os.ReadFile(target)
@@ -413,6 +474,7 @@ type failureLocalFileSystem struct {
 	closeErr      error
 	renameErr     error
 	removeErr     error
+	afterChmod    func()
 }
 
 func (f *failureLocalFileSystem) ReadFile(name string) ([]byte, error) {
@@ -449,7 +511,14 @@ func (f *failureLocalFileSystem) Chmod(name string, mode fs.FileMode) error {
 	if f.chmodErr != nil {
 		return f.chmodErr
 	}
-	return f.OSFileSystem.Chmod(name, mode)
+	if err := f.OSFileSystem.Chmod(name, mode); err != nil {
+		return err
+	}
+	if f.afterChmod != nil {
+		f.afterChmod()
+		f.afterChmod = nil
+	}
+	return nil
 }
 
 func (f *failureLocalFileSystem) Rename(oldPath, newPath string) error {

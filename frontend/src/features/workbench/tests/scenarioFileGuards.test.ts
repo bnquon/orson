@@ -5,8 +5,8 @@ import {
   getScenarioFileBlocker,
   getScenarioFileDisabledReason,
   type ScenarioFileBlocker,
-} from './scenarioFileGuards';
-import type { ScenarioDescriptor } from './types';
+} from '../scenarioFileGuards';
+import type { ScenarioDescriptor } from '../types';
 
 function target(status: ScenarioDescriptor['status'] = 'valid'): ScenarioDescriptor {
   return {

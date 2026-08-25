@@ -5,7 +5,7 @@ import {
   ScenarioFileOperationError,
   ScenarioLoadState,
   ScenarioSelectionLoadError,
-} from './ScenarioLoadState';
+} from '../../components/ScenarioLoadState';
 
 describe('ScenarioLoadState', () => {
   it('renders a compact loading state', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { initialScenario } from './fixtures';
-import { validateScenario, validateScenarioDraft } from './validation';
+import { initialScenario } from '../fixtures';
+import { validateScenario, validateScenarioDraft } from '../validation';
 
 const connection = {
   name: 'Local Kafka',

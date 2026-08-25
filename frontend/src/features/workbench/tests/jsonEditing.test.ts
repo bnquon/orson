@@ -4,7 +4,7 @@ import {
   indentJsonSelection,
   insertJsonNewline,
   outdentJsonSelection,
-} from './jsonEditing';
+} from '../jsonEditing';
 
 describe('json editing helpers', () => {
   it('indents a selected block by two spaces', () => {

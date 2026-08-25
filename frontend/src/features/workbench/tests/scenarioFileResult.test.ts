@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { api } from '../../../wailsjs/go/models';
-import { applyScenarioFileResult, resolveScenarioFileResult } from './scenarioFileResult';
+import { api } from '../../../../wailsjs/go/models';
+import { applyScenarioFileResult, resolveScenarioFileResult } from '../scenarioFileResult';
 
 function successfulResult(id: string, filename: string) {
   return {

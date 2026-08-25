@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildScenarioTree, getScenarioTreeFolderPaths } from './scenarioTree';
-import type { ScenarioDescriptor } from './types';
+import { buildScenarioTree, getScenarioTreeFolderPaths } from '../scenarioTree';
+import type { ScenarioDescriptor } from '../types';
 
 function descriptor(
   id: string,

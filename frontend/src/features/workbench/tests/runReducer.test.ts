@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { initialRunState, runReducer } from './runReducer';
-import type { EventRecord, RunEvent } from './types';
+import { initialRunState, runReducer } from '../runReducer';
+import type { EventRecord, RunEvent } from '../types';
 
 function record(topic: string, offset: number): EventRecord {
   return {

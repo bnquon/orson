@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ScenarioBrowser, ScenarioRows } from './ScenarioBrowser';
-import type { ScenarioDescriptor } from '../types';
-import { buildScenarioTree } from '../scenarioTree';
+import { ScenarioBrowser, ScenarioRows } from '../../components/ScenarioBrowser';
+import type { ScenarioDescriptor } from '../../types';
+import { buildScenarioTree } from '../../scenarioTree';
 
 function descriptor(id: string, folderPath: string): ScenarioDescriptor {
   return {

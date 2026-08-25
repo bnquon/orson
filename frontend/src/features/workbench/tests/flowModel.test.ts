@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { buildFlowViewModel, getRunRecordId } from './flowModel';
-import { initialScenario } from './fixtures';
-import { initialRunState } from './runReducer';
-import type { EventRecord, RunState, ScenarioDraft } from './types';
+import { buildFlowViewModel, getRunRecordId } from '../flowModel';
+import { initialScenario } from '../fixtures';
+import { initialRunState } from '../runReducer';
+import type { EventRecord, RunState, ScenarioDraft } from '../types';
 
 const draft: ScenarioDraft = {
   ...initialScenario,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { api } from '../../../wailsjs/go/models';
-import { toLoadedScenario, toScenarioDraftData } from './scenarioMapping';
+import { api } from '../../../../wailsjs/go/models';
+import { toLoadedScenario, toScenarioDraftData } from '../scenarioMapping';
 
 describe('toLoadedScenario', () => {
   it('maps backend scenario data into the existing draft shape', () => {

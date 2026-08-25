@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   initialLocalScenarioSessionState,
   localScenarioSessionReducer,
-} from './localScenarioSession';
-import type { ScenarioDescriptor } from './types';
+} from '../localScenarioSession';
+import type { ScenarioDescriptor } from '../types';
 
 function localDescriptor(id: string, filename: string): ScenarioDescriptor {
   return {

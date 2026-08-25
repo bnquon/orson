@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ComposeEditorSection } from './ComposeEditorSection';
-import type { ScenarioDraft, TouchedState, ValidationResult } from '../types';
+import { ComposeEditorSection } from '../../components/ComposeEditorSection';
+import type { ScenarioDraft, TouchedState, ValidationResult } from '../../types';
 
 const draft: ScenarioDraft = {
   rootTopic: 'order.created',

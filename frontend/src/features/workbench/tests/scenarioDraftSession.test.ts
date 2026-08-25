@@ -3,8 +3,8 @@ import {
   createScenarioDraftSession,
   runScenarioDraftSave,
   scenarioDraftSessionReducer,
-} from './scenarioDraftSession';
-import type { LoadedScenario, ScenarioDraft } from './types';
+} from '../scenarioDraftSession';
+import type { LoadedScenario, ScenarioDraft } from '../types';
 
 function draft(payload: string): ScenarioDraft {
   return {

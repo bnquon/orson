@@ -33,6 +33,7 @@ type TempFile interface {
 type LocalFileSystem interface {
 	ReadFile(string) ([]byte, error)
 	Stat(string) (fs.FileInfo, error)
+	Lstat(string) (fs.FileInfo, error)
 	Abs(string) (string, error)
 	EvalSymlinks(string) (string, error)
 	CreateTemp(string, string) (TempFile, error)
@@ -43,9 +44,10 @@ type LocalFileSystem interface {
 
 type OSFileSystem struct{}
 
-func (OSFileSystem) ReadFile(name string) ([]byte, error)  { return os.ReadFile(name) }
-func (OSFileSystem) Stat(name string) (fs.FileInfo, error) { return os.Stat(name) }
-func (OSFileSystem) Abs(name string) (string, error)       { return filepath.Abs(name) }
+func (OSFileSystem) ReadFile(name string) ([]byte, error)   { return os.ReadFile(name) }
+func (OSFileSystem) Stat(name string) (fs.FileInfo, error)  { return os.Stat(name) }
+func (OSFileSystem) Lstat(name string) (fs.FileInfo, error) { return os.Lstat(name) }
+func (OSFileSystem) Abs(name string) (string, error)        { return filepath.Abs(name) }
 func (OSFileSystem) EvalSymlinks(name string) (string, error) {
 	return filepath.EvalSymlinks(name)
 }
@@ -203,22 +205,18 @@ func (r *LocalRegistry) Save(id string, draft Draft) (Descriptor, Scenario, erro
 		}
 	}
 
-	current, err := r.files.ReadFile(entry.normalized)
-	if err != nil {
-		fileErr := r.readFileError(entry.normalized, err)
-		r.markEntryError(entry, fileErr)
-		return Descriptor{}, Scenario{}, fileErr
+	if err := r.verifyFingerprint(entry.normalized, entry.fingerprint); err != nil {
+		r.markEntryError(entry, err)
+		return Descriptor{}, Scenario{}, err
 	}
-	if fingerprint(current) != entry.fingerprint {
-		entry.descriptor.LocalStatus = LocalStatusChanged
-		return Descriptor{}, Scenario{}, &FileError{
-			Code:    "scenario_file_changed",
-			Message: "the scenario file changed outside Orson",
-			Path:    entry.normalized,
-			Err:     errors.New("import the file again before saving"),
+	if err := r.safeWrite(entry.normalized, source, entry.fingerprint); err != nil {
+		var fileErr *FileError
+		if errors.As(err, &fileErr) {
+			switch fileErr.Code {
+			case "scenario_file_changed", "scenario_file_missing", "scenario_read_failed":
+				r.markEntryError(entry, err)
+			}
 		}
-	}
-	if err := r.safeWrite(entry.normalized, source); err != nil {
 		return Descriptor{}, Scenario{}, err
 	}
 	r.updateEntry(entry, entry.normalized, loaded, source)
@@ -231,6 +229,9 @@ func (r *LocalRegistry) SaveAs(selectedPath string, draft Draft) (Descriptor, Sc
 
 	normalized, key, err := r.normalizePath(selectedPath)
 	if err != nil {
+		return Descriptor{}, Scenario{}, err
+	}
+	if err := r.rejectSymlinkSaveTarget(selectedPath); err != nil {
 		return Descriptor{}, Scenario{}, err
 	}
 	loaded, err := NormalizeDraft(filepath.Base(normalized), draft)
@@ -253,7 +254,7 @@ func (r *LocalRegistry) SaveAs(selectedPath string, draft Draft) (Descriptor, Sc
 			}
 		}
 	}
-	if err := r.safeWrite(normalized, source); err != nil {
+	if err := r.safeWrite(normalized, source, ""); err != nil {
 		return Descriptor{}, Scenario{}, err
 	}
 
@@ -266,6 +267,30 @@ func (r *LocalRegistry) SaveAs(selectedPath string, draft Draft) (Descriptor, Sc
 	}
 	r.updateEntry(entry, normalized, loaded, source)
 	return cloneDescriptor(entry.descriptor), cloneScenario(entry.scenario), nil
+}
+
+func (r *LocalRegistry) rejectSymlinkSaveTarget(selectedPath string) error {
+	absolute, err := r.files.Abs(selectedPath)
+	if err != nil {
+		return &FileError{Code: "scenario_path_failed", Message: "the scenario path could not be resolved", Path: selectedPath, Err: err}
+	}
+	absolute = filepath.Clean(absolute)
+	info, err := r.files.Lstat(absolute)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return &FileError{Code: "scenario_path_failed", Message: "the scenario path could not be inspected", Path: absolute, Err: err}
+	}
+	if info.Mode()&fs.ModeSymlink != 0 {
+		return &FileError{
+			Code:    "scenario_symlink_target_unsupported",
+			Message: "scenario files cannot be saved through a symbolic link",
+			Path:    absolute,
+			Err:     errors.New("choose a regular YAML file instead"),
+		}
+	}
+	return nil
 }
 
 func (r *LocalRegistry) normalizePath(selectedPath string) (string, string, error) {
@@ -352,7 +377,23 @@ func localValidationError(filename string, err error) *FileError {
 	}
 }
 
-func (r *LocalRegistry) safeWrite(target string, source []byte) (resultErr error) {
+func (r *LocalRegistry) verifyFingerprint(target, expected string) error {
+	current, err := r.files.ReadFile(target)
+	if err != nil {
+		return r.readFileError(target, err)
+	}
+	if fingerprint(current) != expected {
+		return &FileError{
+			Code:    "scenario_file_changed",
+			Message: "the scenario file changed outside Orson",
+			Path:    target,
+			Err:     errors.New("import the file again before saving"),
+		}
+	}
+	return nil
+}
+
+func (r *LocalRegistry) safeWrite(target string, source []byte, expectedFingerprint string) (resultErr error) {
 	mode := fs.FileMode(0o644)
 	if info, err := r.files.Stat(target); err == nil {
 		mode = info.Mode().Perm()
@@ -389,6 +430,14 @@ func (r *LocalRegistry) safeWrite(target string, source []byte) (resultErr error
 	}
 	if err := temporary.Close(); err != nil {
 		return &FileError{Code: "scenario_write_failed", Message: "the scenario file could not be closed before saving", Path: target, Err: err}
+	}
+	// Recheck immediately before committing so an edit made while the temporary
+	// file was prepared is not silently overwritten.
+	// TODO: [Files] Add platform-specific compare-and-swap support if stronger save conflict guarantees become necessary.
+	if expectedFingerprint != "" {
+		if err := r.verifyFingerprint(target, expectedFingerprint); err != nil {
+			return err
+		}
 	}
 	if err := r.files.Rename(temporaryPath, target); err != nil {
 		return &FileError{Code: "scenario_write_failed", Message: "the scenario file could not replace the selected file", Path: target, Err: err}
