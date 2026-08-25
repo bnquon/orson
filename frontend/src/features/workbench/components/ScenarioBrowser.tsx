@@ -2,7 +2,11 @@ import { useMemo, useState } from 'react';
 import { CheckCircle, MoreHoriz, NavArrowDown, Search, WarningCircle } from 'iconoir-react';
 import { LoadingDots } from '../../../components/LoadingDots';
 import type { ScenarioDescriptor } from '../types';
-import { buildScenarioTree, type ScenarioTreeFolder } from '../scenarioTree';
+import {
+  buildScenarioTree,
+  getScenarioTreeFolderPaths,
+  type ScenarioTreeFolder,
+} from '../scenarioTree';
 
 interface ScenarioBrowserProps {
   scenarios: ScenarioDescriptor[];
@@ -61,6 +65,7 @@ interface ScenarioRowsProps {
   selectionDisabled: boolean;
   onToggleFolder: (path: string) => void;
   onSelectScenario: (id: string) => void;
+  folderToggleDisabled?: boolean;
   depth?: number;
   visible?: boolean;
 }
@@ -75,6 +80,7 @@ export function ScenarioRows({
   selectionDisabled,
   onToggleFolder,
   onSelectScenario,
+  folderToggleDisabled = false,
   depth = 0,
   visible = true,
 }: ScenarioRowsProps) {
@@ -122,6 +128,7 @@ export function ScenarioRows({
             <button
               className="scenario-row scenario-row--folder"
               type="button"
+              disabled={folderToggleDisabled}
               tabIndex={visible ? undefined : -1}
               aria-expanded={expanded}
               aria-controls={folderId}
@@ -153,6 +160,7 @@ export function ScenarioRows({
                   selectionDisabled={selectionDisabled}
                   onToggleFolder={onToggleFolder}
                   onSelectScenario={onSelectScenario}
+                  folderToggleDisabled={folderToggleDisabled}
                   depth={depth + 1}
                   visible={descendantsVisible}
                 />
@@ -176,12 +184,20 @@ export function ScenarioBrowser({
 }: ScenarioBrowserProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const tree = useMemo(() => buildScenarioTree(scenarios, searchQuery), [scenarios, searchQuery]);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    () => new Set(scenarios.flatMap(({ folderPath }) => (folderPath ? [folderPath] : []))),
-  );
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
+  const searchActive = searchQuery.trim() !== '';
+  const expandedFolders = useMemo(() => {
+    const availableFolders = getScenarioTreeFolderPaths(tree);
+    if (searchActive) return availableFolders;
+
+    for (const folderPath of collapsedFolders) {
+      availableFolders.delete(folderPath);
+    }
+    return availableFolders;
+  }, [collapsedFolders, searchActive, tree]);
 
   const toggleFolder = (folderPath: string) => {
-    setExpandedFolders((current) => {
+    setCollapsedFolders((current) => {
       const next = new Set(current);
       if (next.has(folderPath)) next.delete(folderPath);
       else next.add(folderPath);
@@ -228,6 +244,7 @@ export function ScenarioBrowser({
           selectionDisabled={scenarioSelectionDisabled}
           onToggleFolder={toggleFolder}
           onSelectScenario={onSelectScenario}
+          folderToggleDisabled={searchActive}
         />
       )}
     </aside>

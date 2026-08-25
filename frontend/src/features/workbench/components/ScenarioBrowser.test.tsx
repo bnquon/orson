@@ -77,6 +77,23 @@ describe('ScenarioBrowser', () => {
     expect(markup.match(/tabindex="-1"/g)).toHaveLength(3);
   });
 
+  it('expands every ancestor needed for nested scenarios after catalog data arrives', () => {
+    const markup = renderToStaticMarkup(
+      <ScenarioBrowser
+        scenarios={[descriptor('checkout/retries/retry.yaml', 'checkout/retries')]}
+        selectedScenarioId={null}
+        activeScenarioId="checkout/retries/retry.yaml"
+        scenarioLoadingId={null}
+        scenarioCatalogLoading={false}
+        scenarioSelectionDisabled={false}
+        onSelectScenario={() => undefined}
+      />,
+    );
+
+    expect(markup.match(/aria-expanded="true"/g)).toHaveLength(2);
+    expect(markup.match(/aria-hidden="false"/g)).toHaveLength(2);
+  });
+
   it('keeps an expanded folder and its nested folder keyboard-accessible', () => {
     const scenarios = [descriptor('checkout/retries/retry.yaml', 'checkout/retries')];
     const tree = buildScenarioTree(scenarios);

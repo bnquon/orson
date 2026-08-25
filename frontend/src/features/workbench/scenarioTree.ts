@@ -12,6 +12,20 @@ export interface ScenarioTree {
   scenarios: ScenarioDescriptor[];
 }
 
+export function getScenarioTreeFolderPaths(tree: ScenarioTree): Set<string> {
+  const paths = new Set<string>();
+
+  const collect = (folders: ScenarioTreeFolder[]) => {
+    for (const folder of folders) {
+      paths.add(folder.path);
+      collect(folder.folders);
+    }
+  };
+
+  collect(tree.folders);
+  return paths;
+}
+
 function compareScenarios(left: ScenarioDescriptor, right: ScenarioDescriptor): number {
   return (
     left.displayName.localeCompare(right.displayName) ||

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildScenarioTree } from './scenarioTree';
+import { buildScenarioTree, getScenarioTreeFolderPaths } from './scenarioTree';
 import type { ScenarioDescriptor } from './types';
 
 function descriptor(
@@ -45,5 +45,13 @@ describe('buildScenarioTree', () => {
 
     expect(tree.folders[0].scenarios.map((item) => item.id)).toEqual(['checkout/success.yaml']);
     expect(tree.scenarios).toEqual([]);
+  });
+
+  it('collects every folder path needed to reveal nested scenarios', () => {
+    const tree = buildScenarioTree([
+      descriptor('checkout/retries/retry.yaml', 'checkout/retries', 'Retry'),
+    ]);
+
+    expect(getScenarioTreeFolderPaths(tree)).toEqual(new Set(['checkout', 'checkout/retries']));
   });
 });
