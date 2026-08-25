@@ -292,7 +292,7 @@ func newCorrelationID() (CorrelationID, error) {
 
 func hasCorrelationID(record kafka.Record, correlationHeader string, wanted CorrelationID) bool {
 	for _, header := range record.Message.Headers {
-		if correlation.HeaderNamesEqual(header.Key, correlationHeader) && string(header.Value) == string(wanted) {
+		if header.Key == correlationHeader && string(header.Value) == string(wanted) {
 			return true
 		}
 	}

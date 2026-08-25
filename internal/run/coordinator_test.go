@@ -69,11 +69,19 @@ func TestCoordinatorPublishesAndMatchesConfiguredCorrelationHeader(t *testing.T)
 			},
 			{
 				Message: kafka.Message{
-					Topic:   "payment.charged",
+					Topic:   "wrong.casing",
 					Headers: []kafka.Header{{Key: " x-flow-id ", Value: correlationValue}},
 				},
 				Partition: 0,
 				Offset:    12,
+			},
+			{
+				Message: kafka.Message{
+					Topic:   "payment.charged",
+					Headers: []kafka.Header{{Key: "X-Flow-ID", Value: correlationValue}},
+				},
+				Partition: 0,
+				Offset:    13,
 			},
 		}
 	}
