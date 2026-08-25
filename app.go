@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
-	_ "embed"
+	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -18,86 +20,157 @@ import (
 
 const runEventName = "run:event"
 
-//go:embed scenarios/order-flow.yaml
-var bundledScenarioYAML []byte
+//go:embed all:scenarios
+var bundledScenarios embed.FS
 
-// TODO [Scenario]: replace this fixed bundled asset with workspace-selected
-// scenario loading when user-owned scenario files are introduced.
-const bundledScenarioFilename = "scenarios/order-flow.yaml"
+var bundledScenarioFS = mustScenarioFS()
 
-// LoadBundledScenario loads the read-only demo scenario packaged with the
-// application. It does not require a Kafka connection.
-func (a *App) LoadBundledScenario() api.ScenarioResponse {
-	loaded, err := scenario.Load(bundledScenarioFilename, bundledScenarioYAML)
+// TODO: [Persistence] Add user-owned scenario file discovery and save behavior
+// in a future PR.
+
+func mustScenarioFS() fs.FS {
+	root, err := fs.Sub(bundledScenarios, "scenarios")
+	if err != nil {
+		panic(err)
+	}
+	return root
+}
+
+// ListBundledScenarios discovers and independently validates the read-only
+// scenario files packaged with the application. It does not require Kafka.
+func (a *App) ListBundledScenarios() api.ScenarioListResponse {
+	descriptors, err := a.getScenarioCatalog().List()
+	if err != nil {
+		return api.ScenarioListFailure(scenarioCatalogAPIError(err))
+	}
+
+	items := make([]api.ScenarioDescriptor, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		items = append(items, toAPIScenarioDescriptor(descriptor))
+	}
+	return api.ScenarioListSuccess(api.ScenarioListData{Scenarios: items})
+}
+
+// LoadBundledScenario loads one validated read-only scenario by its stable
+// catalog ID. It does not require Kafka.
+func (a *App) LoadBundledScenario(id string) api.ScenarioResponse {
+	loaded, err := a.getScenarioCatalog().Load(id)
 	if err != nil {
 		return api.ScenarioFailure(scenarioLoadAPIError(err))
 	}
+	return api.ScenarioSuccess(toAPIScenarioData(loaded.SourceFilename, loaded))
+}
 
-	timeoutSeconds, err := scenario.CaptureTimeoutSeconds(loaded.CaptureTimeout)
-	if err != nil {
-		return api.ScenarioFailure(api.NewError(
-			"scenario_validation_failed",
-			"The bundled scenario configuration is invalid.",
-			fmt.Sprintf("%s: %v", loaded.SourceFilename, err),
-			false,
-		))
+func (a *App) getScenarioCatalog() *scenario.Catalog {
+	if a.scenarioCatalog != nil {
+		return a.scenarioCatalog
 	}
+	return scenario.NewCatalog(bundledScenarioFS)
+}
 
-	warnings := make([]api.ScenarioWarning, 0, len(loaded.Warnings))
-	for _, warning := range loaded.Warnings {
-		warnings = append(warnings, api.ScenarioWarning{
-			Code:           warning.Code,
-			Message:        warning.Message,
-			SourceFilename: loaded.SourceFilename,
-			Line:           warning.Line,
-			Column:         warning.Column,
-		})
-	}
-
-	topology := make([]api.ScenarioTopologyEdge, 0, len(loaded.Topology))
-	for _, edge := range loaded.Topology {
-		topology = append(topology, api.ScenarioTopologyEdge{
-			ID:   edge.ID,
-			From: edge.From,
-			To:   edge.To,
-		})
-	}
-
-	return api.ScenarioSuccess(api.ScenarioData{
-		Name:              loaded.Name,
-		SourceFilename:    loaded.SourceFilename,
-		PublishTopic:      loaded.PublishTopic,
-		PublishPayload:    loaded.PublishPayload,
-		WatchedTopics:     append([]string(nil), loaded.WatchedTopics...),
-		CorrelationHeader: loaded.CorrelationHeader,
-		CaptureTimeoutSec: timeoutSeconds,
-		Topology:          topology,
-		Warnings:          warnings,
-	})
+func scenarioCatalogAPIError(err error) *api.APIError {
+	return api.NewError(
+		"scenario_catalog_failed",
+		"The bundled scenario catalog could not be loaded.",
+		err.Error(),
+		true,
+	)
 }
 
 func scenarioLoadAPIError(err error) *api.APIError {
+	var catalogErr *scenario.CatalogError
+	if errors.As(err, &catalogErr) {
+		if catalogErr.Descriptor != nil {
+			return descriptorAPIError(catalogErr.Descriptor)
+		}
+		message := "The selected scenario could not be loaded."
+		if catalogErr.Code == "scenario_not_found" {
+			message = "That bundled scenario was not found."
+		}
+		details := catalogErr.Error()
+		if catalogErr.ID != "" {
+			details = fmt.Sprintf("%s: %s", catalogErr.ID, details)
+		}
+		return api.NewError(catalogErr.Code, message, details, false)
+	}
+
 	var loadErr *scenario.LoadError
 	if !errors.As(err, &loadErr) {
 		return api.NewError(
 			"scenario_load_failed",
-			"The bundled scenario could not be loaded.",
+			"The selected scenario could not be loaded.",
 			err.Error(),
 			false,
 		)
 	}
 
 	code := "scenario_validation_failed"
-	message := "The bundled scenario configuration is invalid."
+	message := "The selected scenario configuration is invalid."
 	if loadErr.Stage == "yaml_parse" {
 		code = "scenario_parse_failed"
-		message = "The bundled scenario YAML could not be parsed."
+		message = "The selected scenario YAML could not be parsed."
 	}
 
-	fieldErrors := make(map[string]string, len(loadErr.Issues))
-	details := make([]string, 0, len(loadErr.Issues))
+	issues := make([]apiScenarioIssue, 0, len(loadErr.Issues))
 	for _, issue := range loadErr.Issues {
-		location := bundledScenarioFilename
+		issues = append(issues, apiScenarioIssue{
+			Code:    issue.Code,
+			Path:    issue.Path,
+			Message: issue.Message,
+			Details: issue.Details,
+			Line:    issue.Line,
+			Column:  issue.Column,
+		})
+	}
+
+	return scenarioIssuesAPIError(code, message, issues)
+}
+
+func descriptorAPIError(descriptor *scenario.Descriptor) *api.APIError {
+	code := "scenario_validation_failed"
+	issues := make([]apiScenarioIssue, 0, len(descriptor.Diagnostics))
+	for _, diagnostic := range descriptor.Diagnostics {
+		if diagnostic.Code == "yaml_decode_failed" || diagnostic.Code == "unknown_yaml_field" {
+			code = "scenario_parse_failed"
+		}
+		issues = append(issues, apiScenarioIssue{
+			Code:           diagnostic.Code,
+			Path:           diagnostic.Path,
+			Message:        diagnostic.Message,
+			Details:        diagnostic.Details,
+			SourceFilename: diagnostic.SourceFilename,
+			Line:           diagnostic.Line,
+			Column:         diagnostic.Column,
+		})
+	}
+	message := "The selected scenario configuration is invalid."
+	if code == "scenario_parse_failed" {
+		message = "The selected scenario YAML could not be parsed."
+	}
+	return scenarioIssuesAPIError(code, message, issues)
+}
+
+type apiScenarioIssue struct {
+	Code           string
+	Path           string
+	Message        string
+	Details        string
+	SourceFilename string
+	Line           int
+	Column         int
+}
+
+func scenarioIssuesAPIError(code, message string, issues []apiScenarioIssue) *api.APIError {
+	details := make([]string, 0, len(issues))
+	fieldErrors := make(map[string]string, len(issues))
+	for _, issue := range issues {
+		location := issue.SourceFilename
+		if location == "" {
+			location = issue.Path
+		}
+		if location == "" {
+			location = "selected scenario"
+		}
 		if issue.Line > 0 {
 			location += fmt.Sprintf(":%d", issue.Line)
 			if issue.Column > 0 {
@@ -108,13 +181,89 @@ func scenarioLoadAPIError(err error) *api.APIError {
 		if field == "" {
 			field = issue.Code
 		}
-		fieldErrors[field] = fmt.Sprintf("%s: %s", location, issue.Message)
-		details = append(details, fmt.Sprintf("%s: %s", location, issue.Message))
+		formatted := fmt.Sprintf("%s: %s", location, issue.Message)
+		fieldErrors[field] = formatted
+		if issue.Details != "" && issue.Details != issue.Message {
+			details = append(details, fmt.Sprintf("%s (%s)", formatted, issue.Details))
+		} else {
+			details = append(details, formatted)
+		}
 	}
 
 	apiErr := api.NewError(code, message, strings.Join(details, "\n"), false)
 	apiErr.FieldErrors = fieldErrors
 	return apiErr
+}
+
+func toAPIScenarioDescriptor(descriptor scenario.Descriptor) api.ScenarioDescriptor {
+	diagnostics := make([]api.ScenarioDiagnostic, 0, len(descriptor.Diagnostics))
+	for _, diagnostic := range descriptor.Diagnostics {
+		diagnostics = append(diagnostics, api.ScenarioDiagnostic{
+			Code:           diagnostic.Code,
+			Path:           diagnostic.Path,
+			Message:        diagnostic.Message,
+			Details:        diagnostic.Details,
+			SourceFilename: diagnostic.SourceFilename,
+			Line:           diagnostic.Line,
+			Column:         diagnostic.Column,
+		})
+	}
+
+	return api.ScenarioDescriptor{
+		ID:             descriptor.ID,
+		DisplayName:    descriptor.DisplayName,
+		RelativePath:   descriptor.RelativePath,
+		FolderPath:     descriptor.FolderPath,
+		SourceFilename: descriptor.SourceFilename,
+		Status:         api.ScenarioStatus(descriptor.Status),
+		Warnings:       toAPIWarnings(descriptor.Warnings, descriptor.SourceFilename),
+		Diagnostics:    diagnostics,
+	}
+}
+
+func toAPIScenarioData(id string, loaded scenario.Scenario) api.ScenarioData {
+	timeoutSeconds, _ := scenario.CaptureTimeoutSeconds(loaded.CaptureTimeout)
+	topology := make([]api.ScenarioTopologyEdge, 0, len(loaded.Topology))
+	for _, edge := range loaded.Topology {
+		topology = append(topology, api.ScenarioTopologyEdge{
+			ID:   edge.ID,
+			From: edge.From,
+			To:   edge.To,
+		})
+	}
+
+	folder := path.Dir(loaded.SourceFilename)
+	if folder == "." {
+		folder = ""
+	}
+	return api.ScenarioData{
+		ID:                id,
+		RelativePath:      loaded.SourceFilename,
+		FolderPath:        folder,
+		Name:              loaded.Name,
+		SourceFilename:    loaded.SourceFilename,
+		PublishTopic:      loaded.PublishTopic,
+		PublishPayload:    loaded.PublishPayload,
+		WatchedTopics:     append([]string(nil), loaded.WatchedTopics...),
+		CorrelationHeader: loaded.CorrelationHeader,
+		CaptureTimeoutSec: timeoutSeconds,
+		Topology:          topology,
+		Warnings:          toAPIWarnings(loaded.Warnings, loaded.SourceFilename),
+	}
+}
+
+func toAPIWarnings(source []scenario.Warning, filename string) []api.ScenarioWarning {
+	warnings := make([]api.ScenarioWarning, 0, len(source))
+	for _, warning := range source {
+		warnings = append(warnings, api.ScenarioWarning{
+			Code:           warning.Code,
+			Message:        warning.Message,
+			SourceFilename: filename,
+			Line:           warning.Line,
+			Column:         warning.Column,
+		})
+	}
+	return warnings
 }
 
 // StartRun validates and registers a run, then returns its ID before Kafka

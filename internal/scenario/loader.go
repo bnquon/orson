@@ -27,9 +27,10 @@ type Scenario struct {
 }
 
 type TopologyEdge struct {
-	ID   string
-	From string
-	To   string
+	ID     string
+	From   string
+	To     string
+	source sourceLocation
 }
 
 type Warning struct {
@@ -43,6 +44,7 @@ type Issue struct {
 	Code    string
 	Path    string
 	Message string
+	Details string
 	Line    int
 	Column  int
 }
@@ -182,12 +184,19 @@ func decode(filename string, source []byte) (rawScenario, map[string]sourceLocat
 			line = locatedErr.line
 			column = locatedErr.column
 		}
+		code := "yaml_decode_failed"
+		message := "the scenario YAML could not be parsed"
+		if strings.Contains(err.Error(), "not found in type") {
+			code = "unknown_yaml_field"
+			message = "the scenario YAML contains an unknown field"
+		}
 		return rawScenario{}, nil, &LoadError{
 			Stage: "yaml_parse",
 			Issues: []Issue{{
-				Code:    "yaml_decode_failed",
+				Code:    code,
 				Path:    filename,
-				Message: err.Error(),
+				Message: message,
+				Details: err.Error(),
 				Line:    line,
 				Column:  column,
 			}},
@@ -361,16 +370,23 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		seenEdges[id] = struct{}{}
 		connectedTopics[from] = struct{}{}
 		connectedTopics[to] = struct{}{}
-		edges = append(edges, TopologyEdge{ID: id, From: from, To: to})
+		edges = append(edges, TopologyEdge{
+			ID:     id,
+			From:   from,
+			To:     to,
+			source: sourceLocation{line: rawEdge.Line, column: rawEdge.Column},
+		})
 	}
 
-	if cycle := findCycle(rootTopic, edges); len(cycle) > 0 {
+	if cycle, location := findCycle(rootTopic, edges); len(cycle) > 0 {
 		return Scenario{}, &LoadError{
 			Stage: "validation",
 			Issues: []Issue{{
 				Code:    "topology_cycle",
 				Path:    "topology",
 				Message: fmt.Sprintf("topology contains a cycle: %s", strings.Join(cycle, " -> ")),
+				Line:    location.line,
+				Column:  location.column,
 			}},
 		}
 	}
@@ -539,50 +555,48 @@ func edgeID(from, to string) string {
 	return "edge:" + from + "->" + to
 }
 
-func findCycle(root string, edges []TopologyEdge) []string {
-	adjacency := make(map[string][]string)
+func findCycle(root string, edges []TopologyEdge) ([]string, sourceLocation) {
+	adjacency := make(map[string][]TopologyEdge)
 	for _, edge := range edges {
-		adjacency[edge.From] = append(adjacency[edge.From], edge.To)
+		adjacency[edge.From] = append(adjacency[edge.From], edge)
 	}
 
 	state := make(map[string]uint8)
 	path := make([]string, 0)
-	var visit func(string) []string
-	visit = func(topic string) []string {
-		switch state[topic] {
-		case 1:
-			for index, item := range path {
-				if item == topic {
-					return append(append([]string(nil), path[index:]...), topic)
-				}
-			}
-		case 2:
-			return nil
-		}
-
+	var visit func(string) ([]string, sourceLocation)
+	visit = func(topic string) ([]string, sourceLocation) {
 		state[topic] = 1
 		path = append(path, topic)
-		for _, next := range adjacency[topic] {
-			if cycle := visit(next); len(cycle) > 0 {
-				return cycle
+		for _, edge := range adjacency[topic] {
+			switch state[edge.To] {
+			case 1:
+				for index, item := range path {
+					if item == edge.To {
+						return append(append([]string(nil), path[index:]...), edge.To), edge.source
+					}
+				}
+			case 0:
+				if cycle, location := visit(edge.To); len(cycle) > 0 {
+					return cycle, location
+				}
 			}
 		}
 		path = path[:len(path)-1]
 		state[topic] = 2
-		return nil
+		return nil, sourceLocation{}
 	}
 
-	if cycle := visit(root); len(cycle) > 0 {
-		return cycle
+	if cycle, location := visit(root); len(cycle) > 0 {
+		return cycle, location
 	}
 	for topic := range adjacency {
 		if state[topic] == 0 {
-			if cycle := visit(topic); len(cycle) > 0 {
-				return cycle
+			if cycle, location := visit(topic); len(cycle) > 0 {
+				return cycle, location
 			}
 		}
 	}
-	return nil
+	return nil, sourceLocation{}
 }
 
 func CaptureTimeoutSeconds(timeout time.Duration) (int, error) {

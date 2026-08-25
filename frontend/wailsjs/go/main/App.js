@@ -14,8 +14,12 @@ export function GetConnectionStatus() {
   return window['go']['main']['App']['GetConnectionStatus']();
 }
 
-export function LoadBundledScenario() {
-  return window['go']['main']['App']['LoadBundledScenario']();
+export function ListBundledScenarios() {
+  return window['go']['main']['App']['ListBundledScenarios']();
+}
+
+export function LoadBundledScenario(arg1) {
+  return window['go']['main']['App']['LoadBundledScenario'](arg1);
 }
 
 export function StartRun(arg1) {

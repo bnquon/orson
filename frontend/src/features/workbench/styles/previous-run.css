@@ -44,8 +44,7 @@
   padding: 9px 11px;
 }
 
-.previous-run__summary strong,
-.previous-run__summary > div:first-child > span {
+.previous-run__summary > div:first-child > strong {
   display: block;
 }
 

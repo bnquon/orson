@@ -32,10 +32,16 @@ export const initialRunState: ReducerRunState = {
 
 function trackedEventsFor(topics: string[], status: TrackedEvent['status']): TrackedEvent[] {
   const seen = new Set<string>();
-  return topics
-    .map((topic) => topic.trim())
-    .filter((topic) => topic !== '' && !seen.has(topic) && seen.add(topic))
-    .map((topic) => ({ topic, status }));
+  const trackedEvents: TrackedEvent[] = [];
+
+  for (const rawTopic of topics) {
+    const topic = rawTopic.trim();
+    if (topic === '' || seen.has(topic)) continue;
+    seen.add(topic);
+    trackedEvents.push({ topic, status });
+  }
+
+  return trackedEvents;
 }
 
 function terminalTrackedStatus(

@@ -1,4 +1,4 @@
-import { useRef, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
+import { useRef, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { Clock, Key, Plus, Trash, WarningCircle } from 'iconoir-react';
 import type {
   KafkaConnection,
@@ -14,7 +14,7 @@ interface ComposeConfigSectionProps {
   connection: KafkaConnection;
   draft: ScenarioDraft;
   setDraft: Dispatch<SetStateAction<ScenarioDraft>>;
-  rootTopicEditRef: MutableRefObject<string | null>;
+  rootTopicEditRef: RefObject<string | null>;
   touched: TouchedState;
   validation: ValidationResult;
   onTouchField: (field: ValidatableField) => void;
@@ -32,6 +32,7 @@ export function ComposeConfigSection({
   onTouchWatchedTopic,
 }: ComposeConfigSectionProps) {
   const watchedTopicEditRefs = useRef(new Map<string, string>());
+  const touchedWatchedTopicIds = new Set(touched.watchedTopicIds);
   const showFieldError = (field: ValidatableField) => touched.fields[field] === true;
 
   const beginRootTopicEdit = () => {
@@ -240,7 +241,7 @@ export function ComposeConfigSection({
         </div>
         <div className="watched-topics__list">
           {draft.watchedTopics.map((topic) => {
-            const showError = touched.watchedTopicIds.includes(topic.id);
+            const showError = touchedWatchedTopicIds.has(topic.id);
             const error = validation.watchedTopicErrors[topic.id];
             return (
               <div className="watched-topic-row" key={topic.id}>

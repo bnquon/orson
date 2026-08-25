@@ -151,6 +151,9 @@ func TestLoadRejectsTopologyCycle(t *testing.T) {
 	if len(loadErr.Issues) != 1 || loadErr.Issues[0].Code != "topology_cycle" {
 		t.Fatalf("issues = %+v, want topology_cycle", loadErr.Issues)
 	}
+	if loadErr.Issues[0].Line != 17 || loadErr.Issues[0].Column != 5 {
+		t.Fatalf("cycle issue location = %d:%d, want back-edge location 17:5", loadErr.Issues[0].Line, loadErr.Issues[0].Column)
+	}
 }
 
 func assertLoadErrorStage(t *testing.T, err error, stage string) *LoadError {

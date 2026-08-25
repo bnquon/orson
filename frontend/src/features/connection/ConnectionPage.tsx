@@ -9,6 +9,13 @@ import type { ApiError } from '../../api/result';
 import orsonIcon from '../../assets/orson-icon.png';
 import './styles/connection.css';
 
+const initialConnectionValues: ConnectionFormValues = {
+  name: '',
+  brokers: [{ id: 'initial-broker', address: '' }],
+  clientId: 'orson',
+  dialTimeoutSeconds: '5',
+};
+
 interface ConnectionPageProps {
   attempt: ConnectionAttemptState;
   startupStatus: StartupStatus;
@@ -52,12 +59,7 @@ export function ConnectionPage({
           <ConnectionForm
             activeConnection={null}
             initialAttempt={attempt}
-            initialValues={{
-              name: '',
-              brokers: [''],
-              clientId: 'orson',
-              dialTimeoutSeconds: '5',
-            }}
+            initialValues={initialConnectionValues}
             startupStatus={startupStatus}
             error={error}
             operation={operation}

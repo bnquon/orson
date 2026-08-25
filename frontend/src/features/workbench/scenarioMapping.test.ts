@@ -56,12 +56,12 @@ describe('toLoadedScenario', () => {
       }),
     );
 
-    expect(scenario.sourceFilename).toBe('scenarios/order-flow.yaml');
+    expect(scenario.sourceFilename).toBe('order-flow.yaml');
     expect(scenario.warnings).toEqual([
       {
         code: 'disconnected_watched_topic',
         message: 'orphan is disconnected',
-        sourceFilename: 'scenarios/order-flow.yaml',
+        sourceFilename: 'order-flow.yaml',
         line: 0,
         column: 0,
       },

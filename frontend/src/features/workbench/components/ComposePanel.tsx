@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import type {
   CSSProperties,
   Dispatch,
-  FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
-  MutableRefObject,
   PointerEvent as ReactPointerEvent,
+  RefObject,
   SetStateAction,
+  SubmitEvent,
 } from 'react';
 import type {
   ComposeEditorTab,
@@ -24,7 +24,7 @@ interface ComposePanelProps {
   connection: KafkaConnection;
   draft: ScenarioDraft;
   setDraft: Dispatch<SetStateAction<ScenarioDraft>>;
-  rootTopicEditRef: MutableRefObject<string | null>;
+  rootTopicEditRef: RefObject<string | null>;
   activeEditorTab: ComposeEditorTab;
   onEditorTabChange: (tab: ComposeEditorTab) => void;
   touched: TouchedState;
@@ -36,7 +36,7 @@ interface ComposePanelProps {
   onTouchField: (field: ValidatableField) => void;
   onTouchWatchedTopic: (topicId: string) => void;
   onTouchHeader: (headerId: string) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onSubmit: (event: SubmitEvent<HTMLFormElement>) => void;
 }
 
 interface SplitterMetrics {

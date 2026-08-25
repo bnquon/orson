@@ -1,6 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ScenarioDiagnostics, ScenarioLoadState } from './ScenarioLoadState';
+import {
+  ScenarioDiagnostics,
+  ScenarioLoadState,
+  ScenarioSelectionLoadError,
+} from './ScenarioLoadState';
 
 describe('ScenarioLoadState', () => {
   it('renders a compact loading state', () => {
@@ -23,8 +27,86 @@ describe('ScenarioLoadState', () => {
       />,
     );
 
-    expect(markup).toContain('Source: scenarios/order-flow.yaml');
+    expect(markup).toContain('Scenario discovery failed.');
     expect(markup).toContain('unexpected mapping');
+  });
+
+  it('renders the selected filename, technical details, and retry action', () => {
+    const markup = renderToStaticMarkup(
+      <ScenarioSelectionLoadError
+        descriptor={{
+          id: 'checkout/successful-order.yaml',
+          displayName: 'Successful order',
+          relativePath: 'checkout/successful-order.yaml',
+          folderPath: 'checkout',
+          sourceFilename: 'scenarios/checkout/successful-order.yaml',
+          status: 'valid',
+          warnings: [],
+          diagnostics: [],
+        }}
+        error={{
+          code: 'scenario_load_failed',
+          message: 'The selected scenario could not be loaded.',
+          details: 'backend returned an invalid scenario response',
+          retryable: true,
+        }}
+        diagnostics={[]}
+        onRetry={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain('successful-order.yaml could not be loaded');
+    expect(markup).toContain('scenarios/checkout/successful-order.yaml');
+    expect(markup).toContain('backend returned an invalid scenario response');
+    expect(markup).toContain('Retry loading scenario');
+  });
+
+  it('renders invalid selection diagnostics without offering retry', () => {
+    const markup = renderToStaticMarkup(
+      <ScenarioSelectionLoadError
+        descriptor={{
+          id: 'broken.yaml',
+          displayName: 'Broken',
+          relativePath: 'broken.yaml',
+          folderPath: '',
+          sourceFilename: 'scenarios/broken.yaml',
+          status: 'invalid',
+          warnings: [],
+          diagnostics: [
+            {
+              code: 'scenario_yaml_invalid',
+              path: 'publish.payload',
+              message: 'Payload is not valid JSON.',
+              details: 'unexpected token',
+              sourceFilename: 'scenarios/broken.yaml',
+              line: 8,
+              column: 4,
+            },
+          ],
+        }}
+        error={{
+          code: 'scenario_invalid',
+          message: 'scenarios/broken.yaml is invalid.',
+          retryable: false,
+        }}
+        diagnostics={[
+          {
+            code: 'scenario_yaml_invalid',
+            path: 'publish.payload',
+            message: 'Payload is not valid JSON.',
+            details: 'unexpected token',
+            sourceFilename: 'scenarios/broken.yaml',
+            line: 8,
+            column: 4,
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('broken.yaml could not be loaded');
+    expect(markup).toContain('scenarios/broken.yaml:8:4');
+    expect(markup).toContain('Technical details');
+    expect(markup).not.toContain('Retry loading scenario');
   });
 });
 

@@ -27,38 +27,6 @@
   background: transparent;
 }
 
-.workbench-icon-button {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  display: inline-flex;
-  height: 32px;
-  justify-content: center;
-  padding: 0;
-  transition:
-    background-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard);
-  width: 32px;
-}
-
-.workbench-icon-button--compact {
-  height: 26px;
-  width: 26px;
-}
-
-.workbench-icon-button:hover {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
-}
-
-.workbench-icon-button:active {
-  background: var(--color-surface-raised);
-  color: var(--color-accent-hover);
-}
-
 .compose-secondary-button {
   align-items: center;
   background: var(--color-surface-raised);
@@ -135,8 +103,7 @@
   color: var(--color-text-inverse);
 }
 
-.publish-summary,
-.fixture-status {
+.publish-summary {
   align-items: center;
   color: var(--color-success);
   display: inline-flex;
@@ -150,32 +117,7 @@
   color: var(--color-danger);
 }
 
-.fixture-status {
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  padding: 5px 8px;
-}
-
-.fixture-status--starting,
-.fixture-status--in_progress {
-  color: var(--color-route);
-}
-
-.fixture-status--timed_out,
-.fixture-status--cancelled {
-  color: var(--color-warning);
-}
-
-.fixture-status--failed {
-  color: var(--color-danger);
-}
-
-.fixture-status--idle {
-  color: var(--color-text-muted);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .workbench-icon-button,
   .compose-secondary-button,
   .publish-button {
     transition: none;

@@ -1,5 +1,22 @@
-import type { Dispatch, SetStateAction } from 'react';
-import { CheckCircle, InfoCircle, Lock, Plus, Trash, WarningCircle } from 'iconoir-react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type SetStateAction,
+} from 'react';
+import {
+  Check,
+  CheckCircle,
+  CodeBrackets,
+  Copy,
+  InfoCircle,
+  Lock,
+  Plus,
+  Trash,
+  WarningCircle,
+} from 'iconoir-react';
 import type {
   ComposeEditorTab,
   ScenarioDraft,
@@ -7,7 +24,14 @@ import type {
   ValidatableField,
   ValidationResult,
 } from '../types';
+import { Tooltip } from '../../../components/Tooltip';
 import { focusControl } from './focusControl';
+import {
+  formatJsonPayload,
+  indentJsonSelection,
+  insertJsonNewline,
+  outdentJsonSelection,
+} from '../jsonEditing';
 import { handleTabListKeyDown } from './tabKeyboard';
 
 interface ComposeEditorSectionProps {
@@ -36,6 +60,19 @@ export function ComposeEditorSection({
   onTouchHeader,
 }: ComposeEditorSectionProps) {
   const showFieldError = (field: ValidatableField) => touched.fields[field] === true;
+  const touchedHeaderIds = new Set(touched.headerIds);
+  const [copiedPayload, setCopiedPayload] = useState<string | null>(null);
+  const copyResetTimeout = useRef<number | null>(null);
+  const isPayloadCopied = copiedPayload === draft.payload;
+
+  useEffect(
+    () => () => {
+      if (copyResetTimeout.current !== null) {
+        window.clearTimeout(copyResetTimeout.current);
+      }
+    },
+    [],
+  );
 
   const addHeader = () => {
     const id = crypto.randomUUID();
@@ -56,6 +93,59 @@ export function ComposeEditorSection({
       headers: current.headers.filter((header) => header.id !== headerId),
     }));
     focusControl(nextHeader === undefined ? 'compose-add-header' : `header-name-${nextHeader.id}`);
+  };
+
+  const applyPayloadEdit = (
+    event: ReactKeyboardEvent<HTMLTextAreaElement>,
+    edit: { value: string; selectionStart: number; selectionEnd: number },
+  ) => {
+    const textarea = event.currentTarget;
+    setDraft((current) => ({ ...current, payload: edit.value }));
+    window.requestAnimationFrame(() => {
+      textarea.setSelectionRange(edit.selectionStart, edit.selectionEnd);
+    });
+  };
+
+  const handlePayloadKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    const { selectionStart, selectionEnd, value } = event.currentTarget;
+
+    if (event.key === 'Tab') {
+      event.preventDefault();
+      const edit = event.shiftKey
+        ? outdentJsonSelection(value, selectionStart, selectionEnd)
+        : indentJsonSelection(value, selectionStart, selectionEnd);
+      applyPayloadEdit(event, edit);
+      return;
+    }
+
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      applyPayloadEdit(event, insertJsonNewline(value, selectionStart, selectionEnd));
+    }
+  };
+
+  const handleFormatJson = () => {
+    const formatted = formatJsonPayload(draft.payload);
+    if (formatted === null) return;
+    setDraft((current) => ({ ...current, payload: formatted }));
+  };
+
+  const handleCopyPayload = async () => {
+    try {
+      await navigator.clipboard.writeText(draft.payload);
+      setCopiedPayload(draft.payload);
+
+      if (copyResetTimeout.current !== null) {
+        window.clearTimeout(copyResetTimeout.current);
+      }
+
+      copyResetTimeout.current = window.setTimeout(() => {
+        setCopiedPayload(null);
+        copyResetTimeout.current = null;
+      }, 1600);
+    } catch {
+      setCopiedPayload(null);
+    }
   };
 
   return (
@@ -111,19 +201,29 @@ export function ComposeEditorSection({
           role="tabpanel"
           aria-labelledby="compose-editor-tab-headers"
         >
-          <div className="headers-editor__toolbar">
-            <span>Header name</span>
-            <span>Value</span>
-            <button
-              className="compose-secondary-button"
-              id="compose-add-header"
-              type="button"
-              onClick={addHeader}
-            >
-              <Plus /> Add header
-            </button>
-          </div>
           <div className="headers-editor__rows">
+            <div className="headers-editor__section-label">Managed by Orson</div>
+            <div className="header-row header-row--managed">
+              <code className="header-row__managed-name">x-correlation-id</code>
+              <span className="header-row__managed-value">Generated automatically per run</span>
+              <Tooltip
+                label="Correlation ID managed by Orson"
+                content="Orson generates a new correlation ID for each run and adds it automatically so downstream events can be matched to this flow."
+              >
+                <Lock width={16} height={16} aria-hidden="true" />
+              </Tooltip>
+            </div>
+            <div className="headers-editor__section-header">
+              <div className="headers-editor__section-label">Custom headers</div>
+              <button
+                className="compose-secondary-button"
+                id="compose-add-header"
+                type="button"
+                onClick={addHeader}
+              >
+                <Plus /> Add header
+              </button>
+            </div>
             {draft.headers.map((header) => {
               if (header.protected) {
                 return (
@@ -137,7 +237,7 @@ export function ComposeEditorSection({
                 );
               }
 
-              const showError = touched.headerIds.includes(header.id);
+              const showError = touchedHeaderIds.has(header.id);
               const error = validation.headerErrors[header.id];
               return (
                 <div className="header-row-wrap" key={header.id}>
@@ -197,6 +297,35 @@ export function ComposeEditorSection({
           role="tabpanel"
           aria-labelledby="compose-editor-tab-payload"
         >
+          <div className="payload-editor__actions">
+            <button
+              className="payload-editor__action"
+              type="button"
+              aria-label="Format JSON"
+              title="Format JSON"
+              onClick={handleFormatJson}
+              disabled={jsonValidationPending || jsonError !== null}
+            >
+              <CodeBrackets width={16} height={16} aria-hidden="true" />
+            </button>
+            <button
+              className={
+                isPayloadCopied
+                  ? 'payload-editor__action payload-editor__action--copied'
+                  : 'payload-editor__action'
+              }
+              type="button"
+              aria-label={isPayloadCopied ? 'JSON copied' : 'Copy JSON'}
+              title={isPayloadCopied ? 'Copied' : 'Copy JSON'}
+              onClick={() => void handleCopyPayload()}
+            >
+              {isPayloadCopied ? (
+                <Check width={16} height={16} aria-hidden="true" />
+              ) : (
+                <Copy width={16} height={16} aria-hidden="true" />
+              )}
+            </button>
+          </div>
           <textarea
             id="compose-payload"
             className={`workbench-scroll-region ${showFieldError('payload') && validation.fieldErrors.payload !== undefined ? 'compose-control--invalid' : ''}`}
@@ -204,6 +333,7 @@ export function ComposeEditorSection({
             onChange={(event) =>
               setDraft((current) => ({ ...current, payload: event.target.value }))
             }
+            onKeyDown={handlePayloadKeyDown}
             onBlur={() => onTouchField('payload')}
             aria-label="JSON payload"
             aria-invalid={showFieldError('payload') && validation.fieldErrors.payload !== undefined}

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type SubmitEvent } from 'react';
 import type { api } from '../../../wailsjs/go/models';
 import type { ApiError } from '../../api/result';
 import { ConnectionActions } from './ConnectionActions';
@@ -70,14 +70,17 @@ export function ConnectionForm({
     setValues((current) => ({
       ...current,
       brokers: current.brokers.map((broker, brokerIndex) =>
-        brokerIndex === index ? value : broker,
+        brokerIndex === index ? { ...broker, address: value } : broker,
       ),
     }));
     clearFieldError(`brokers.${index}`);
   };
 
   const addBroker = () => {
-    setValues((current) => ({ ...current, brokers: [...current.brokers, ''] }));
+    setValues((current) => ({
+      ...current,
+      brokers: [...current.brokers, { id: crypto.randomUUID(), address: '' }],
+    }));
     onClearErrors();
   };
 
@@ -90,7 +93,7 @@ export function ConnectionForm({
     onClearErrors();
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isSubmitting) return;
 
@@ -102,7 +105,10 @@ export function ConnectionForm({
 
     onConnect({
       name: values.name.trim(),
-      brokers: values.brokers.map((broker) => broker.trim()),
+      brokers: values.brokers.map((broker) => ({
+        ...broker,
+        address: broker.address.trim(),
+      })),
       clientId: values.clientId.trim(),
       dialTimeoutSeconds: values.dialTimeoutSeconds.trim(),
     });

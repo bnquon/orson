@@ -1,19 +1,13 @@
-import { useState, type ReactNode } from 'react';
-import {
-  Database,
-  Folder,
-  MoreHoriz,
-  NavArrowDown,
-  Plus,
-  Search,
-  Settings,
-  Terminal,
-  WarningCircle,
-} from 'iconoir-react';
-import type { KafkaConnection, WorkspaceMode } from '../types';
+import { NavArrowDown, WarningCircle } from 'iconoir-react';
+import type { ReactNode } from 'react';
+import type { KafkaConnection, ScenarioDescriptor, WorkspaceMode } from '../types';
+import { ScenarioBrowser } from './ScenarioBrowser';
 import { handleTabListKeyDown } from './tabKeyboard';
 import orsonIcon from '../../../assets/orson-icon.png';
 import '../styles/shell.css';
+
+// TODO: [Workspace] Scope open scenario tabs to a workspace when workspaces are introduced.
+// TODO: [Database] Persist workspace and scenario metadata in SQLite when persistence is implemented.
 
 interface WorkbenchShellProps {
   connection: KafkaConnection;
@@ -22,6 +16,13 @@ interface WorkbenchShellProps {
   scenarioWarningCount: number;
   scenarioWarningsDismissed: boolean;
   onRestoreScenarioWarnings: () => void;
+  scenarios: ScenarioDescriptor[];
+  selectedScenarioId: string | null;
+  activeScenarioId: string;
+  scenarioLoadingId: string | null;
+  scenarioCatalogLoading: boolean;
+  scenarioSelectionDisabled: boolean;
+  onSelectScenario: (id: string) => void;
   connectionDialogOpen: boolean;
   mode: WorkspaceMode;
   onModeChange: (mode: WorkspaceMode) => void;
@@ -39,6 +40,13 @@ export function WorkbenchShell({
   scenarioWarningCount,
   scenarioWarningsDismissed,
   onRestoreScenarioWarnings,
+  scenarios,
+  selectedScenarioId,
+  activeScenarioId,
+  scenarioLoadingId,
+  scenarioCatalogLoading,
+  scenarioSelectionDisabled,
+  onSelectScenario,
   connectionDialogOpen,
   mode,
   onModeChange,
@@ -48,7 +56,6 @@ export function WorkbenchShell({
   previousRun,
   runStatus,
 }: WorkbenchShellProps) {
-  const [checkoutExpanded, setCheckoutExpanded] = useState(true);
   const brokerSummary =
     connection.brokers.length > 1
       ? `${connection.brokers[0]} +${connection.brokers.length - 1}`
@@ -62,11 +69,7 @@ export function WorkbenchShell({
           <img className="workbench-brand" src={orsonIcon} alt="" aria-hidden="true" />
           <span className="workbench-wordmark">orson</span>
           <span className="workbench-separator">/</span>
-          <button className="workbench-project-switcher" type="button">
-            <span className="workbench-project-avatar">AC</span>
-            <span>Acme Commerce</span>
-            <NavArrowDown width={16} height={16} />
-          </button>
+          <span className="workbench-context-label">Scenarios</span>
         </div>
         <div className="workbench-topbar__group workbench-topbar__group--right">
           <button
@@ -79,141 +82,28 @@ export function WorkbenchShell({
             onClick={onConnectionToggle}
           >
             <span className={`workbench-status-dot workbench-status-dot--${connection.status}`} />
-            <span className="workbench-environment__name">{connection.name}</span>
-            <span className="workbench-environment__broker">{brokerSummary}</span>
+            <span className="workbench-environment__details">
+              <span className="workbench-environment__name">{connection.name}</span>
+              <span className="workbench-environment__broker">{brokerSummary}</span>
+            </span>
             <NavArrowDown width={16} height={16} />
           </button>
-          <button
-            className="workbench-icon-button"
-            type="button"
-            aria-label="Search"
-            title="Search"
-          >
-            <Search />
-          </button>
-          <kbd className="workbench-shortcut">⌘ K</kbd>
           <span className="workbench-user-avatar">BQ</span>
         </div>
       </header>
 
       <div className="workbench-layout">
-        <nav className="project-rail" aria-label="Projects">
-          <button
-            className="project-rail__item project-rail__item--active"
-            type="button"
-            aria-label="Acme Commerce"
-          >
-            AC
-          </button>
-          <span className="project-rail__spacer" />
-          <button className="project-rail__item" type="button" aria-label="Settings">
-            <Settings width={20} height={20} />
-          </button>
-        </nav>
-
-        <aside className="scenario-sidebar">
-          <div className="scenario-sidebar__header">
-            <div className="scenario-sidebar__title">
-              <strong>Acme Commerce</strong>
-              <button
-                className="workbench-icon-button workbench-icon-button--compact"
-                type="button"
-                aria-label="Project menu"
-              >
-                <MoreHoriz width={16} height={16} />
-              </button>
-            </div>
-            <label className="scenario-search">
-              <Search width={16} height={16} />
-              <span className="sr-only">Filter scenarios</span>
-              <input type="search" placeholder="Filter scenarios" />
-            </label>
-          </div>
-          <div className="scenario-sidebar__label">
-            <span>Event scenarios</span>
-            <button
-              className="workbench-icon-button workbench-icon-button--compact"
-              type="button"
-              aria-label="Add scenario"
-            >
-              <Plus width={16} height={16} />
-            </button>
-          </div>
-          <button
-            className="scenario-row scenario-row--folder"
-            type="button"
-            aria-expanded={checkoutExpanded}
-            aria-controls="checkout-scenarios"
-            onClick={() => setCheckoutExpanded((expanded) => !expanded)}
-          >
-            <span
-              className={`scenario-row__chevron ${checkoutExpanded ? 'scenario-row__chevron--expanded' : ''}`}
-              aria-hidden="true"
-            >
-              <NavArrowDown width={16} height={16} />
-            </span>
-            <Folder width={16} height={16} /> Checkout
-          </button>
-          <div
-            className={`scenario-folder-content ${checkoutExpanded ? 'scenario-folder-content--expanded' : ''}`}
-            id="checkout-scenarios"
-            aria-hidden={!checkoutExpanded}
-          >
-            <div className="scenario-folder-content__inner">
-              <button
-                className="scenario-row scenario-row--child scenario-row--active"
-                type="button"
-                tabIndex={checkoutExpanded ? 0 : -1}
-              >
-                <span className="scenario-row__kind">EVT</span> Order placed
-              </button>
-              <button
-                className="scenario-row scenario-row--child"
-                type="button"
-                tabIndex={checkoutExpanded ? 0 : -1}
-              >
-                <span className="scenario-row__kind">EVT</span> Payment failed
-              </button>
-              <button
-                className="scenario-row scenario-row--child"
-                type="button"
-                tabIndex={checkoutExpanded ? 0 : -1}
-              >
-                <span className="scenario-row__kind">EVT</span> Cart abandoned
-              </button>
-            </div>
-          </div>
-          <div className="scenario-sidebar__label">Project activity</div>
-          <button className="scenario-row" type="button">
-            <Terminal width={16} height={16} /> Recent sends{' '}
-            <span className="scenario-row__count">12</span>
-          </button>
-          <button className="scenario-row" type="button">
-            <Database width={16} height={16} /> Tracked events
-          </button>
-        </aside>
+        <ScenarioBrowser
+          scenarios={scenarios}
+          selectedScenarioId={selectedScenarioId}
+          activeScenarioId={activeScenarioId}
+          scenarioLoadingId={scenarioLoadingId}
+          scenarioCatalogLoading={scenarioCatalogLoading}
+          scenarioSelectionDisabled={scenarioSelectionDisabled}
+          onSelectScenario={onSelectScenario}
+        />
 
         <main className="workbench-main">
-          <div className="document-tabs" role="tablist" aria-label="Open scenarios">
-            <button
-              className="document-tab document-tab--active"
-              type="button"
-              role="tab"
-              aria-selected="true"
-            >
-              <span>EVT</span> Order placed <span aria-hidden="true">×</span>
-            </button>
-            <button className="document-tab" type="button" role="tab" aria-selected="false">
-              <span>EVT</span> Payment failed <span aria-hidden="true">×</span>
-            </button>
-            <button
-              className="workbench-icon-button workbench-icon-button--compact"
-              type="button"
-              aria-label="Open scenario"
-            >
-              <Plus width={16} height={16} />
-            </button>
-          </div>
           <div className="workspace-toolbar">
             <div className="workspace-toolbar__left">
               <div

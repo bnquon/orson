@@ -32,7 +32,6 @@ export interface FlowViewportOptions {
 }
 
 export interface FlowViewportState {
-  canvasRef: RefCallback<HTMLDivElement>;
   viewportRef: RefCallback<HTMLDivElement>;
   zoom: number;
   zoomPercent: number;
@@ -42,7 +41,6 @@ export interface FlowViewportState {
   canvasStyle: CSSProperties;
   zoomIn: () => void;
   zoomOut: () => void;
-  zoomToFit: () => void;
   resetZoom: () => void;
 }
 
@@ -52,25 +50,6 @@ function roundZoom(value: number): number {
 
 export function clampFlowZoom(value: number): number {
   return roundZoom(Math.min(FLOW_ZOOM_MAX, Math.max(FLOW_ZOOM_MIN, value)));
-}
-
-export function calculateFitZoom(
-  viewportWidth: number,
-  viewportHeight: number,
-  graphWidth: number,
-  graphHeight: number,
-  padding = FLOW_VIEWPORT_PADDING,
-): number {
-  if (viewportWidth <= padding * 2 || viewportHeight <= padding * 2) {
-    return FLOW_ZOOM_DEFAULT;
-  }
-
-  const availableWidth = viewportWidth - padding * 2;
-  const availableHeight = viewportHeight - padding * 2;
-  const widthZoom = graphWidth > 0 ? availableWidth / graphWidth : FLOW_ZOOM_DEFAULT;
-  const heightZoom = graphHeight > 0 ? availableHeight / graphHeight : FLOW_ZOOM_DEFAULT;
-
-  return clampFlowZoom(Math.min(widthZoom, heightZoom));
 }
 
 export function calculateFlowSurfaceLayout(
@@ -103,36 +82,17 @@ export function useFlowViewport({
   graphHeight,
 }: FlowViewportOptions): FlowViewportState {
   const viewportRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(FLOW_ZOOM_DEFAULT);
   const [viewportSize, setViewportSize] = useState<ViewportSize>({ width: 0, height: 0 });
   const setViewportRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
     viewportRef.current = node;
   }, []);
-  const setCanvasRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
-    canvasRef.current = node;
-  }, []);
-
   const measureViewport = useCallback(() => {
     const viewport = viewportRef.current;
     if (viewport === null) return { width: 0, height: 0 };
 
     return { width: viewport.clientWidth, height: viewport.clientHeight };
   }, []);
-
-  const zoomToFit = useCallback(() => {
-    const viewport = measureViewport();
-    const canvas = canvasRef.current;
-    const measuredGraph = {
-      width: canvas?.offsetWidth ?? graphWidth,
-      height: canvas?.offsetHeight ?? graphHeight,
-    };
-
-    setViewportSize((current) => (sameSize(current, viewport) ? current : viewport));
-    setZoom(
-      calculateFitZoom(viewport.width, viewport.height, measuredGraph.width, measuredGraph.height),
-    );
-  }, [graphHeight, graphWidth, measureViewport]);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -176,7 +136,6 @@ export function useFlowViewport({
   );
 
   return {
-    canvasRef: setCanvasRef,
     viewportRef: setViewportRef,
     zoom,
     zoomPercent: Math.round(zoom * 100),
@@ -196,7 +155,6 @@ export function useFlowViewport({
     },
     zoomIn,
     zoomOut,
-    zoomToFit,
     resetZoom,
   };
 }

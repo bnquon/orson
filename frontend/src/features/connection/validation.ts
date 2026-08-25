@@ -51,7 +51,7 @@ export function validateConnectionValues(values: ConnectionFormValues): Connecti
   }
 
   values.brokers.forEach((broker, index) => {
-    const error = validateBroker(broker);
+    const error = validateBroker(broker.address);
     if (error !== null) errors[`brokers.${index}`] = error;
   });
 
