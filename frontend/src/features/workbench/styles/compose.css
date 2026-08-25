@@ -383,25 +383,35 @@
   overflow: auto;
 }
 
-.headers-editor__toolbar {
-  align-items: center;
+.headers-editor__rows {
+  padding: 0 9px 9px;
+}
+
+.headers-editor__section-label {
   color: var(--color-text-dim);
-  display: grid;
-  font-size: 10px;
-  gap: 6px;
-  grid-template-columns: minmax(110px, 0.8fr) minmax(140px, 1.2fr) auto;
-  letter-spacing: 0.05em;
-  padding: 7px 9px 5px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  margin: 4px 0 5px;
   text-transform: uppercase;
 }
 
-.headers-editor__toolbar button {
-  justify-self: end;
-  text-transform: none;
+.headers-editor__rows > .headers-editor__section-label:first-child {
+  margin-top: 10px;
 }
 
-.headers-editor__rows {
-  padding: 0 9px 9px;
+.headers-editor__section-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.headers-editor__section-header .headers-editor__section-label {
+  margin: 0;
+}
+
+.headers-editor__section-header .compose-secondary-button {
+  height: 28px;
 }
 
 .header-row,
@@ -410,7 +420,7 @@
   display: grid;
   gap: 6px;
   grid-template-columns: minmax(110px, 0.8fr) minmax(140px, 1.2fr) 30px;
-  margin-top: 5px;
+  margin-top: 8px;
 }
 
 .header-row input {
@@ -427,6 +437,14 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   height: 29px;
+}
+
+.header-row-wrap > .compose-error-slot {
+  min-height: 0;
+}
+
+.header-row-wrap > .compose-error-slot:empty {
+  display: none;
 }
 
 .header-row--protected {
@@ -449,6 +467,51 @@
   font-size: 10px;
 }
 
+.header-row--managed {
+  grid-template-columns: minmax(110px, 0.8fr) minmax(140px, 1.2fr) 30px;
+  min-height: 29px;
+}
+
+.header-row--managed code,
+.header-row--managed > span {
+  align-items: center;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: 10px;
+  gap: 6px;
+  height: 29px;
+  min-width: 0;
+  padding: 0 7px;
+}
+
+.header-row--managed .header-row__managed-value {
+  color: var(--color-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-row--managed > .tooltip {
+  align-items: center;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  display: flex;
+  height: 29px;
+  justify-content: center;
+  justify-self: end;
+  width: 30px;
+}
+
+.header-row--managed > .tooltip .tooltip__trigger {
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
 .header-row__system {
   color: var(--color-text-dim);
   justify-self: end;
@@ -459,6 +522,7 @@
   display: grid;
   grid-template-rows: minmax(0, 1fr) 27px;
   min-height: 0;
+  position: relative;
 }
 
 .payload-editor textarea {
@@ -482,6 +546,52 @@
 
 .payload-editor textarea.compose-control--invalid {
   box-shadow: inset 0 0 0 1px var(--color-danger);
+}
+
+.payload-editor__actions {
+  display: flex;
+  gap: 4px;
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  z-index: 1;
+}
+
+.payload-editor__action {
+  align-items: center;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+  width: 28px;
+}
+
+.payload-editor__action:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.payload-editor__action:active:not(:disabled) {
+  background: var(--color-bg);
+  color: var(--color-accent-hover);
+}
+
+.payload-editor__action:disabled {
+  color: var(--color-border);
+  cursor: default;
+}
+
+.payload-editor__action--copied {
+  color: var(--color-success);
 }
 
 .payload-editor__status {
@@ -529,6 +639,10 @@
   .watched-topic-row__control button,
   .header-row button,
   .compose-editor__tab {
+    transition: none;
+  }
+
+  .payload-editor__action {
     transition: none;
   }
 

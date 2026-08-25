@@ -1,0 +1,34 @@
+name: successful-order
+
+publish:
+  topic: order.created
+  payload:
+    orderId: ord_success_279
+    customerId: cus_success_279
+    customerEmail: developer@example.com
+    currency: CAD
+    total: 279
+    items:
+      - sku: orson-mug
+        quantity: 1
+
+watch:
+  - payment.charged
+  - inventory.reserved
+  - notification.sent
+
+correlation:
+  header: x-correlation-id
+
+capture:
+  timeout: 10s
+
+topology:
+  - from: order.created
+    to: payment.charged
+
+  - from: payment.charged
+    to: inventory.reserved
+
+  - from: payment.charged
+    to: notification.sent

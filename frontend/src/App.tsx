@@ -23,6 +23,9 @@ function toWorkbenchConnection(info: api.ConnectionInfo): KafkaConnection {
 function App() {
   const connection = useConnection();
   const scenario = useScenario();
+  const hasValidScenario = scenario.descriptors.some(
+    (descriptor) => descriptor.status !== 'invalid',
+  );
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false);
   const activeConnection = useMemo(
     () =>
@@ -55,19 +58,37 @@ function App() {
           onRetryStartup={() => void connection.retryStartup()}
           onClearErrors={() => connection.clearTransientErrors()}
         />
-      ) : scenario.status === 'loading' ? (
+      ) : scenario.scenario === null &&
+        (scenario.catalogStatus === 'loading' || scenario.selectedLoadStatus === 'loading') ? (
         <ScenarioLoadState status="loading" />
-      ) : scenario.status === 'failed' ? (
+      ) : scenario.scenario === null ? (
         <ScenarioLoadState
-          status="failed"
+          status={
+            scenario.catalogStatus === 'failed' ||
+            (scenario.selectedLoadStatus === 'failed' && hasValidScenario)
+              ? 'failed'
+              : 'empty'
+          }
           error={scenario.error}
+          descriptors={scenario.descriptors}
           onRetry={() => void scenario.retry()}
         />
       ) : (
         <>
           <WorkbenchPage
             connection={activeConnection}
-            scenario={scenario.scenario!}
+            scenario={scenario.scenario}
+            scenarios={scenario.descriptors}
+            selectedScenarioId={scenario.selectedScenarioId}
+            selectedDescriptor={scenario.selectedDescriptor}
+            selectedLoadError={scenario.selectedLoadError}
+            selectedDiagnostics={scenario.selectedDiagnostics}
+            scenarioLoadingId={
+              scenario.selectedLoadStatus === 'loading' ? scenario.selectedScenarioId : null
+            }
+            scenarioCatalogLoading={scenario.catalogStatus === 'loading'}
+            onSelectScenario={(id) => scenario.selectScenario(id)}
+            onRetrySelectedScenario={() => scenario.retrySelectedScenario()}
             connectionDialogOpen={connectionDialogOpen}
             onConnectionToggle={() => setConnectionDialogOpen((open) => !open)}
           />

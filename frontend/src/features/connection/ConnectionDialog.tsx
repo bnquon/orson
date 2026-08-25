@@ -33,7 +33,10 @@ export function ConnectionDialog({
   const initialValues = useMemo<ConnectionFormValues>(
     () => ({
       name: activeConnection.name,
-      brokers: [...activeConnection.brokers],
+      brokers: activeConnection.brokers.map((address) => ({
+        id: crypto.randomUUID(),
+        address,
+      })),
       clientId: activeConnection.clientId,
       dialTimeoutSeconds: String(activeConnection.dialTimeoutSeconds),
     }),

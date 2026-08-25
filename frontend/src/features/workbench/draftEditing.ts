@@ -1,4 +1,8 @@
-import type { ScenarioTopologyEdge } from './types';
+import type { ScenarioDraft, ScenarioTopologyEdge } from './types';
+
+export function areScenarioDraftsEqual(left: ScenarioDraft, right: ScenarioDraft): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
 
 export function renameTopologyTopic(
   topology: ScenarioTopologyEdge[],

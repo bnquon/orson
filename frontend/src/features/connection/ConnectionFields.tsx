@@ -57,10 +57,10 @@ export function ConnectionFields({
           {values.brokers.map((broker, index) => {
             const errorId = `connection-broker-${index}-error`;
             return (
-              <div className="connection-broker-row" key={`broker-${index}`}>
+              <div className="connection-broker-row" key={broker.id}>
                 <div className="connection-broker-input">
                   <input
-                    value={broker}
+                    value={broker.address}
                     onChange={(event) => onUpdateBroker(index, event.target.value)}
                     placeholder="host:port"
                     autoComplete="off"

@@ -46,7 +46,33 @@ export interface ScenarioWarning {
   column: number;
 }
 
+type ScenarioDescriptorStatus = 'valid' | 'valid_with_warnings' | 'invalid';
+
+export interface ScenarioDiagnostic {
+  code: string;
+  path: string;
+  message: string;
+  details: string;
+  sourceFilename: string;
+  line: number;
+  column: number;
+}
+
+export interface ScenarioDescriptor {
+  id: string;
+  displayName: string;
+  relativePath: string;
+  folderPath: string;
+  sourceFilename: string;
+  status: ScenarioDescriptorStatus;
+  warnings: ScenarioWarning[];
+  diagnostics: ScenarioDiagnostic[];
+}
+
 export interface LoadedScenario {
+  id: string;
+  relativePath: string;
+  folderPath: string;
   name: string;
   sourceFilename: string;
   correlationHeader: string;

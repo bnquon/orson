@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { ConnectionFormValues } from './types';
 import { validateConnectionValues } from './validation';
 
+const makeBroker = (address: string) => ({ id: crypto.randomUUID(), address });
+
 function validValues(overrides: Partial<ConnectionFormValues> = {}): ConnectionFormValues {
   return {
     name: 'Local Kafka',
-    brokers: ['localhost:9092'],
+    brokers: [makeBroker('localhost:9092')],
     clientId: 'orson',
     dialTimeoutSeconds: '5',
     ...overrides,
@@ -16,17 +18,23 @@ describe('validateConnectionValues', () => {
   it('accepts valid broker forms, including multiple addresses and IPv6', () => {
     expect(
       validateConnectionValues(
-        validValues({ brokers: [' localhost:9092 ', '127.0.0.1:9093', '[::1]:9094'] }),
+        validValues({
+          brokers: [
+            makeBroker(' localhost:9092 '),
+            makeBroker('127.0.0.1:9093'),
+            makeBroker('[::1]:9094'),
+          ],
+        }),
       ),
     ).toEqual({});
   });
 
   it.each(['', 'localhost', 'localhost:0', 'localhost:65536', '[]:9092', '[not-ipv6]:9092'])(
     'rejects invalid broker address %j',
-    (broker) => {
-      expect(validateConnectionValues(validValues({ brokers: [broker] }))).toHaveProperty(
-        'brokers.0',
-      );
+    (address) => {
+      expect(
+        validateConnectionValues(validValues({ brokers: [makeBroker(address)] })),
+      ).toHaveProperty('brokers.0');
     },
   );
 

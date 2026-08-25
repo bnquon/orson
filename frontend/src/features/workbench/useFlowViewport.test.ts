@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  calculateFitZoom,
   calculateFlowSurfaceLayout,
   clampFlowZoom,
   FLOW_ZOOM_MAX,
@@ -12,11 +11,6 @@ describe('flow viewport calculations', () => {
     expect(clampFlowZoom(0.1)).toBe(FLOW_ZOOM_MIN);
     expect(clampFlowZoom(3)).toBe(FLOW_ZOOM_MAX);
     expect(clampFlowZoom(1.234)).toBe(1.23);
-  });
-
-  it('fits the graph inside the viewport with padding', () => {
-    expect(calculateFitZoom(800, 600, 1000, 500)).toBe(0.66);
-    expect(calculateFitZoom(500, 400, 100, 100)).toBe(2);
   });
 
   it('keeps the scaled graph scrollable and centers it when there is room', () => {

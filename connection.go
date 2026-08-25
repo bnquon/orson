@@ -8,6 +8,7 @@ import (
 	"orson/internal/api"
 	"orson/internal/kafka"
 	"orson/internal/run"
+	"orson/internal/scenario"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -56,6 +57,7 @@ type App struct {
 	shuttingDown     bool
 	latestAttempt    api.ConnectionAttempt
 	emitEvent        runEventEmitter
+	scenarioCatalog  *scenario.Catalog
 }
 
 func NewApp() *App {
@@ -72,7 +74,8 @@ func newApp(connector KafkaConnector) *App {
 	}
 
 	return &App{
-		connector: connector,
+		connector:       connector,
+		scenarioCatalog: scenario.NewCatalog(bundledScenarioFS),
 		latestAttempt: api.ConnectionAttempt{
 			Status: api.ConnectionStatusDisconnected,
 		},

@@ -1,4 +1,4 @@
-import { CheckCircle, ExpandLines, WarningCircle, ZoomIn, ZoomOut } from 'iconoir-react';
+import { CheckCircle, WarningCircle, ZoomIn, ZoomOut } from 'iconoir-react';
 import { LoadingDots } from '../../../components/LoadingDots';
 import type { FlowNode, FlowStatus, FlowViewModel } from '../flowModel';
 import { formatStatusLabel } from '../runStatus';
@@ -38,7 +38,6 @@ function NodeContent({ node }: { node: FlowNode }) {
 
 export function FlowPanel({ model, selectedRecordId, onSelectRecord }: FlowPanelProps) {
   const {
-    canvasRef,
     viewportRef,
     surfaceStyle,
     canvasStyle,
@@ -47,7 +46,6 @@ export function FlowPanel({ model, selectedRecordId, onSelectRecord }: FlowPanel
     canZoomOut,
     zoomIn,
     zoomOut,
-    zoomToFit,
     resetZoom,
   } = useFlowViewport({ graphWidth: model.width, graphHeight: model.height });
 
@@ -85,14 +83,11 @@ export function FlowPanel({ model, selectedRecordId, onSelectRecord }: FlowPanel
           >
             <ZoomIn />
           </button>
-          <button type="button" aria-label="Zoom to fit" title="Zoom to fit" onClick={zoomToFit}>
-            <ExpandLines />
-          </button>
         </div>
       </header>
       <div className="flow-panel__viewport workbench-scroll-region" ref={viewportRef}>
         <div className="flow-map__surface" style={surfaceStyle}>
-          <div className="flow-map" ref={canvasRef} style={canvasStyle}>
+          <div className="flow-map" style={canvasStyle}>
             <svg
               className="flow-map__edges"
               width={model.width}

@@ -8,7 +8,9 @@ export function Disconnect():Promise<api.ConnectionStatusResponse>;
 
 export function GetConnectionStatus():Promise<api.ConnectionStatusResponse>;
 
-export function LoadBundledScenario():Promise<api.ScenarioResponse>;
+export function ListBundledScenarios():Promise<api.ScenarioListResponse>;
+
+export function LoadBundledScenario(arg1:string):Promise<api.ScenarioResponse>;
 
 export function StartRun(arg1:api.RunRequest):Promise<api.RunStartResponse>;
 

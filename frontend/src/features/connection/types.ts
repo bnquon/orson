@@ -11,9 +11,14 @@ export interface ConnectionAttemptState {
   error: ApiError | null;
 }
 
+interface ConnectionBroker {
+  id: string;
+  address: string;
+}
+
 export interface ConnectionFormValues {
   name: string;
-  brokers: string[];
+  brokers: ConnectionBroker[];
   clientId: string;
   dialTimeoutSeconds: string;
 }

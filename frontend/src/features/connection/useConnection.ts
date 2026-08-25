@@ -35,7 +35,7 @@ function toAttempt(state: api.ConnectionState): ConnectionAttemptState {
 function toRequest(values: ConnectionFormValues): api.ConnectionRequest {
   return {
     name: values.name.trim(),
-    brokers: values.brokers.map((broker) => broker.trim()),
+    brokers: values.brokers.map((broker) => broker.address.trim()),
     clientId: values.clientId.trim(),
     dialTimeoutSeconds: Number(values.dialTimeoutSeconds),
   };

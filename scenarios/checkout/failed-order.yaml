@@ -1,0 +1,26 @@
+name: failed-order
+
+publish:
+  topic: order.created
+  payload:
+    orderId: ord_failed_799
+    customerId: cus_failed_799
+    customerEmail: developer@example.com
+    currency: CAD
+    total: 799
+    items:
+      - sku: orson-mug
+        quantity: 2
+
+watch:
+  - order.cancelled
+
+correlation:
+  header: x-correlation-id
+
+capture:
+  timeout: 10s
+
+topology:
+  - from: order.created
+    to: order.cancelled
