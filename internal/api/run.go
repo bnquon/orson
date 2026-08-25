@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"orson/internal/correlation"
 )
 
 const maxCaptureTimeoutSeconds = int64((1<<63 - 1) / int64(time.Second))
@@ -20,8 +22,13 @@ type RunRequest struct {
 	MessageKey            string   `json:"messageKey"`
 	Payload               string   `json:"payload"`
 	Headers               []Header `json:"headers"`
+	CorrelationHeader     string   `json:"correlationHeader"`
 	WatchedTopics         []string `json:"watchedTopics"`
 	CaptureTimeoutSeconds int      `json:"captureTimeoutSeconds"`
+}
+
+func (r RunRequest) ResolvedCorrelationHeader() string {
+	return correlation.ResolveHeader(r.CorrelationHeader)
 }
 
 func (r RunRequest) Validate() error {
@@ -54,6 +61,19 @@ func (r RunRequest) Validate() error {
 
 	if !json.Valid([]byte(r.Payload)) {
 		return errors.New("payload must be valid JSON")
+	}
+
+	correlationHeader := r.ResolvedCorrelationHeader()
+	for index, header := range r.Headers {
+		if strings.TrimSpace(header.Key) == "" {
+			return fmt.Errorf("header %d name is required", index+1)
+		}
+		if correlation.HeaderNamesEqual(header.Key, correlationHeader) {
+			return fmt.Errorf(
+				"header %q is managed automatically by Orson and must be removed from custom headers",
+				correlationHeader,
+			)
+		}
 	}
 
 	return nil

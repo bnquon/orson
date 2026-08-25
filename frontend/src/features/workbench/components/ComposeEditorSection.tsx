@@ -204,7 +204,7 @@ export function ComposeEditorSection({
           <div className="headers-editor__rows">
             <div className="headers-editor__section-label">Managed by Orson</div>
             <div className="header-row header-row--managed">
-              <code className="header-row__managed-name">x-correlation-id</code>
+              <code className="header-row__managed-name">{draft.correlationHeader}</code>
               <span className="header-row__managed-value">Generated automatically per run</span>
               <Tooltip
                 label="Correlation ID managed by Orson"

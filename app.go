@@ -285,8 +285,10 @@ func (a *App) StartRun(request api.RunRequest) api.RunStartResponse {
 
 	go func() {
 		defer a.endRun(runID)
+		correlationHeader := request.ResolvedCorrelationHeader()
 		err := coordinator.Run(requestContext, run.RunRequest{
-			RunID: runID,
+			RunID:             runID,
+			CorrelationHeader: correlationHeader,
 			RootMessage: kafka.Message{
 				Topic:   request.RootTopic,
 				Key:     []byte(request.MessageKey),
@@ -385,7 +387,7 @@ func toKafkaHeaders(headers []api.Header) []kafka.Header {
 	converted := make([]kafka.Header, 0, len(headers))
 	for _, header := range headers {
 		converted = append(converted, kafka.Header{
-			Key:   header.Key,
+			Key:   strings.TrimSpace(header.Key),
 			Value: []byte(header.Value),
 		})
 	}

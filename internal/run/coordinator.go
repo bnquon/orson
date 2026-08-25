@@ -5,14 +5,11 @@ import (
 	"errors"
 	"fmt"
 
+	"orson/internal/correlation"
 	"orson/internal/kafka"
 
 	"github.com/google/uuid"
 )
-
-// TODO [Correlation]: thread the loaded scenario correlation header through
-// StartRun and the coordinator instead of using the current MVP default.
-const CorrelationIDHeader = "x-correlation-id"
 
 type Coordinator struct {
 	kafkaClient KafkaClient
@@ -35,6 +32,12 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest, sink EventSin
 	if request.CaptureTimeout <= 0 {
 		return errors.New("capture timeout must be positive")
 	}
+	correlationHeader := correlation.ResolveHeader(request.CorrelationHeader)
+	for _, header := range request.RootMessage.Headers {
+		if correlation.HeaderNamesEqual(header.Key, correlationHeader) {
+			return fmt.Errorf("correlation header %q is managed automatically", correlationHeader)
+		}
+	}
 
 	emitter := &eventEmitter{runID: request.RunID, sink: sink}
 	emitter.emit(Event{Kind: EventStarted, Status: RunStatusStarting})
@@ -56,7 +59,7 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest, sink EventSin
 		})
 	}
 	rootMessage.Headers = append(rootMessage.Headers, kafka.Header{
-		Key:   CorrelationIDHeader,
+		Key:   correlationHeader,
 		Value: []byte(correlationID),
 	})
 
@@ -74,7 +77,7 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest, sink EventSin
 				close(captureReadyCh)
 			},
 			func(record kafka.Record) error {
-				if !hasCorrelationID(record, correlationID) {
+				if !hasCorrelationID(record, correlationHeader, correlationID) {
 					return nil
 				}
 
@@ -287,9 +290,9 @@ func newCorrelationID() (CorrelationID, error) {
 	return CorrelationID(id.String()), nil
 }
 
-func hasCorrelationID(record kafka.Record, wanted CorrelationID) bool {
+func hasCorrelationID(record kafka.Record, correlationHeader string, wanted CorrelationID) bool {
 	for _, header := range record.Message.Headers {
-		if header.Key == CorrelationIDHeader && string(header.Value) == string(wanted) {
+		if header.Key == correlationHeader && string(header.Value) == string(wanted) {
 			return true
 		}
 	}

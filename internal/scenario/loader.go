@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"orson/internal/correlation"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -267,11 +269,21 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		}
 	}
 
-	correlationHeader := ""
+	correlationHeader := correlation.DefaultHeader
+	correlationWarnings := make([]Warning, 0, 1)
 	if raw.Correlation == nil || raw.Correlation.Header == nil || strings.TrimSpace(*raw.Correlation.Header) == "" {
-		addIssue("missing_correlation_header", "correlation.header", "correlation header is required", nil)
+		line, column := locationForPath(locations, "correlation.header")
+		correlationWarnings = append(correlationWarnings, Warning{
+			Code: "missing_correlation_header",
+			Message: fmt.Sprintf(
+				"correlation header is missing or blank; %s will be used",
+				correlation.DefaultHeader,
+			),
+			Line:   line,
+			Column: column,
+		})
 	} else {
-		correlationHeader = strings.TrimSpace(*raw.Correlation.Header)
+		correlationHeader = correlation.ResolveHeader(*raw.Correlation.Header)
 	}
 
 	var captureTimeout time.Duration
@@ -312,7 +324,7 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		configuredTopics[topic] = struct{}{}
 	}
 
-	warnings := make([]Warning, 0)
+	warnings := append([]Warning(nil), correlationWarnings...)
 	edges := make([]TopologyEdge, 0, len(raw.Topology))
 	seenEdges := make(map[string]struct{}, len(raw.Topology))
 	connectedTopics := make(map[string]struct{}, len(configuredTopics))

@@ -240,6 +240,7 @@ export namespace api {
 	    messageKey: string;
 	    payload: string;
 	    headers: Header[];
+	    correlationHeader: string;
 	    watchedTopics: string[];
 	    captureTimeoutSeconds: number;
 
@@ -253,6 +254,7 @@ export namespace api {
 	        this.messageKey = source["messageKey"];
 	        this.payload = source["payload"];
 	        this.headers = this.convertValues(source["headers"], Header);
+	        this.correlationHeader = source["correlationHeader"];
 	        this.watchedTopics = source["watchedTopics"];
 	        this.captureTimeoutSeconds = source["captureTimeoutSeconds"];
 	    }
@@ -579,4 +581,3 @@ export namespace api {
 
 
 }
-

@@ -55,6 +55,12 @@ export function validateScenario(
   for (const header of draft.headers) {
     if (!header.protected && header.name.trim().length === 0) {
       headerErrors[header.id] = 'Enter a header name.';
+    } else if (
+      !header.protected &&
+      header.name.trim().toLowerCase() === draft.correlationHeader.trim().toLowerCase()
+    ) {
+      headerErrors[header.id] =
+        'Orson manages this header automatically. Remove it from Custom headers.';
     }
   }
 

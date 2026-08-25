@@ -34,6 +34,7 @@ export interface ScenarioDraft {
   topology: ScenarioTopologyEdge[];
   messageKey: string;
   headers: KafkaHeader[];
+  correlationHeader: string;
   payload: string;
   captureTimeoutSeconds: string;
 }
@@ -75,7 +76,6 @@ export interface LoadedScenario {
   folderPath: string;
   name: string;
   sourceFilename: string;
-  correlationHeader: string;
   draft: ScenarioDraft;
   warnings: ScenarioWarning[];
 }
