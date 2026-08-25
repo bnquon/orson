@@ -23,6 +23,7 @@ export const initialScenario: ScenarioDraft = {
       protected: false,
     },
   ],
+  correlationHeader: 'x-correlation-id',
   payload: `{
   "orderId": "ord_123",
   "customerId": "cus_123",

@@ -135,6 +135,34 @@ func TestCatalogKeepsValidScenarioWhenAnotherFileHasWarnings(t *testing.T) {
 	}
 }
 
+func TestCatalogKeepsCorrelationFallbackWarningWhenScenarioLoads(t *testing.T) {
+	source := strings.Replace(
+		validCatalogYAML("fallback"),
+		"correlation:\n  header: x-correlation-id\n\n",
+		"",
+		1,
+	)
+	catalog := NewCatalog(fstest.MapFS{"fallback.yaml": mapFile(source)})
+	descriptors, err := catalog.List()
+	if err != nil {
+		t.Fatalf("List() failed: %v", err)
+	}
+	if len(descriptors) != 1 || descriptors[0].Status != StatusValidWithWarnings {
+		t.Fatalf("descriptors = %+v, want valid_with_warnings", descriptors)
+	}
+	if len(descriptors[0].Warnings) != 1 || descriptors[0].Warnings[0].Code != "missing_correlation_header" {
+		t.Fatalf("descriptor warnings = %+v, want missing_correlation_header", descriptors[0].Warnings)
+	}
+
+	loaded, err := catalog.Load("fallback.yaml")
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	if loaded.CorrelationHeader != "x-correlation-id" || len(loaded.Warnings) != 1 {
+		t.Fatalf("loaded scenario = %+v, want fallback header and retained warning", loaded)
+	}
+}
+
 func TestCatalogLoadValidInvalidUnknownAndUnsafeIDs(t *testing.T) {
 	catalog := NewCatalog(fstest.MapFS{
 		"valid.yaml":  mapFile(validCatalogYAML("valid")),

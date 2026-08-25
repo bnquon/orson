@@ -295,6 +295,50 @@ func TestAppStartRunReturnsIDAndStopRunEmitsCancellation(t *testing.T) {
 	}
 }
 
+func TestAppStartRunPropagatesConfiguredCorrelationHeader(t *testing.T) {
+	active := &fakeKafkaConnection{}
+	connector := &fakeKafkaConnector{connections: []KafkaConnection{active}}
+	app := newApp(connector)
+	app.startup(context.Background())
+	defer app.shutdown(context.Background())
+
+	if response := app.Connect(validConnectionRequest("Local Kafka")); !response.OK {
+		t.Fatalf("Connect() failed: %+v", response.Error)
+	}
+	start := app.StartRun(api.RunRequest{
+		RootTopic:             "order.created",
+		Payload:               "{}",
+		CorrelationHeader:     "  X-Flow-ID  ",
+		WatchedTopics:         []string{"payment.charged"},
+		CaptureTimeoutSeconds: 5,
+	})
+	if !start.OK || start.Data == nil {
+		t.Fatalf("StartRun() failed: %+v", start.Error)
+	}
+
+	deadline := time.After(time.Second)
+	var published kafka.Message
+	for {
+		var ok bool
+		published, ok = active.publishedMessage()
+		if ok {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("run did not publish a root message")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	if len(published.Headers) != 1 || published.Headers[0].Key != "X-Flow-ID" {
+		t.Fatalf("published headers = %+v, want propagated X-Flow-ID", published.Headers)
+	}
+	if response := app.StopRun(start.Data.RunID); !response.OK {
+		t.Fatalf("StopRun() failed: %+v", response.Error)
+	}
+}
+
 func validConnectionRequest(name string) api.ConnectionRequest {
 	return api.ConnectionRequest{
 		Name:               name,
@@ -339,8 +383,9 @@ func (f *fakeKafkaConnector) callCount() int {
 type fakeKafkaConnection struct {
 	readFromOffsets func(context.Context, []kafka.PartitionOffset, func(kafka.Record) error) error
 
-	mu     sync.Mutex
-	closed bool
+	mu        sync.Mutex
+	closed    bool
+	published []kafka.Message
 }
 
 func (f *fakeKafkaConnection) Close() {
@@ -360,7 +405,19 @@ func (f *fakeKafkaConnection) ReadEndOffsets(context.Context, []string) ([]kafka
 }
 
 func (f *fakeKafkaConnection) PublishMessage(_ context.Context, message kafka.Message) (kafka.Record, error) {
+	f.mu.Lock()
+	f.published = append(f.published, message)
+	f.mu.Unlock()
 	return kafka.Record{Message: message, Partition: 0, Offset: 1, Timestamp: time.Now()}, nil
+}
+
+func (f *fakeKafkaConnection) publishedMessage() (kafka.Message, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.published) == 0 {
+		return kafka.Message{}, false
+	}
+	return f.published[len(f.published)-1], true
 }
 
 func (f *fakeKafkaConnection) ReadFromOffsets(

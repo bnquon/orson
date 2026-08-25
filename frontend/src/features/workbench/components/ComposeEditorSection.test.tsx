@@ -16,6 +16,7 @@ const draft: ScenarioDraft = {
       protected: false,
     },
   ],
+  correlationHeader: 'x-correlation-id',
   payload: '{"ok":true}',
   captureTimeoutSeconds: '10',
 };
@@ -29,10 +30,10 @@ const validation: ValidationResult = {
   firstInvalidControlId: null,
 };
 
-function renderHeaders() {
+function renderHeaders(currentDraft: ScenarioDraft = draft) {
   return renderToStaticMarkup(
     <ComposeEditorSection
-      draft={draft}
+      draft={currentDraft}
       setDraft={() => undefined}
       activeTab="headers"
       onTabChange={() => undefined}
@@ -79,5 +80,12 @@ describe('ComposeEditorSection headers', () => {
     expect(managedMarkup).not.toContain('<input');
     expect(managedMarkup).not.toContain('Remove');
     expect(managedMarkup).toContain('<svg');
+  });
+
+  it('renders the configured correlation header in the managed row', () => {
+    const markup = renderHeaders({ ...draft, correlationHeader: 'X-Flow-ID' });
+
+    expect(markup).toContain('X-Flow-ID');
+    expect(markup).not.toContain('x-correlation-id');
   });
 });

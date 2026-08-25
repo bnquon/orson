@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -47,6 +48,100 @@ func TestCoordinatorEmitsOrderedEventsAndFiltersUnrelatedRecords(t *testing.T) {
 	}
 	if events[4].Failure == nil || events[4].Failure.Stage != FailureStageTimeout {
 		t.Fatalf("finished failure = %+v, want timeout stage", events[4].Failure)
+	}
+	if len(client.message.Headers) != 1 || client.message.Headers[0].Key != "x-correlation-id" {
+		t.Fatalf("published headers = %+v, want default correlation header", client.message.Headers)
+	}
+}
+
+func TestCoordinatorPublishesAndMatchesConfiguredCorrelationHeader(t *testing.T) {
+	client := newEventKafkaClient()
+	client.records = func(message kafka.Message) []kafka.Record {
+		correlationValue := message.Headers[len(message.Headers)-1].Value
+		return []kafka.Record{
+			{
+				Message: kafka.Message{
+					Topic:   "wrong.header",
+					Headers: []kafka.Header{{Key: "x-correlation-id", Value: correlationValue}},
+				},
+				Partition: 0,
+				Offset:    11,
+			},
+			{
+				Message: kafka.Message{
+					Topic:   "payment.charged",
+					Headers: []kafka.Header{{Key: " x-flow-id ", Value: correlationValue}},
+				},
+				Partition: 0,
+				Offset:    12,
+			},
+		}
+	}
+	coordinator, err := NewCoordinator(client)
+	if err != nil {
+		t.Fatalf("NewCoordinator() failed: %v", err)
+	}
+
+	events := runCoordinator(t, coordinator, RunRequest{
+		RunID:             RunID("custom-header-run"),
+		RootMessage:       kafka.Message{Topic: "order.created"},
+		CorrelationHeader: "  X-Flow-ID  ",
+		WatchedTopics:     []string{"payment.charged"},
+		CaptureTimeout:    30 * time.Millisecond,
+	})
+
+	if len(client.message.Headers) != 1 || client.message.Headers[0].Key != "X-Flow-ID" {
+		t.Fatalf("published headers = %+v, want configured casing", client.message.Headers)
+	}
+	messageEvents := make([]Event, 0)
+	for _, event := range events {
+		if event.Kind == EventMessage {
+			messageEvents = append(messageEvents, event)
+		}
+	}
+	if len(messageEvents) != 1 || messageEvents[0].Record.Message.Topic != "payment.charged" {
+		t.Fatalf("message events = %+v, want only custom-header match", messageEvents)
+	}
+}
+
+func TestCoordinatorGeneratesUniqueCorrelationIDs(t *testing.T) {
+	values := make([]string, 0, 2)
+	for index := 0; index < 2; index++ {
+		client := newEventKafkaClient()
+		coordinator, err := NewCoordinator(client)
+		if err != nil {
+			t.Fatalf("NewCoordinator() failed: %v", err)
+		}
+		runCoordinator(t, coordinator, RunRequest{
+			RunID:          RunID(fmt.Sprintf("run-%d", index)),
+			RootMessage:    kafka.Message{Topic: "order.created"},
+			WatchedTopics:  []string{"payment.charged"},
+			CaptureTimeout: 10 * time.Millisecond,
+		})
+		values = append(values, string(client.message.Headers[0].Value))
+	}
+	if values[0] == values[1] {
+		t.Fatalf("correlation IDs = %q and %q, want unique values", values[0], values[1])
+	}
+}
+
+func TestCoordinatorRejectsManagedRootHeader(t *testing.T) {
+	coordinator, err := NewCoordinator(newEventKafkaClient())
+	if err != nil {
+		t.Fatalf("NewCoordinator() failed: %v", err)
+	}
+	err = coordinator.Run(context.Background(), RunRequest{
+		RunID: RunID("conflict"),
+		RootMessage: kafka.Message{
+			Topic:   "order.created",
+			Headers: []kafka.Header{{Key: " X-FLOW-ID ", Value: []byte("user-value")}},
+		},
+		CorrelationHeader: "x-flow-id",
+		WatchedTopics:     []string{"payment.charged"},
+		CaptureTimeout:    time.Second,
+	}, nil)
+	if err == nil {
+		t.Fatal("Run() accepted a managed root header")
 	}
 }
 
@@ -126,6 +221,7 @@ type eventKafkaClient struct {
 	ready       chan struct{}
 	holdCapture bool
 	publishErr  error
+	records     func(kafka.Message) []kafka.Record
 	published   chan struct{}
 	message     kafka.Message
 	readyOnce   sync.Once
@@ -173,12 +269,18 @@ func (c *eventKafkaClient) ReadFromOffsets(
 		if err := onRecord(kafka.Record{Message: c.message, Partition: 0, Offset: 10}); err != nil {
 			return err
 		}
-		if err := onRecord(kafka.Record{
+		records := []kafka.Record{{
 			Message:   kafka.Message{Topic: "payment.charged", Headers: c.message.Headers},
 			Partition: 0,
 			Offset:    11,
-		}); err != nil {
-			return err
+		}}
+		if c.records != nil {
+			records = c.records(c.message)
+		}
+		for _, record := range records {
+			if err := onRecord(record); err != nil {
+				return err
+			}
 		}
 		<-ctx.Done()
 		return ctx.Err()

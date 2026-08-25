@@ -28,6 +28,7 @@ function toDraft(data: api.ScenarioData): ScenarioDraft {
     })),
     messageKey: '',
     headers: [{ ...defaultPublishHeader }],
+    correlationHeader: data.correlationHeader,
     payload: data.publishPayload,
     captureTimeoutSeconds: String(data.captureTimeoutSeconds),
   };
@@ -83,7 +84,6 @@ export function toLoadedScenario(data: api.ScenarioData): LoadedScenario {
     folderPath: data.folderPath ?? '',
     name: data.name,
     sourceFilename,
-    correlationHeader: data.correlationHeader,
     draft: toDraft(data),
     warnings: (data.warnings ?? []).map((warning) => toWarning(warning, sourceFilename)),
   };

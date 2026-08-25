@@ -78,7 +78,6 @@ func TestLoadRejectsMissingRequiredFields(t *testing.T) {
 		{fixture: "missing-name.yaml", code: "missing_name"},
 		{fixture: "missing-publish-topic.yaml", code: "missing_publish_topic"},
 		{fixture: "missing-watch.yaml", code: "missing_watch"},
-		{fixture: "missing-correlation-header.yaml", code: "missing_correlation_header"},
 		{fixture: "missing-capture-timeout.yaml", code: "missing_capture_timeout"},
 	}
 
@@ -94,6 +93,84 @@ func TestLoadRejectsMissingRequiredFields(t *testing.T) {
 			t.Fatalf("missing issue code %q in %+v", test.code, loadErr.Issues)
 		})
 	}
+}
+
+func TestLoadFallsBackForMissingOrBlankCorrelationHeader(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{
+			name: "missing",
+			source: `name: fallback
+publish:
+  topic: root
+  payload: {}
+watch: [downstream]
+capture:
+  timeout: 5s
+topology:
+  - from: root
+    to: downstream
+`,
+		},
+		{
+			name: "blank",
+			source: `name: fallback
+publish:
+  topic: root
+  payload: {}
+watch: [downstream]
+correlation:
+  header: "   "
+capture:
+  timeout: 5s
+topology:
+  - from: root
+    to: downstream
+`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			loaded, err := Load(test.name+".yaml", []byte(test.source))
+			if err != nil {
+				t.Fatalf("Load() failed: %v", err)
+			}
+			if loaded.CorrelationHeader != "x-correlation-id" {
+				t.Fatalf("CorrelationHeader = %q, want x-correlation-id", loaded.CorrelationHeader)
+			}
+			if len(loaded.Warnings) != 1 || loaded.Warnings[0].Code != "missing_correlation_header" {
+				t.Fatalf("Warnings = %+v, want missing_correlation_header", loaded.Warnings)
+			}
+		})
+	}
+}
+
+func TestLoadTrimsCustomCorrelationHeader(t *testing.T) {
+	source := strings.Replace(
+		string(mustReadFixture(t, "valid-nested.yaml")),
+		"header: x-correlation-id",
+		"header: '  X-Flow-ID  '",
+		1,
+	)
+	loaded, err := Load("custom.yaml", []byte(source))
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+	if loaded.CorrelationHeader != "X-Flow-ID" {
+		t.Fatalf("CorrelationHeader = %q, want X-Flow-ID", loaded.CorrelationHeader)
+	}
+}
+
+func mustReadFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	source, err := testFixtures.ReadFile("testdata/" + name)
+	if err != nil {
+		t.Fatalf("read fixture %q: %v", name, err)
+	}
+	return source
 }
 
 func TestLoadRejectsEmptyAndDuplicateWatchedTopics(t *testing.T) {

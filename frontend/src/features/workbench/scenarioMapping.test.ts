@@ -24,10 +24,10 @@ describe('toLoadedScenario', () => {
     );
 
     expect(scenario.name).toBe('order-flow');
-    expect(scenario.correlationHeader).toBe('x-correlation-id');
     expect(scenario.draft).toMatchObject({
       rootTopic: 'order.created',
       messageKey: '',
+      correlationHeader: 'x-correlation-id',
       captureTimeoutSeconds: '10',
       payload: '{\n  "orderId": "ord_123"\n}',
     });

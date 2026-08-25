@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type SubmitEvent
 import { CheckCircle, DotArrowRight, WarningCircle } from 'iconoir-react';
 import { LoadingDots } from '../../components/LoadingDots';
 import { Modal } from '../../components/Modal';
-import { api } from '../../../wailsjs/go/models';
 import { ComposePanel } from './components/ComposePanel';
 import { FlowPanel } from './components/FlowPanel';
 import { PreviousRunPanel } from './components/PreviousRunPanel';
@@ -11,6 +10,7 @@ import { ScenarioDiagnostics, ScenarioSelectionLoadError } from './components/Sc
 import { areScenarioDraftsEqual } from './draftEditing';
 import { buildFlowViewModel, getRunRecordId } from './flowModel';
 import { formatStatusLabel, isActiveRunStatus } from './runStatus';
+import { toRunRequest } from './runMapping';
 import { useRun } from './useRun';
 import type {
   ComposeEditorTab,
@@ -219,16 +219,7 @@ export function WorkbenchPage({
       return;
     }
 
-    void run.startRun(
-      new api.RunRequest({
-        rootTopic: draft.rootTopic.trim(),
-        messageKey: draft.messageKey,
-        payload: draft.payload,
-        headers: draft.headers.map((header) => ({ key: header.name, value: header.value })),
-        watchedTopics: draft.watchedTopics.map((topic) => topic.name.trim()),
-        captureTimeoutSeconds: Number(draft.captureTimeoutSeconds),
-      }),
-    );
+    void run.startRun(toRunRequest(draft));
   };
 
   const handlePublish = (event: SubmitEvent<HTMLFormElement>) => {

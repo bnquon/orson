@@ -19,10 +19,11 @@ type KafkaClient interface {
 }
 
 type RunRequest struct {
-	RunID          RunID
-	RootMessage    kafka.Message
-	WatchedTopics  []string
-	CaptureTimeout time.Duration
+	RunID             RunID
+	RootMessage       kafka.Message
+	CorrelationHeader string
+	WatchedTopics     []string
+	CaptureTimeout    time.Duration
 }
 
 type CorrelationID string
