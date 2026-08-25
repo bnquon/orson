@@ -183,6 +183,16 @@ func TestAppRejectsOverlappingRuns(t *testing.T) {
 	}
 }
 
+func TestAppRejectsRunWhileScenarioFileOperationOwnsConfiguration(t *testing.T) {
+	app := newApp(&fakeKafkaConnector{})
+	app.scenarioOpMu.Lock()
+	defer app.scenarioOpMu.Unlock()
+
+	if _, _, _, apiErr := app.beginRun(); apiErr == nil || apiErr.Code != scenarioFileBusyCode {
+		t.Fatalf("beginRun() error = %+v, want %q", apiErr, scenarioFileBusyCode)
+	}
+}
+
 func TestAppShutdownWaitsForActiveRunBeforeClosingConnection(t *testing.T) {
 	readStarted := make(chan struct{})
 	active := &fakeKafkaConnection{

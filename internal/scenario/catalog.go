@@ -19,6 +19,22 @@ const (
 	StatusInvalid           Status = "invalid"
 )
 
+type Source string
+
+const (
+	SourceExample Source = "example"
+	SourceLocal   Source = "local"
+)
+
+type LocalStatus string
+
+const (
+	LocalStatusAvailable  LocalStatus = "available"
+	LocalStatusChanged    LocalStatus = "changed"
+	LocalStatusMissing    LocalStatus = "missing"
+	LocalStatusUnreadable LocalStatus = "unreadable"
+)
+
 // Diagnostic is a source-aware issue suitable for displaying in a scenario
 // catalog without preventing other files from loading.
 type Diagnostic struct {
@@ -38,6 +54,9 @@ type Descriptor struct {
 	RelativePath   string
 	FolderPath     string
 	SourceFilename string
+	Source         Source
+	SourcePath     string
+	LocalStatus    LocalStatus
 	Status         Status
 	Warnings       []Warning
 	Diagnostics    []Diagnostic
@@ -203,6 +222,7 @@ func readFailureDescriptor(id string, err error) Descriptor {
 		RelativePath:   id,
 		FolderPath:     folderPath(id),
 		SourceFilename: id,
+		Source:         SourceExample,
 		Status:         StatusInvalid,
 		Warnings:       []Warning{},
 		Diagnostics: []Diagnostic{{
@@ -221,6 +241,7 @@ func describe(id string, source []byte) Descriptor {
 		RelativePath:   id,
 		FolderPath:     folderPath(id),
 		SourceFilename: id,
+		Source:         SourceExample,
 		Status:         StatusInvalid,
 		Warnings:       []Warning{},
 		Diagnostics:    []Diagnostic{},

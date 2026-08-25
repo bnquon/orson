@@ -14,12 +14,32 @@ export function GetConnectionStatus() {
   return window['go']['main']['App']['GetConnectionStatus']();
 }
 
+export function ImportLocalScenario() {
+  return window['go']['main']['App']['ImportLocalScenario']();
+}
+
 export function ListBundledScenarios() {
   return window['go']['main']['App']['ListBundledScenarios']();
 }
 
+export function ListLocalScenarios() {
+  return window['go']['main']['App']['ListLocalScenarios']();
+}
+
 export function LoadBundledScenario(arg1) {
   return window['go']['main']['App']['LoadBundledScenario'](arg1);
+}
+
+export function LoadLocalScenario(arg1) {
+  return window['go']['main']['App']['LoadLocalScenario'](arg1);
+}
+
+export function SaveLocalScenario(arg1, arg2) {
+  return window['go']['main']['App']['SaveLocalScenario'](arg1, arg2);
+}
+
+export function SaveScenarioAs(arg1) {
+  return window['go']['main']['App']['SaveScenarioAs'](arg1);
 }
 
 export function StartRun(arg1) {

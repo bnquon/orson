@@ -27,6 +27,8 @@ function App() {
     (descriptor) => descriptor.status !== 'invalid',
   );
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false);
+  const [examplesExpanded, setExamplesExpanded] = useState(true);
+  const [examplesDismissed, setExamplesDismissed] = useState(false);
   const activeConnection = useMemo(
     () =>
       connection.activeConnection === null
@@ -78,7 +80,8 @@ function App() {
           <WorkbenchPage
             connection={activeConnection}
             scenario={scenario.scenario}
-            scenarios={scenario.descriptors}
+            examples={scenario.examples}
+            localScenarios={scenario.localScenarios}
             selectedScenarioId={scenario.selectedScenarioId}
             selectedDescriptor={scenario.selectedDescriptor}
             selectedLoadError={scenario.selectedLoadError}
@@ -87,7 +90,16 @@ function App() {
               scenario.selectedLoadStatus === 'loading' ? scenario.selectedScenarioId : null
             }
             scenarioCatalogLoading={scenario.catalogStatus === 'loading'}
+            examplesExpanded={examplesExpanded}
+            examplesDismissed={examplesDismissed}
+            onExamplesExpandedChange={setExamplesExpanded}
+            onExamplesDismissedChange={setExamplesDismissed}
+            fileFeedback={scenario.fileFeedback}
             onSelectScenario={(id) => scenario.selectScenario(id)}
+            onImportScenario={() => scenario.importScenario()}
+            onSaveScenario={(draft) => scenario.saveScenario(draft)}
+            onSaveScenarioAs={(draft) => scenario.saveScenarioAs(draft)}
+            onClearFileFeedback={() => scenario.clearFileFeedback()}
             onRetrySelectedScenario={() => scenario.retrySelectedScenario()}
             connectionDialogOpen={connectionDialogOpen}
             onConnectionToggle={() => setConnectionDialogOpen((open) => !open)}

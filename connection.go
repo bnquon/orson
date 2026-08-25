@@ -15,6 +15,7 @@ import (
 
 const connectionBusyCode = "connection_busy"
 const runBusyCode = "run_busy"
+const scenarioFileBusyCode = "scenario_file_busy"
 
 type KafkaConnection interface {
 	run.KafkaClient
@@ -45,9 +46,10 @@ type App struct {
 	cancelRun context.CancelFunc
 	connector KafkaConnector
 
-	lifecycleMu sync.Mutex
-	stateMu     sync.Mutex
-	runWait     sync.WaitGroup
+	lifecycleMu  sync.Mutex
+	scenarioOpMu sync.Mutex
+	stateMu      sync.Mutex
+	runWait      sync.WaitGroup
 
 	activeKafka      KafkaConnection
 	activeConnection *api.ConnectionInfo
@@ -58,6 +60,8 @@ type App struct {
 	latestAttempt    api.ConnectionAttempt
 	emitEvent        runEventEmitter
 	scenarioCatalog  *scenario.Catalog
+	localScenarios   *scenario.LocalRegistry
+	scenarioDialogs  scenarioFileDialogs
 }
 
 func NewApp() *App {
@@ -76,6 +80,7 @@ func newApp(connector KafkaConnector) *App {
 	return &App{
 		connector:       connector,
 		scenarioCatalog: scenario.NewCatalog(bundledScenarioFS),
+		localScenarios:  scenario.NewLocalRegistry(nil),
 		latestAttempt: api.ConnectionAttempt{
 			Status: api.ConnectionStatusDisconnected,
 		},
@@ -283,6 +288,16 @@ func (a *App) GetConnectionStatus() api.ConnectionStatusResponse {
 }
 
 func (a *App) beginRun() (*run.Coordinator, context.Context, run.RunID, *api.APIError) {
+	if !a.scenarioOpMu.TryLock() {
+		return nil, nil, "", api.NewError(
+			scenarioFileBusyCode,
+			"A scenario file operation is in progress.",
+			"Wait for the import or save dialog to finish before publishing.",
+			true,
+		)
+	}
+	defer a.scenarioOpMu.Unlock()
+
 	a.stateMu.Lock()
 	defer a.stateMu.Unlock()
 

@@ -32,6 +32,7 @@ export interface ScenarioDraft {
   rootTopic: string;
   watchedTopics: WatchedTopic[];
   topology: ScenarioTopologyEdge[];
+  configuredTopology: ScenarioTopologyEdge[];
   messageKey: string;
   headers: KafkaHeader[];
   correlationHeader: string;
@@ -39,8 +40,13 @@ export interface ScenarioDraft {
   captureTimeoutSeconds: string;
 }
 
+export type ScenarioSource = 'example' | 'local';
+
+type LocalScenarioStatus = 'available' | 'changed' | 'missing' | 'unreadable';
+
 export interface ScenarioWarning {
   code: string;
+  path?: string;
   message: string;
   sourceFilename: string;
   line: number;
@@ -65,6 +71,9 @@ export interface ScenarioDescriptor {
   relativePath: string;
   folderPath: string;
   sourceFilename: string;
+  source: ScenarioSource;
+  sourcePath: string;
+  localStatus: LocalScenarioStatus | null;
   status: ScenarioDescriptorStatus;
   warnings: ScenarioWarning[];
   diagnostics: ScenarioDiagnostic[];
@@ -76,8 +85,23 @@ export interface LoadedScenario {
   folderPath: string;
   name: string;
   sourceFilename: string;
+  source: ScenarioSource;
+  sourcePath: string;
+  localStatus: LocalScenarioStatus | null;
   draft: ScenarioDraft;
   warnings: ScenarioWarning[];
+}
+
+export type ScenarioFileOperation = 'idle' | 'importing' | 'saving' | 'saving_as';
+
+export type ScenarioFileOperationOutcome = 'succeeded' | 'cancelled' | 'failed';
+
+export interface ScenarioFileFeedback {
+  operation: ScenarioFileOperation;
+  error: ApiError | null;
+  errorOperation: Exclude<ScenarioFileOperation, 'idle'> | null;
+  diagnostics: ScenarioDiagnostic[];
+  successMessage: string | null;
 }
 
 export type ValidatableField =

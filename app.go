@@ -25,9 +25,6 @@ var bundledScenarios embed.FS
 
 var bundledScenarioFS = mustScenarioFS()
 
-// TODO: [Persistence] Add user-owned scenario file discovery and save behavior
-// in a future PR.
-
 func mustScenarioFS() fs.FS {
 	root, err := fs.Sub(bundledScenarios, "scenarios")
 	if err != nil {
@@ -215,6 +212,9 @@ func toAPIScenarioDescriptor(descriptor scenario.Descriptor) api.ScenarioDescrip
 		RelativePath:   descriptor.RelativePath,
 		FolderPath:     descriptor.FolderPath,
 		SourceFilename: descriptor.SourceFilename,
+		Source:         apiScenarioSource(descriptor.Source),
+		SourcePath:     descriptor.SourcePath,
+		LocalStatus:    api.LocalScenarioStatus(descriptor.LocalStatus),
 		Status:         api.ScenarioStatus(descriptor.Status),
 		Warnings:       toAPIWarnings(descriptor.Warnings, descriptor.SourceFilename),
 		Diagnostics:    diagnostics,
@@ -231,24 +231,40 @@ func toAPIScenarioData(id string, loaded scenario.Scenario) api.ScenarioData {
 			To:   edge.To,
 		})
 	}
+	configuredTopology := make([]api.ScenarioTopologyEdge, 0, len(loaded.ConfiguredTopology))
+	for _, edge := range loaded.ConfiguredTopology {
+		configuredTopology = append(configuredTopology, api.ScenarioTopologyEdge{
+			ID:   edge.ID,
+			From: edge.From,
+			To:   edge.To,
+		})
+	}
+	headers := make([]api.Header, 0, len(loaded.Headers))
+	for _, header := range loaded.Headers {
+		headers = append(headers, api.Header{Key: header.Key, Value: header.Value})
+	}
 
 	folder := path.Dir(loaded.SourceFilename)
 	if folder == "." {
 		folder = ""
 	}
 	return api.ScenarioData{
-		ID:                id,
-		RelativePath:      loaded.SourceFilename,
-		FolderPath:        folder,
-		Name:              loaded.Name,
-		SourceFilename:    loaded.SourceFilename,
-		PublishTopic:      loaded.PublishTopic,
-		PublishPayload:    loaded.PublishPayload,
-		WatchedTopics:     append([]string(nil), loaded.WatchedTopics...),
-		CorrelationHeader: loaded.CorrelationHeader,
-		CaptureTimeoutSec: timeoutSeconds,
-		Topology:          topology,
-		Warnings:          toAPIWarnings(loaded.Warnings, loaded.SourceFilename),
+		ID:                 id,
+		RelativePath:       loaded.SourceFilename,
+		FolderPath:         folder,
+		Name:               loaded.Name,
+		SourceFilename:     loaded.SourceFilename,
+		Source:             api.ScenarioSourceExample,
+		PublishTopic:       loaded.PublishTopic,
+		PublishPayload:     loaded.PublishPayload,
+		MessageKey:         loaded.MessageKey,
+		Headers:            headers,
+		WatchedTopics:      append([]string(nil), loaded.WatchedTopics...),
+		CorrelationHeader:  loaded.CorrelationHeader,
+		CaptureTimeoutSec:  timeoutSeconds,
+		Topology:           topology,
+		ConfiguredTopology: configuredTopology,
+		Warnings:           toAPIWarnings(loaded.Warnings, loaded.SourceFilename),
 	}
 }
 
@@ -257,6 +273,7 @@ func toAPIWarnings(source []scenario.Warning, filename string) []api.ScenarioWar
 	for _, warning := range source {
 		warnings = append(warnings, api.ScenarioWarning{
 			Code:           warning.Code,
+			Path:           warning.Path,
 			Message:        warning.Message,
 			SourceFilename: filename,
 			Line:           warning.Line,
@@ -264,6 +281,13 @@ func toAPIWarnings(source []scenario.Warning, filename string) []api.ScenarioWar
 		})
 	}
 	return warnings
+}
+
+func apiScenarioSource(source scenario.Source) api.ScenarioSource {
+	if source == scenario.SourceLocal {
+		return api.ScenarioSourceLocal
+	}
+	return api.ScenarioSourceExample
 }
 
 // StartRun validates and registers a run, then returns its ID before Kafka

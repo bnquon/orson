@@ -8,9 +8,19 @@ export function Disconnect():Promise<api.ConnectionStatusResponse>;
 
 export function GetConnectionStatus():Promise<api.ConnectionStatusResponse>;
 
+export function ImportLocalScenario():Promise<api.ScenarioFileResponse>;
+
 export function ListBundledScenarios():Promise<api.ScenarioListResponse>;
 
+export function ListLocalScenarios():Promise<api.ScenarioListResponse>;
+
 export function LoadBundledScenario(arg1:string):Promise<api.ScenarioResponse>;
+
+export function LoadLocalScenario(arg1:string):Promise<api.ScenarioResponse>;
+
+export function SaveLocalScenario(arg1:string,arg2:api.ScenarioDraft):Promise<api.ScenarioFileResponse>;
+
+export function SaveScenarioAs(arg1:api.ScenarioDraft):Promise<api.ScenarioFileResponse>;
 
 export function StartRun(arg1:api.RunRequest):Promise<api.RunStartResponse>;
 

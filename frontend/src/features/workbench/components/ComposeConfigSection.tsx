@@ -58,6 +58,7 @@ export function ComposeConfigSection({
     setDraft((current) => ({
       ...current,
       topology: renameTopologyTopic(current.topology, previousName, nextName),
+      configuredTopology: renameTopologyTopic(current.configuredTopology, previousName, nextName),
     }));
   };
 
@@ -89,6 +90,7 @@ export function ComposeConfigSection({
     setDraft((current) => ({
       ...current,
       topology: renameTopologyTopic(current.topology, previousName, nextName),
+      configuredTopology: renameTopologyTopic(current.configuredTopology, previousName, nextName),
     }));
   };
 
@@ -114,6 +116,10 @@ export function ComposeConfigSection({
         removedTopic === undefined
           ? current.topology
           : removeTopologyTopic(current.topology, removedTopic.name),
+      configuredTopology:
+        removedTopic === undefined
+          ? current.configuredTopology
+          : removeTopologyTopic(current.configuredTopology, removedTopic.name),
     }));
     focusControl(
       nextTopic === undefined ? 'compose-add-watched-topic' : `watched-topic-${nextTopic.id}`,

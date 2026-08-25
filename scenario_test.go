@@ -43,6 +43,12 @@ func TestLoadBundledScenarioByID(t *testing.T) {
 	if data.CorrelationHeader != "x-correlation-id" {
 		t.Fatalf("CorrelationHeader = %q, want x-correlation-id", data.CorrelationHeader)
 	}
+	if data.Source != "example" || data.SourcePath != "" {
+		t.Fatalf("source = %q / %q, want read-only example without local path", data.Source, data.SourcePath)
+	}
+	if data.MessageKey != "" || len(data.Headers) != 1 || data.Headers[0].Key != "content-type" {
+		t.Fatalf("publish defaults = key %q, headers %+v", data.MessageKey, data.Headers)
+	}
 	if len(data.Warnings) != 0 {
 		t.Fatalf("Warnings = %+v, want none", data.Warnings)
 	}

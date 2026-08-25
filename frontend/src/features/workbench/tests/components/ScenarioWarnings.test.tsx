@@ -1,8 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import { ScenarioRows } from './ScenarioBrowser';
-import { ScenarioDiagnostics } from './ScenarioLoadState';
-import type { ScenarioDescriptor, ScenarioWarning } from '../types';
+import { ScenarioRows } from '../../components/ScenarioBrowser';
+import { ScenarioDiagnostics } from '../../components/ScenarioLoadState';
+import type { ScenarioDescriptor, ScenarioWarning } from '../../types';
 
 const warning: ScenarioWarning = {
   code: 'missing_correlation_header',
@@ -20,6 +20,9 @@ describe('scenario fallback warning visibility', () => {
       relativePath: 'fallback.yaml',
       folderPath: '',
       sourceFilename: 'fallback.yaml',
+      source: 'example',
+      sourcePath: '',
+      localStatus: null,
       status: 'valid_with_warnings',
       warnings: [warning],
       diagnostics: [],
@@ -38,7 +41,7 @@ describe('scenario fallback warning visibility', () => {
       />,
     );
 
-    expect(markup).toContain('fallback, 1 scenario warning, active');
+    expect(markup).toContain('fallback, read-only example, 1 scenario warning, active');
     expect(markup).not.toContain('disabled=""');
   });
 

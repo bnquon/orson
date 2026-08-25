@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { removeTopologyTopic, renameTopologyTopic } from './draftEditing';
-import type { ScenarioTopologyEdge } from './types';
+import { removeTopologyTopic, renameTopologyTopic } from '../draftEditing';
+import type { ScenarioTopologyEdge } from '../types';
 
 const topology: ScenarioTopologyEdge[] = [
   { id: 'order-payment', from: 'order.created', to: 'payment.charged' },

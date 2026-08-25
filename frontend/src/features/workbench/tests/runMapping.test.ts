@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { initialScenario } from './fixtures';
-import { toRunRequest } from './runMapping';
+import { initialScenario } from '../fixtures';
+import { toRunRequest } from '../runMapping';
 
 describe('toRunRequest', () => {
   it('includes the resolved correlation header and normalizes editable names', () => {

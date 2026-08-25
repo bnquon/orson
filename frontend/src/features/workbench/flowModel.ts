@@ -6,6 +6,7 @@ import type {
   TrackedEvent,
 } from './types';
 import { isActiveRunStatus, runFailureStage, terminalRunStatuses } from './runStatus';
+import { isAcyclicTopology } from './topologyValidation';
 
 export type FlowStatus = 'configured' | 'in_progress' | 'completed' | 'unwitnessed' | 'failed';
 
@@ -91,35 +92,6 @@ function normalizedTopologyEdgeId(from: string, to: string): string {
   return `edge:${from}->${to}`;
 }
 
-function isAcyclic(topology: ScenarioTopologyEdge[], topics: Set<string>): boolean {
-  const outgoing = new Map<string, string[]>();
-  const incoming = new Map<string, number>([...topics].map((topic) => [topic, 0]));
-
-  for (const edge of topology) {
-    const targets = outgoing.get(edge.from) ?? [];
-    targets.push(edge.to);
-    outgoing.set(edge.from, targets);
-    incoming.set(edge.to, (incoming.get(edge.to) ?? 0) + 1);
-  }
-
-  const pending = [...topics].filter((topic) => incoming.get(topic) === 0);
-  let visitedCount = 0;
-
-  while (pending.length > 0) {
-    const topic = pending.shift();
-    if (topic === undefined) continue;
-    visitedCount += 1;
-
-    for (const target of outgoing.get(topic) ?? []) {
-      const nextIncoming = (incoming.get(target) ?? 0) - 1;
-      incoming.set(target, nextIncoming);
-      if (nextIncoming === 0) pending.push(target);
-    }
-  }
-
-  return visitedCount === topics.size;
-}
-
 function normalizedTopology(
   rootTopic: string,
   watchedTopics: string[],
@@ -162,7 +134,7 @@ function normalizedTopology(
 
   // A cyclic topology cannot be represented by the current forward-only layout.
   // Keep the nodes visible, but avoid rendering a misleading partial topology.
-  return isAcyclic(normalizedEdges, availableTopics) ? normalizedEdges : [];
+  return isAcyclicTopology(normalizedEdges, availableTopics) ? normalizedEdges : [];
 }
 
 function trackedFor(topic: string, trackedEvents: TrackedEvent[]): TrackedEvent | undefined {
@@ -320,7 +292,7 @@ function recordsForTopic(
 export function buildFlowViewModel(draft: ScenarioDraft, run: RunState): FlowViewModel {
   const { rootTopic, watchedTopics } = normalizedTopics(draft);
   const topics = rootTopic === '' ? watchedTopics : [rootTopic, ...watchedTopics];
-  const topology = normalizedTopology(rootTopic, watchedTopics, draft.topology);
+  const topology = normalizedTopology(rootTopic, watchedTopics, draft.configuredTopology);
   const layouts = layoutsFor(topics, topology);
   const hasRun = run.runId !== null;
   const actualRootRecord = run.rootRecord;

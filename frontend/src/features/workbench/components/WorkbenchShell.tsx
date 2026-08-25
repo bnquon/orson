@@ -1,8 +1,6 @@
-import { NavArrowDown, WarningCircle } from 'iconoir-react';
+import { NavArrowDown } from 'iconoir-react';
 import type { ReactNode } from 'react';
-import type { KafkaConnection, ScenarioDescriptor, WorkspaceMode } from '../types';
-import { ScenarioBrowser } from './ScenarioBrowser';
-import { handleTabListKeyDown } from './tabKeyboard';
+import type { KafkaConnection, WorkspaceMode } from '../types';
 import orsonIcon from '../../../assets/orson-icon.png';
 import '../styles/shell.css';
 
@@ -11,50 +9,30 @@ import '../styles/shell.css';
 
 interface WorkbenchShellProps {
   connection: KafkaConnection;
-  scenarioName: string;
-  scenarioRootTopic: string;
-  scenarioWarningCount: number;
-  scenarioWarningsDismissed: boolean;
-  onRestoreScenarioWarnings: () => void;
-  scenarios: ScenarioDescriptor[];
-  selectedScenarioId: string | null;
-  activeScenarioId: string;
-  scenarioLoadingId: string | null;
-  scenarioCatalogLoading: boolean;
-  scenarioSelectionDisabled: boolean;
-  onSelectScenario: (id: string) => void;
   connectionDialogOpen: boolean;
-  mode: WorkspaceMode;
-  onModeChange: (mode: WorkspaceMode) => void;
   onConnectionToggle: () => void;
-  action: ReactNode;
+  sidebar: ReactNode;
+  toolbar: ReactNode;
   workspace: ReactNode;
+  workspaceMode: WorkspaceMode;
+  workspaceInert: boolean;
   previousRun: ReactNode;
   runStatus: string;
+  statusDetail: string;
 }
 
 export function WorkbenchShell({
   connection,
-  scenarioName,
-  scenarioRootTopic,
-  scenarioWarningCount,
-  scenarioWarningsDismissed,
-  onRestoreScenarioWarnings,
-  scenarios,
-  selectedScenarioId,
-  activeScenarioId,
-  scenarioLoadingId,
-  scenarioCatalogLoading,
-  scenarioSelectionDisabled,
-  onSelectScenario,
   connectionDialogOpen,
-  mode,
-  onModeChange,
   onConnectionToggle,
-  action,
+  sidebar,
+  toolbar,
   workspace,
+  workspaceMode,
+  workspaceInert,
   previousRun,
   runStatus,
+  statusDetail,
 }: WorkbenchShellProps) {
   const brokerSummary =
     connection.brokers.length > 1
@@ -93,87 +71,26 @@ export function WorkbenchShell({
       </header>
 
       <div className="workbench-layout">
-        <ScenarioBrowser
-          scenarios={scenarios}
-          selectedScenarioId={selectedScenarioId}
-          activeScenarioId={activeScenarioId}
-          scenarioLoadingId={scenarioLoadingId}
-          scenarioCatalogLoading={scenarioCatalogLoading}
-          scenarioSelectionDisabled={scenarioSelectionDisabled}
-          onSelectScenario={onSelectScenario}
-        />
-
+        {sidebar}
         <main className="workbench-main">
-          <div className="workspace-toolbar">
-            <div className="workspace-toolbar__left">
-              <div
-                className="mode-switch"
-                role="tablist"
-                aria-label="Scenario view"
-                data-active-mode={mode}
-              >
-                <button
-                  className={`mode-switch__button ${mode === 'compose' ? 'mode-switch__button--active' : ''}`}
-                  type="button"
-                  role="tab"
-                  id="workspace-mode-tab-compose"
-                  tabIndex={mode === 'compose' ? 0 : -1}
-                  aria-selected={mode === 'compose'}
-                  aria-controls="workspace-view"
-                  onClick={() => onModeChange('compose')}
-                  onKeyDown={handleTabListKeyDown}
-                >
-                  Compose
-                </button>
-                <button
-                  className={`mode-switch__button ${mode === 'flow' ? 'mode-switch__button--active' : ''}`}
-                  type="button"
-                  role="tab"
-                  id="workspace-mode-tab-flow"
-                  tabIndex={mode === 'flow' ? 0 : -1}
-                  aria-selected={mode === 'flow'}
-                  aria-controls="workspace-view"
-                  onClick={() => onModeChange('flow')}
-                  onKeyDown={handleTabListKeyDown}
-                >
-                  Flow
-                </button>
-              </div>
-              <div className="workspace-toolbar__scenario">
-                <strong>{scenarioName}</strong>
-                <small>{scenarioRootTopic}</small>
-              </div>
-              {scenarioWarningCount > 0 && scenarioWarningsDismissed ? (
-                <button
-                  className="scenario-warning-indicator"
-                  type="button"
-                  aria-label={`Show ${scenarioWarningCount} scenario warning${scenarioWarningCount === 1 ? '' : 's'}`}
-                  title="Show scenario warnings"
-                  onClick={onRestoreScenarioWarnings}
-                >
-                  <WarningCircle width={16} height={16} />
-                </button>
-              ) : null}
-            </div>
-            <div className="workspace-toolbar__action">{action}</div>
-          </div>
+          {toolbar}
           <div
             className="workspace-view"
             id="workspace-view"
             role="tabpanel"
-            aria-labelledby={`workspace-mode-tab-${mode}`}
-            key={mode}
+            aria-labelledby={`workspace-mode-tab-${workspaceMode}`}
+            inert={workspaceInert}
+            key={workspaceMode}
           >
             {workspace}
           </div>
         </main>
-
         {previousRun}
       </div>
 
       <footer className="workbench-statusbar">
         <span>Capture {runStatus}</span>
-        <span>Scenario changes stay local</span>
+        <span>{statusDetail}</span>
       </footer>
     </div>
   );

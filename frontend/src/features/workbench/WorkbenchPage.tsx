@@ -1,22 +1,31 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type SubmitEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type SubmitEvent } from 'react';
 import { CheckCircle, DotArrowRight, WarningCircle } from 'iconoir-react';
 import { LoadingDots } from '../../components/LoadingDots';
 import { Modal } from '../../components/Modal';
+import { Toast } from '../../components/Toast';
 import { ComposePanel } from './components/ComposePanel';
 import { FlowPanel } from './components/FlowPanel';
 import { PreviousRunPanel } from './components/PreviousRunPanel';
+import { ScenarioBrowser } from './components/ScenarioBrowser';
+import { ScenarioFileActions } from './components/ScenarioFileActions';
 import { WorkbenchShell } from './components/WorkbenchShell';
-import { ScenarioDiagnostics, ScenarioSelectionLoadError } from './components/ScenarioLoadState';
-import { areScenarioDraftsEqual } from './draftEditing';
+import { WorkspaceToolbar } from './components/WorkspaceToolbar';
+import {
+  ScenarioDiagnostics,
+  ScenarioFileOperationError,
+  ScenarioSelectionLoadError,
+} from './components/ScenarioLoadState';
 import { buildFlowViewModel, getRunRecordId } from './flowModel';
 import { formatStatusLabel, isActiveRunStatus } from './runStatus';
 import { toRunRequest } from './runMapping';
+import type { ScenarioDraftData } from './scenarioMapping';
+import { useScenarioDraftSession } from './scenarioDraftSession';
+import { useScenarioFileOperations } from './useScenarioFileOperations';
 import { useRun } from './useRun';
 import type {
   ComposeEditorTab,
   EventRecord,
   KafkaConnection,
-  ScenarioDraft,
   TouchedState,
   ValidatableField,
   WorkspaceMode,
@@ -24,6 +33,8 @@ import type {
   LoadedScenario,
   ScenarioDescriptor,
   ScenarioDiagnostic,
+  ScenarioFileFeedback,
+  ScenarioFileOperationOutcome,
 } from './types';
 import type { ApiError } from '../../api/result';
 import { getJsonError, validateScenario } from './validation';
@@ -55,14 +66,24 @@ function toObservedEvent(runId: string, record: EventRecord, isRoot: boolean): O
 interface WorkbenchPageProps {
   connection: KafkaConnection;
   scenario: LoadedScenario;
-  scenarios: ScenarioDescriptor[];
+  examples: ScenarioDescriptor[];
+  localScenarios: ScenarioDescriptor[];
   selectedScenarioId: string | null;
   selectedDescriptor: ScenarioDescriptor | null;
   selectedLoadError: ApiError | null;
   selectedDiagnostics: ScenarioDiagnostic[];
   scenarioLoadingId: string | null;
   scenarioCatalogLoading: boolean;
+  examplesExpanded: boolean;
+  examplesDismissed: boolean;
+  onExamplesExpandedChange: (expanded: boolean) => void;
+  onExamplesDismissedChange: (dismissed: boolean) => void;
+  fileFeedback: ScenarioFileFeedback;
   onSelectScenario: (id: string) => Promise<void>;
+  onImportScenario: () => Promise<ScenarioFileOperationOutcome>;
+  onSaveScenario: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
+  onSaveScenarioAs: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
+  onClearFileFeedback: () => void;
   onRetrySelectedScenario: () => Promise<void>;
   connectionDialogOpen: boolean;
   onConnectionToggle: () => void;
@@ -71,24 +92,34 @@ interface WorkbenchPageProps {
 export function WorkbenchPage({
   connection,
   scenario,
-  scenarios,
+  examples,
+  localScenarios,
   selectedScenarioId,
   selectedDescriptor,
   selectedLoadError,
   selectedDiagnostics,
   scenarioLoadingId,
   scenarioCatalogLoading,
+  examplesExpanded,
+  examplesDismissed,
+  onExamplesExpandedChange,
+  onExamplesDismissedChange,
+  fileFeedback,
   onSelectScenario,
+  onImportScenario,
+  onSaveScenario,
+  onSaveScenarioAs,
+  onClearFileFeedback,
   onRetrySelectedScenario,
   connectionDialogOpen,
   onConnectionToggle,
 }: WorkbenchPageProps) {
   const [mode, setMode] = useState<WorkspaceMode>('compose');
-  const [draft, setDraft] = useState<ScenarioDraft>(() => scenario.draft);
+  const { draft, savedDraft, setDraft, markSaveStarted, markSaveFailed } =
+    useScenarioDraftSession(scenario);
   const [activeEditorTab, setActiveEditorTab] = useState<ComposeEditorTab>('payload');
   const [touched, setTouched] = useState<TouchedState>(initialTouched);
   const [publishAttempted, setPublishAttempted] = useState(false);
-  const [pendingScenarioId, setPendingScenarioId] = useState<string | null>(null);
   const [composeConfigHeight, setComposeConfigHeight] = useState<number | null>(null);
   const scenarioIdentity = scenario.id;
   const [warningDismissal, setWarningDismissal] = useState({
@@ -103,25 +134,19 @@ export function WorkbenchPage({
   const run = useRun();
   const previousScenarioIdRef = useRef(scenario.id);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (previousScenarioIdRef.current === scenario.id) return;
-
     previousScenarioIdRef.current = scenario.id;
-    setDraft(scenario.draft);
+
     setMode('compose');
     setActiveEditorTab('payload');
     setTouched(initialTouched);
     setPublishAttempted(false);
-    setPendingScenarioId(null);
     setComposeConfigHeight(null);
     setWarningDismissal({ scenarioIdentity: scenario.id, dismissed: false });
     rootTopicEditRef.current = null;
-    setJsonValidation({
-      payload: scenario.draft.payload,
-      error: getJsonError(scenario.draft.payload),
-    });
     run.resetRun();
-  }, [run, scenario.draft, scenario.id]);
+  }, [run, scenario.id]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -135,8 +160,6 @@ export function WorkbenchPage({
     warningDismissal.scenarioIdentity === scenarioIdentity && warningDismissal.dismissed;
   const dismissScenarioWarnings = () => setWarningDismissal({ scenarioIdentity, dismissed: true });
   const restoreScenarioWarnings = () => setWarningDismissal({ scenarioIdentity, dismissed: false });
-  const draftIsDirty = !areScenarioDraftsEqual(draft, scenario.draft);
-
   const jsonValidationPending = jsonValidation.payload !== draft.payload;
   const validation = useMemo(
     () => validateScenario(draft, connection, jsonValidation.error),
@@ -157,6 +180,28 @@ export function WorkbenchPage({
   const flowModel = useMemo(() => buildFlowViewModel(draft, run.state), [draft, run.state]);
   const selectedEvent =
     liveRun.events.find((event) => event.id === run.state.selectedRecordId) ?? null;
+  const isRunActive = isActiveRunStatus(run.state.status);
+  const scenarioSelectionLoading = scenarioLoadingId !== null;
+  const fileOperations = useScenarioFileOperations({
+    scenario,
+    examples,
+    localScenarios,
+    selectedScenarioId,
+    draft,
+    savedDraft,
+    jsonError: jsonValidation.error,
+    jsonValidationPending,
+    runActive: isRunActive,
+    scenarioSelectionLoading,
+    fileFeedback,
+    markSaveStarted,
+    markSaveFailed,
+    onSelectScenario,
+    onImportScenario,
+    onSaveScenario,
+    onSaveScenarioAs,
+    onClearFileFeedback,
+  });
 
   const touchField = (field: ValidatableField) => {
     setTouched((current) => ({
@@ -184,6 +229,7 @@ export function WorkbenchPage({
   };
 
   const publishRun = () => {
+    if (fileOperations.fileBusy || scenarioSelectionLoading) return;
     const currentJsonError = getJsonError(draft.payload);
     const currentValidation = validateScenario(draft, connection, currentJsonError);
 
@@ -227,28 +273,26 @@ export function WorkbenchPage({
     publishRun();
   };
 
-  const requestScenarioSelection = (id: string) => {
-    if (isRunActive) return;
-    if (id === scenario.id) {
-      if (selectedScenarioId !== id) void onSelectScenario(id);
-      return;
-    }
-    const descriptor = scenarios.find((item) => item.id === id);
-    if (descriptor?.status !== 'invalid' && draftIsDirty) {
-      setPendingScenarioId(id);
-      return;
-    }
-    void onSelectScenario(id);
-  };
-
-  const confirmScenarioSelection = () => {
-    if (pendingScenarioId === null) return;
-    const nextId = pendingScenarioId;
-    setPendingScenarioId(null);
-    void onSelectScenario(nextId);
-  };
-
-  const isRunActive = isActiveRunStatus(run.state.status);
+  const fileActions = (
+    <ScenarioFileActions
+      source={scenario.source}
+      sourceFilename={scenario.sourceFilename}
+      dirty={fileOperations.draftIsDirty}
+      saveDisabled={fileOperations.saveDisabled}
+      saveAsDisabled={fileOperations.saveDisabled}
+      saveDisabledReason={fileOperations.saveDisabledReason}
+      saveAsDisabledReason={fileOperations.saveAsDisabledReason}
+      operation={fileFeedback.operation}
+      onSave={() => void fileOperations.saveDraft()}
+      onSaveAs={() => void fileOperations.saveDraftAs()}
+    />
+  );
+  let publishTitle = `Publish to ${connection.name} · ${connection.brokers.join(', ')}`;
+  if (fileOperations.fileBusy) {
+    publishTitle = 'Wait for the scenario file operation to finish';
+  } else if (scenarioSelectionLoading) {
+    publishTitle = 'Wait for the selected scenario to finish loading';
+  }
   const publishAction = isRunActive ? (
     <button
       className="publish-button publish-button--stop"
@@ -282,15 +326,66 @@ export function WorkbenchPage({
         type={mode === 'compose' ? 'submit' : 'button'}
         form={mode === 'compose' ? 'compose-form' : undefined}
         onClick={mode === 'flow' ? publishRun : undefined}
-        title={`Publish to ${connection.name} · ${connection.brokers.join(', ')}`}
+        disabled={fileOperations.fileBusy || scenarioSelectionLoading}
+        title={publishTitle}
       >
         Publish <DotArrowRight width={20} height={20} strokeWidth={1.5} />
       </button>
     </>
   );
 
+  const scenarioSidebar = (
+    <ScenarioBrowser
+      examples={examples}
+      localScenarios={localScenarios}
+      selectedScenarioId={selectedScenarioId}
+      activeScenarioId={scenario.id}
+      scenarioLoadingId={scenarioLoadingId}
+      scenarioCatalogLoading={scenarioCatalogLoading}
+      examplesExpanded={examplesExpanded}
+      examplesDismissed={examplesDismissed}
+      onExamplesExpandedChange={onExamplesExpandedChange}
+      onExamplesDismissedChange={onExamplesDismissedChange}
+      scenarioSelectionDisabled={fileOperations.scenarioSelectionDisabled}
+      activeScenarioDirty={fileOperations.draftIsDirty}
+      fileOperation={fileFeedback.operation}
+      fileError={fileFeedback.error}
+      fileErrorOperation={fileFeedback.errorOperation}
+      fileActions={fileActions}
+      onSelectScenario={fileOperations.requestScenarioSelection}
+      onImportScenario={fileOperations.requestImport}
+    />
+  );
+  const workspaceToolbar = (
+    <WorkspaceToolbar
+      mode={mode}
+      onModeChange={setMode}
+      scenario={{
+        name: scenario.name,
+        rootTopic: draft.rootTopic,
+        source: scenario.source,
+        sourceFilename: scenario.sourceFilename,
+        sourcePath: scenario.sourcePath,
+        dirty: fileOperations.draftIsDirty,
+      }}
+      warnings={{
+        count: scenario.warnings.length,
+        dismissed: scenarioWarningsDismissed,
+        onRestore: restoreScenarioWarnings,
+      }}
+      action={publishAction}
+    />
+  );
+
   const scenarioDiagnostics = (
     <>
+      {fileFeedback.error ? (
+        <ScenarioFileOperationError
+          error={fileFeedback.error}
+          diagnostics={fileFeedback.diagnostics}
+          onDismiss={fileOperations.clearFileFeedback}
+        />
+      ) : null}
       <ScenarioDiagnostics
         warnings={scenario.warnings}
         sourceFilename={scenario.sourceFilename}
@@ -312,23 +407,12 @@ export function WorkbenchPage({
     <>
       <WorkbenchShell
         connection={connection}
-        scenarioName={scenario.name}
-        scenarioRootTopic={scenario.draft.rootTopic}
-        scenarioWarningCount={scenario.warnings.length}
-        scenarioWarningsDismissed={scenarioWarningsDismissed}
-        onRestoreScenarioWarnings={restoreScenarioWarnings}
-        scenarios={scenarios}
-        selectedScenarioId={selectedScenarioId}
-        activeScenarioId={scenario.id}
-        scenarioLoadingId={scenarioLoadingId}
-        scenarioCatalogLoading={scenarioCatalogLoading}
-        scenarioSelectionDisabled={isRunActive || pendingScenarioId !== null}
-        onSelectScenario={requestScenarioSelection}
         connectionDialogOpen={connectionDialogOpen}
-        mode={mode}
-        onModeChange={setMode}
         onConnectionToggle={onConnectionToggle}
-        action={publishAction}
+        sidebar={scenarioSidebar}
+        toolbar={workspaceToolbar}
+        workspaceMode={mode}
+        workspaceInert={fileFeedback.operation === 'importing'}
         workspace={
           mode === 'compose' ? (
             <>
@@ -372,25 +456,41 @@ export function WorkbenchPage({
           />
         }
         runStatus={formatStatusLabel(run.state.status)}
+        statusDetail={
+          scenario.source === 'local'
+            ? 'Imported files are remembered for this session'
+            : 'Examples are read-only'
+        }
       />
+      {fileFeedback.successMessage ? (
+        <Toast
+          message={fileFeedback.successMessage}
+          tone="success"
+          onDismiss={fileOperations.clearFileFeedback}
+        />
+      ) : null}
       <Modal
-        open={pendingScenarioId !== null}
+        open={fileOperations.pendingScenarioAction !== null}
         title="Discard local changes?"
-        description="Switching scenarios will replace the current editable draft."
-        onClose={() => setPendingScenarioId(null)}
+        description={
+          fileOperations.pendingScenarioAction?.kind === 'import'
+            ? 'Importing another file will replace the current editable draft if it succeeds.'
+            : 'Switching scenarios will replace the current editable draft.'
+        }
+        onClose={fileOperations.cancelPendingScenarioAction}
         footer={
           <div className="scenario-switch-actions">
             <button
               type="button"
               className="connection-secondary-button"
-              onClick={() => setPendingScenarioId(null)}
+              onClick={fileOperations.cancelPendingScenarioAction}
             >
               Cancel
             </button>
             <button
               type="button"
               className="scenario-discard-button"
-              onClick={confirmScenarioSelection}
+              onClick={fileOperations.confirmPendingScenarioAction}
             >
               Discard changes
             </button>
@@ -398,8 +498,11 @@ export function WorkbenchPage({
         }
       >
         <p className="scenario-switch-copy">
-          Any edits to <strong>{scenario.name}</strong> will be lost. The bundled YAML file remains
-          unchanged.
+          Any unsaved edits to <strong>{scenario.name}</strong> will be lost after the next scenario
+          loads successfully.{' '}
+          {scenario.source === 'example'
+            ? 'The example file remains unchanged.'
+            : 'The file on disk remains unchanged.'}
         </p>
       </Modal>
     </>
