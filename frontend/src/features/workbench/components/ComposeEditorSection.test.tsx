@@ -7,6 +7,7 @@ const draft: ScenarioDraft = {
   rootTopic: 'order.created',
   watchedTopics: [],
   topology: [],
+  configuredTopology: [],
   messageKey: '',
   headers: [
     {

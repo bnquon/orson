@@ -1,4 +1,5 @@
 import type { KafkaConnection, ScenarioDraft, ValidatableField, ValidationResult } from './types';
+import { hasActiveTopologyCycle } from './topologyValidation';
 
 export function getJsonError(payload: string): string | null {
   if (payload.trim().length === 0) {
@@ -18,11 +19,38 @@ export function validateScenario(
   connection: KafkaConnection,
   payloadError: string | null = getJsonError(draft.payload),
 ): ValidationResult {
+  return validateScenarioFields(draft, payloadError, connection.status === 'connected');
+}
+
+export function validateScenarioDraft(
+  draft: ScenarioDraft,
+  payloadError: string | null = getJsonError(draft.payload),
+): ValidationResult {
+  const result = validateScenarioFields(draft, payloadError, true);
+  if (!hasActiveTopologyCycle(draft)) return result;
+
+  return {
+    ...result,
+    fieldErrors: {
+      ...result.fieldErrors,
+      watchedTopics:
+        'The configured topology contains a cycle. Remove the watched topic that activates it.',
+    },
+    issueCount: result.issueCount + (result.fieldErrors.watchedTopics === undefined ? 1 : 0),
+    firstInvalidControlId: result.firstInvalidControlId ?? 'compose-add-watched-topic',
+  };
+}
+
+function validateScenarioFields(
+  draft: ScenarioDraft,
+  payloadError: string | null,
+  connectionAvailable: boolean,
+): ValidationResult {
   const fieldErrors: Partial<Record<ValidatableField, string>> = {};
   const watchedTopicErrors: Record<string, string> = {};
   const headerErrors: Record<string, string> = {};
 
-  if (connection.status !== 'connected') {
+  if (!connectionAvailable) {
     fieldErrors.connection = 'Connect the active workspace before publishing.';
   }
 

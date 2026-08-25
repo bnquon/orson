@@ -1,7 +1,16 @@
-import { useMemo, useState } from 'react';
-import { CheckCircle, MoreHoriz, NavArrowDown, Search, WarningCircle } from 'iconoir-react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
+import {
+  CheckCircle,
+  EmptyPage,
+  MoreHoriz,
+  NavArrowDown,
+  Plus,
+  Search,
+  WarningCircle,
+  Xmark,
+} from 'iconoir-react';
 import { LoadingDots } from '../../../components/LoadingDots';
-import type { ScenarioDescriptor } from '../types';
+import type { ApiError, ScenarioDescriptor, ScenarioFileOperation } from '../types';
 import {
   buildScenarioTree,
   getScenarioTreeFolderPaths,
@@ -9,28 +18,57 @@ import {
 } from '../scenarioTree';
 
 interface ScenarioBrowserProps {
-  scenarios: ScenarioDescriptor[];
+  examples: ScenarioDescriptor[];
+  localScenarios: ScenarioDescriptor[];
   selectedScenarioId: string | null;
   activeScenarioId: string;
   scenarioLoadingId: string | null;
   scenarioCatalogLoading: boolean;
+  examplesExpanded?: boolean;
+  examplesDismissed?: boolean;
+  onExamplesExpandedChange?: (expanded: boolean) => void;
+  onExamplesDismissedChange?: (dismissed: boolean) => void;
   scenarioSelectionDisabled: boolean;
+  activeScenarioDirty: boolean;
+  fileOperation: ScenarioFileOperation;
+  fileError: ApiError | null;
+  fileErrorOperation: Exclude<ScenarioFileOperation, 'idle'> | null;
+  fileActions: ReactNode;
   onSelectScenario: (id: string) => void;
+  onImportScenario: () => void;
 }
 
 function ScenarioStatusMark({ descriptor }: { descriptor: ScenarioDescriptor }) {
-  if (descriptor.status === 'invalid' || descriptor.status === 'valid_with_warnings') {
+  if (
+    descriptor.status === 'invalid' ||
+    descriptor.status === 'valid_with_warnings' ||
+    (descriptor.source === 'local' && descriptor.localStatus !== 'available')
+  ) {
     return <WarningCircle width={14} height={14} aria-hidden="true" />;
   }
   return <CheckCircle width={14} height={14} aria-hidden="true" />;
 }
 
 function statusLabel(descriptor: ScenarioDescriptor): string {
+  if (descriptor.localStatus === 'changed') return 'File changed outside Orson';
+  if (descriptor.localStatus === 'missing') return 'File is missing';
+  if (descriptor.localStatus === 'unreadable') return 'File cannot be read';
   if (descriptor.status === 'invalid') return 'Invalid scenario';
   if (descriptor.status === 'valid_with_warnings') {
     return `${descriptor.warnings.length} scenario warning${descriptor.warnings.length === 1 ? '' : 's'}`;
   }
   return 'Valid scenario';
+}
+
+function statusTone(descriptor: ScenarioDescriptor): 'valid' | 'warning' | 'invalid' {
+  if (descriptor.status === 'invalid') return 'invalid';
+  if (
+    descriptor.status === 'valid_with_warnings' ||
+    (descriptor.source === 'local' && descriptor.localStatus !== 'available')
+  ) {
+    return 'warning';
+  }
+  return 'valid';
 }
 
 function FolderIcon({ open }: { open: boolean }) {
@@ -88,26 +126,26 @@ export function ScenarioRows({
     <>
       {scenarios.map((descriptor) => {
         const isActive = descriptor.id === activeScenarioId;
-        const isSelectedInvalid =
-          descriptor.id === selectedScenarioId && descriptor.status === 'invalid';
+        const isSelected = descriptor.id === selectedScenarioId;
+        const isSelectedInvalid = isSelected && descriptor.status === 'invalid';
         const disabled = selectionDisabled || scenarioLoadingId !== null;
         return (
           <button
-            className={`scenario-row scenario-row--scenario ${isActive ? 'scenario-row--active' : ''} ${isSelectedInvalid ? 'scenario-row--invalid-selected' : ''}`}
+            className={`scenario-row scenario-row--scenario ${isActive ? 'scenario-row--active' : ''} ${isSelected && !isActive ? 'scenario-row--selected' : ''} ${isSelectedInvalid ? 'scenario-row--invalid-selected' : ''}`}
             type="button"
             key={descriptor.id}
             style={{ paddingLeft: `${26 + depth * 14}px` }}
             tabIndex={visible ? undefined : -1}
             aria-current={isActive ? 'page' : undefined}
-            aria-label={`${descriptor.displayName}, ${statusLabel(descriptor)}${isActive ? ', active' : ''}`}
-            title={`${descriptor.relativePath} · ${statusLabel(descriptor)}`}
+            aria-label={`${descriptor.displayName}, read-only example, ${statusLabel(descriptor)}${isActive ? ', active' : ''}`}
+            title={`${descriptor.relativePath} · Read-only example · ${statusLabel(descriptor)}`}
             disabled={disabled}
             onClick={() => onSelectScenario(descriptor.id)}
           >
             <span className="scenario-row__kind">YAML</span>
             <span className="scenario-row__name">{descriptor.displayName}</span>
             <span
-              className={`scenario-row__status scenario-row__status--${descriptor.status}`}
+              className={`scenario-row__status scenario-row__status--${statusTone(descriptor)}`}
               aria-label={statusLabel(descriptor)}
             >
               {scenarioLoadingId === descriptor.id ? (
@@ -173,28 +211,159 @@ export function ScenarioRows({
   );
 }
 
+interface SectionLabelProps {
+  label: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  onDismiss?: () => void;
+}
+
+function SectionLabel({ label, count, expanded, onToggle, onDismiss }: SectionLabelProps) {
+  return (
+    <div className="scenario-sidebar__label">
+      <button type="button" className="scenario-section-toggle" onClick={onToggle}>
+        <NavArrowDown
+          className={expanded ? '' : 'scenario-section-toggle__chevron--collapsed'}
+          width={14}
+          height={14}
+        />
+        <span>{label}</span>
+        <span className="scenario-row__count">{count}</span>
+      </button>
+      {onDismiss ? (
+        <button
+          type="button"
+          className="scenario-section-dismiss"
+          aria-label={`Hide ${label}`}
+          title={`Hide ${label} for this session`}
+          onClick={onDismiss}
+        >
+          <Xmark width={13} height={13} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function LocalScenarioRow({
+  descriptor,
+  selectedScenarioId,
+  activeScenarioId,
+  scenarioLoadingId,
+  selectionDisabled,
+  activeScenarioDirty,
+  hasSaveError,
+  onSelectScenario,
+}: {
+  descriptor: ScenarioDescriptor;
+  selectedScenarioId: string | null;
+  activeScenarioId: string;
+  scenarioLoadingId: string | null;
+  selectionDisabled: boolean;
+  activeScenarioDirty: boolean;
+  hasSaveError: boolean;
+  onSelectScenario: (id: string) => void;
+}) {
+  const isActive = descriptor.id === activeScenarioId;
+  const isSelected = descriptor.id === selectedScenarioId;
+  const rowStatus = hasSaveError
+    ? 'Save failed'
+    : isActive && activeScenarioDirty
+      ? 'Unsaved changes'
+      : statusLabel(descriptor);
+  return (
+    <button
+      className={`scenario-row scenario-row--scenario scenario-row--local ${isActive ? 'scenario-row--active' : ''} ${isSelected && !isActive ? 'scenario-row--selected' : ''} ${descriptor.status === 'invalid' && isSelected ? 'scenario-row--invalid-selected' : ''} ${hasSaveError ? 'scenario-row--save-error' : ''}`}
+      type="button"
+      aria-current={isActive ? 'page' : undefined}
+      aria-label={`${descriptor.sourceFilename}, local file, ${rowStatus}${isActive ? ', active' : ''}`}
+      title={`${descriptor.sourcePath || descriptor.sourceFilename} · ${rowStatus}`}
+      disabled={selectionDisabled || scenarioLoadingId !== null}
+      onClick={() => onSelectScenario(descriptor.id)}
+    >
+      <EmptyPage width={14} height={14} className="scenario-row__file" aria-hidden="true" />
+      <span className="scenario-row__name">{descriptor.sourceFilename}</span>
+      {isActive && activeScenarioDirty ? (
+        <span className="scenario-row__dirty" aria-hidden="true" />
+      ) : null}
+      <span
+        className={`scenario-row__status scenario-row__status--${hasSaveError ? 'invalid' : statusTone(descriptor)}`}
+        aria-label={rowStatus}
+      >
+        {scenarioLoadingId === descriptor.id ? (
+          <LoadingDots size="inline" />
+        ) : hasSaveError ? (
+          <WarningCircle width={14} height={14} aria-hidden="true" />
+        ) : (
+          <ScenarioStatusMark descriptor={descriptor} />
+        )}
+      </span>
+    </button>
+  );
+}
+
 export function ScenarioBrowser({
-  scenarios,
+  examples,
+  localScenarios,
   selectedScenarioId,
   activeScenarioId,
   scenarioLoadingId,
   scenarioCatalogLoading,
+  examplesExpanded: controlledExamplesExpanded,
+  examplesDismissed: controlledExamplesDismissed,
+  onExamplesExpandedChange,
+  onExamplesDismissedChange,
   scenarioSelectionDisabled,
+  activeScenarioDirty,
+  fileOperation,
+  fileError,
+  fileErrorOperation,
+  fileActions,
   onSelectScenario,
+  onImportScenario,
 }: ScenarioBrowserProps) {
   const [searchQuery, setSearchQuery] = useState('');
-  const tree = useMemo(() => buildScenarioTree(scenarios, searchQuery), [scenarios, searchQuery]);
+  const [internalExamplesExpanded, setInternalExamplesExpanded] = useState(true);
+  const [internalExamplesDismissed, setInternalExamplesDismissed] = useState(false);
+  const [localsExpanded, setLocalsExpanded] = useState(true);
+  const importDisabledDescriptionId = useId();
+  const examplesExpanded = controlledExamplesExpanded ?? internalExamplesExpanded;
+  const examplesDismissed = controlledExamplesDismissed ?? internalExamplesDismissed;
+  const setExamplesExpanded = (expanded: boolean) => {
+    if (controlledExamplesExpanded === undefined) setInternalExamplesExpanded(expanded);
+    onExamplesExpandedChange?.(expanded);
+  };
+  const setExamplesDismissed = (dismissed: boolean) => {
+    if (controlledExamplesDismissed === undefined) setInternalExamplesDismissed(dismissed);
+    onExamplesDismissedChange?.(dismissed);
+  };
+  const tree = useMemo(() => buildScenarioTree(examples, searchQuery), [examples, searchQuery]);
+  const matchingLocals = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    if (query === '') return localScenarios;
+    return localScenarios.filter((descriptor) =>
+      `${descriptor.sourceFilename} ${descriptor.displayName}`.toLocaleLowerCase().includes(query),
+    );
+  }, [localScenarios, searchQuery]);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
   const searchActive = searchQuery.trim() !== '';
   const expandedFolders = useMemo(() => {
     const availableFolders = getScenarioTreeFolderPaths(tree);
     if (searchActive) return availableFolders;
 
-    for (const folderPath of collapsedFolders) {
-      availableFolders.delete(folderPath);
-    }
+    for (const folderPath of collapsedFolders) availableFolders.delete(folderPath);
     return availableFolders;
   }, [collapsedFolders, searchActive, tree]);
+  const fileBusy = fileOperation !== 'idle';
+  const importDisabled = scenarioSelectionDisabled || fileBusy || scenarioLoadingId !== null;
+  const importDisabledReason = scenarioSelectionDisabled
+    ? 'Finish the active run before importing another scenario'
+    : fileBusy
+      ? 'Wait for the current scenario file operation to finish'
+      : scenarioLoadingId !== null
+        ? 'Wait for the selected scenario to finish loading'
+        : '';
 
   const toggleFolder = (folderPath: string) => {
     setCollapsedFolders((current) => {
@@ -223,30 +392,123 @@ export function ScenarioBrowser({
           />
         </label>
       </div>
-      <div className="scenario-sidebar__label">
-        <span>Bundled scenarios</span>
-        <span className="scenario-row__count">{scenarios.length}</span>
+
+      <div className="scenario-sidebar__scroll">
+        {examplesDismissed ? (
+          <button
+            className="scenario-examples-restore"
+            type="button"
+            onClick={() => setExamplesDismissed(false)}
+          >
+            Examples hidden <span>Restore</span>
+          </button>
+        ) : (
+          <section aria-label="Examples">
+            <SectionLabel
+              label="Examples"
+              count={examples.length}
+              expanded={examplesExpanded}
+              onToggle={() => setExamplesExpanded(!examplesExpanded)}
+              onDismiss={() => setExamplesDismissed(true)}
+            />
+            {examplesExpanded ? (
+              scenarioCatalogLoading ? (
+                <div className="scenario-sidebar__state" role="status" aria-busy="true">
+                  <LoadingDots size="inline" /> Discovering examples…
+                </div>
+              ) : tree.folders.length === 0 && tree.scenarios.length === 0 ? (
+                <div className="scenario-sidebar__state">No matching examples.</div>
+              ) : (
+                <ScenarioRows
+                  folders={tree.folders}
+                  scenarios={tree.scenarios}
+                  expandedFolders={expandedFolders}
+                  selectedScenarioId={selectedScenarioId}
+                  activeScenarioId={activeScenarioId}
+                  scenarioLoadingId={scenarioLoadingId}
+                  selectionDisabled={scenarioSelectionDisabled || fileBusy}
+                  onToggleFolder={toggleFolder}
+                  onSelectScenario={onSelectScenario}
+                  folderToggleDisabled={searchActive}
+                />
+              )
+            ) : null}
+          </section>
+        )}
+
+        <section aria-label="My scenarios">
+          <SectionLabel
+            label="My scenarios"
+            count={localScenarios.length}
+            expanded={localsExpanded}
+            onToggle={() => setLocalsExpanded((expanded) => !expanded)}
+          />
+          {localsExpanded ? (
+            <>
+              {matchingLocals.map((descriptor) => (
+                <LocalScenarioRow
+                  key={descriptor.id}
+                  descriptor={descriptor}
+                  selectedScenarioId={selectedScenarioId}
+                  activeScenarioId={activeScenarioId}
+                  scenarioLoadingId={scenarioLoadingId}
+                  selectionDisabled={scenarioSelectionDisabled || fileBusy}
+                  activeScenarioDirty={activeScenarioDirty}
+                  hasSaveError={
+                    descriptor.id === activeScenarioId &&
+                    fileError !== null &&
+                    (fileErrorOperation === 'saving' || fileErrorOperation === 'saving_as')
+                  }
+                  onSelectScenario={onSelectScenario}
+                />
+              ))}
+              {matchingLocals.length === 0 ? (
+                <div className="scenario-sidebar__empty-local">
+                  <span>
+                    {searchActive && localScenarios.length > 0
+                      ? 'No matching local files.'
+                      : 'No local scenarios yet. Import a YAML file below to add one for this session.'}
+                  </span>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </section>
       </div>
-      {scenarioCatalogLoading ? (
-        <div className="scenario-sidebar__state" role="status" aria-busy="true">
-          <LoadingDots size="inline" /> Discovering scenarios…
-        </div>
-      ) : tree.folders.length === 0 && tree.scenarios.length === 0 ? (
-        <div className="scenario-sidebar__state">No matching scenarios.</div>
-      ) : (
-        <ScenarioRows
-          folders={tree.folders}
-          scenarios={tree.scenarios}
-          expandedFolders={expandedFolders}
-          selectedScenarioId={selectedScenarioId}
-          activeScenarioId={activeScenarioId}
-          scenarioLoadingId={scenarioLoadingId}
-          selectionDisabled={scenarioSelectionDisabled}
-          onToggleFolder={toggleFolder}
-          onSelectScenario={onSelectScenario}
-          folderToggleDisabled={searchActive}
-        />
-      )}
+
+      <div className="scenario-sidebar__footer">
+        <div className="scenario-sidebar__file-actions">{fileActions}</div>
+        <span
+          className="scenario-disabled-action"
+          tabIndex={importDisabled ? 0 : undefined}
+          aria-label={importDisabled ? importDisabledReason : undefined}
+          title={importDisabled ? importDisabledReason : undefined}
+        >
+          <button
+            className="scenario-import-button"
+            type="button"
+            disabled={importDisabled}
+            aria-describedby={importDisabled ? importDisabledDescriptionId : undefined}
+            title={importDisabled ? undefined : 'Choose a YAML file from your computer'}
+            onClick={onImportScenario}
+          >
+            {fileOperation === 'importing' ? (
+              <>
+                <LoadingDots size="inline" /> Importing YAML…
+              </>
+            ) : (
+              <>
+                <Plus width={15} height={15} /> Import YAML
+              </>
+            )}
+          </button>
+          {importDisabled ? (
+            <span className="sr-only" id={importDisabledDescriptionId}>
+              {importDisabledReason}
+            </span>
+          ) : null}
+        </span>
+      </div>
     </aside>
   );
 }

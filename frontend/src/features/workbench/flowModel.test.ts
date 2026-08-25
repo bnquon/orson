@@ -31,6 +31,14 @@ function edgePairs(model: ReturnType<typeof buildFlowViewModel>): string[][] {
   return model.edges.map((edge) => [edge.sourceId, edge.targetId]);
 }
 
+function flowDraft(overrides: Partial<ScenarioDraft>): ScenarioDraft {
+  const next = { ...draft, ...overrides };
+  if (overrides.topology !== undefined && overrides.configuredTopology === undefined) {
+    next.configuredTopology = overrides.topology;
+  }
+  return next;
+}
+
 describe('buildFlowViewModel', () => {
   it('builds the configured order-flow topology with deterministic depth layout', () => {
     const model = buildFlowViewModel(draft, run());
@@ -80,15 +88,14 @@ describe('buildFlowViewModel', () => {
 
   it('does not imply edges for disconnected watched topics', () => {
     const model = buildFlowViewModel(
-      {
-        ...draft,
+      flowDraft({
         watchedTopics: [
           { id: 'payment', name: 'payment.charged' },
           { id: 'inventory', name: 'inventory.reserved' },
           { id: 'orphan', name: 'orphan.sent' },
         ],
         topology: [{ id: 'order-payment', from: 'order.created', to: 'payment.charged' }],
-      },
+      }),
       run(),
     );
 
@@ -101,13 +108,12 @@ describe('buildFlowViewModel', () => {
 
   it('derives unique edge IDs from normalized source and target topics', () => {
     const model = buildFlowViewModel(
-      {
-        ...draft,
+      flowDraft({
         topology: [
           { id: 'shared-id', from: 'order.created', to: 'payment.charged' },
           { id: 'shared-id', from: 'payment.charged', to: 'inventory.reserved' },
         ],
-      },
+      }),
       run(),
     );
 
@@ -120,14 +126,13 @@ describe('buildFlowViewModel', () => {
 
   it('does not render a watched node duplicate when it matches the root topic', () => {
     const model = buildFlowViewModel(
-      {
-        ...draft,
+      flowDraft({
         watchedTopics: [
           { id: 'root-copy', name: ' order.created ' },
           { id: 'payment', name: 'payment.charged' },
         ],
         topology: [{ id: 'root-payment', from: 'order.created', to: 'payment.charged' }],
-      },
+      }),
       run(),
     );
 
@@ -139,8 +144,7 @@ describe('buildFlowViewModel', () => {
 
   it('rejects a multi-node cycle while keeping the configured nodes visible', () => {
     const model = buildFlowViewModel(
-      {
-        ...draft,
+      flowDraft({
         watchedTopics: [
           { id: 'a', name: 'a' },
           { id: 'b', name: 'b' },
@@ -152,7 +156,7 @@ describe('buildFlowViewModel', () => {
           { id: 'b-c', from: 'b', to: 'c' },
           { id: 'c-a', from: 'c', to: 'a' },
         ],
-      },
+      }),
       run(),
     );
 
@@ -162,8 +166,7 @@ describe('buildFlowViewModel', () => {
 
   it('routes skip-level edges through an express lane above intermediate nodes', () => {
     const model = buildFlowViewModel(
-      {
-        ...draft,
+      flowDraft({
         watchedTopics: [
           { id: 'a', name: 'a' },
           { id: 'b', name: 'b' },
@@ -173,7 +176,7 @@ describe('buildFlowViewModel', () => {
           { id: 'a-b', from: 'a', to: 'b' },
           { id: 'root-b', from: 'order.created', to: 'b' },
         ],
-      },
+      }),
       run(),
     );
 
@@ -185,8 +188,7 @@ describe('buildFlowViewModel', () => {
 
   it('ignores empty, unknown, self-referencing, and duplicate topology edges', () => {
     const model = buildFlowViewModel(
-      {
-        ...draft,
+      flowDraft({
         topology: [
           { id: 'valid', from: ' order.created ', to: ' payment.charged ' },
           { id: 'duplicate', from: 'order.created', to: 'payment.charged' },
@@ -196,7 +198,7 @@ describe('buildFlowViewModel', () => {
           { id: 'unknown-target', from: 'order.created', to: 'unknown' },
           { id: 'self', from: 'payment.charged', to: 'payment.charged' },
         ],
-      },
+      }),
       run(),
     );
 
@@ -209,11 +211,31 @@ describe('buildFlowViewModel', () => {
   });
 
   it('handles empty topology and a root with no valid outgoing edges', () => {
-    const model = buildFlowViewModel({ ...draft, topology: [] }, run());
+    const model = buildFlowViewModel(flowDraft({ topology: [] }), run());
 
     expect(model.nodes).toHaveLength(5);
     expect(model.edges).toEqual([]);
     expect(model.nodes[0].layout.left).toBe(120);
+  });
+
+  it('activates a configured warning edge when its watched topic is added', () => {
+    const imported = {
+      ...draft,
+      watchedTopics: [{ id: 'payment', name: 'payment.charged' }],
+      topology: [],
+      configuredTopology: [
+        { id: 'configured-future', from: 'order.created', to: 'future.completed' },
+      ],
+    };
+    expect(buildFlowViewModel(imported, run()).edges).toEqual([]);
+
+    const edited = {
+      ...imported,
+      watchedTopics: [...imported.watchedTopics, { id: 'future', name: 'future.completed' }],
+    };
+    expect(edgePairs(buildFlowViewModel(edited, run()))).toEqual([
+      ['root:order.created', 'watched:future.completed'],
+    ]);
   });
 
   it('preserves configured statuses before a run', () => {

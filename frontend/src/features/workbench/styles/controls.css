@@ -68,6 +68,8 @@
   font-weight: var(--weight-semibold);
   gap: 7px;
   height: 32px;
+  justify-content: center;
+  min-width: 92px;
   padding: 0 11px;
   transition:
     background-color var(--duration-fast) var(--ease-standard),
@@ -75,12 +77,17 @@
     color var(--duration-fast) var(--ease-standard);
 }
 
-.publish-button:hover {
+.publish-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.publish-button:hover:not(:disabled) {
   background: var(--color-accent-hover);
   border-color: var(--color-accent-hover);
 }
 
-.publish-button:active {
+.publish-button:active:not(:disabled) {
   background: var(--color-accent);
   border-color: var(--color-text-inverse);
 }
@@ -91,13 +98,13 @@
   color: var(--color-danger);
 }
 
-.publish-button--stop:hover {
+.publish-button--stop:hover:not(:disabled) {
   background: color-mix(in srgb, var(--color-danger) 26%, var(--color-surface));
   border-color: var(--color-danger);
   color: var(--color-danger);
 }
 
-.publish-button--stop:active {
+.publish-button--stop:active:not(:disabled) {
   background: var(--color-danger);
   border-color: var(--color-danger);
   color: var(--color-text-inverse);

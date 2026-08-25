@@ -20,6 +20,9 @@ describe('scenario fallback warning visibility', () => {
       relativePath: 'fallback.yaml',
       folderPath: '',
       sourceFilename: 'fallback.yaml',
+      source: 'example',
+      sourcePath: '',
+      localStatus: null,
       status: 'valid_with_warnings',
       warnings: [warning],
       diagnostics: [],
@@ -38,7 +41,7 @@ describe('scenario fallback warning visibility', () => {
       />,
     );
 
-    expect(markup).toContain('fallback, 1 scenario warning, active');
+    expect(markup).toContain('fallback, read-only example, 1 scenario warning, active');
     expect(markup).not.toContain('disabled=""');
   });
 

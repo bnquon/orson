@@ -74,9 +74,14 @@ function diagnosticKey(diagnostic: ScenarioDiagnostic): string {
 }
 
 function warningKey(warning: ScenarioWarning): string {
-  return [warning.code, warning.sourceFilename, warning.line, warning.column, warning.message].join(
-    '\u0000',
-  );
+  return [
+    warning.code,
+    warning.path,
+    warning.sourceFilename,
+    warning.line,
+    warning.column,
+    warning.message,
+  ].join('\u0000');
 }
 
 function ScenarioDescriptorDiagnostics({ descriptor }: { descriptor: ScenarioDescriptor }) {
@@ -112,6 +117,55 @@ function DiagnosticList({ diagnostics }: { diagnostics: ScenarioDiagnostic[] }) 
         </li>
       ))}
     </ul>
+  );
+}
+
+interface ScenarioFileOperationErrorProps {
+  error: ApiError;
+  diagnostics: ScenarioDiagnostic[];
+  onDismiss: () => void;
+}
+
+export function ScenarioFileOperationError({
+  error,
+  diagnostics,
+  onDismiss,
+}: ScenarioFileOperationErrorProps) {
+  const nextStep =
+    error.code.includes('changed') || error.code.includes('conflict')
+      ? 'The file changed outside Orson. Import it again to refresh, or use Save as to keep this draft.'
+      : error.code.includes('missing') || error.code.includes('read')
+        ? 'Check that the file still exists and is readable, then import it again.'
+        : error.code.includes('permission') || error.code.includes('write')
+          ? 'Check the file permissions or use Save as to choose another location.'
+          : error.code.includes('extension') || error.code.includes('path')
+            ? 'Choose a writable file ending in .yaml or .yml.'
+            : error.code.includes('dialog')
+              ? 'Try the native file dialog again.'
+              : error.code === 'run_busy'
+                ? 'Finish or stop the active run before changing scenario files.'
+                : null;
+
+  return (
+    <section className="scenario-selection-diagnostics scenario-file-error" role="alert">
+      <div className="scenario-file-error__header">
+        <div>
+          <strong>{error.message}</strong>
+          {nextStep ? <p>{nextStep}</p> : null}
+        </div>
+        <button type="button" aria-label="Dismiss file error" onClick={onDismiss}>
+          <Xmark width={15} height={15} />
+        </button>
+      </div>
+      {diagnostics.length > 0 ? (
+        <DiagnosticList diagnostics={diagnostics} />
+      ) : error.details ? (
+        <details>
+          <summary>Technical details</summary>
+          <pre>{error.details}</pre>
+        </details>
+      ) : null}
+    </section>
   );
 }
 
@@ -210,6 +264,7 @@ export function ScenarioDiagnostics({
                 {warning.sourceFilename}
                 {warning.line > 0 ? `:${warning.line}` : ''}
                 {warning.column > 0 ? `:${warning.column}` : ''}
+                {warning.path ? ` · ${warning.path}` : ''}
               </code>
             </li>
           ))}

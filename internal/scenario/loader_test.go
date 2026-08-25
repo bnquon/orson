@@ -70,6 +70,15 @@ func TestLoadRejectsUnknownYAMLFields(t *testing.T) {
 	assertLoadErrorStage(t, err, "yaml_parse")
 }
 
+func TestLoadRejectsAdditionalYAMLDocuments(t *testing.T) {
+	source := validCatalogYAML("first") + "---\nname: second\n"
+	_, err := Load("multiple.yaml", []byte(source))
+	loadErr := assertLoadErrorStage(t, err, "yaml_parse")
+	if len(loadErr.Issues) != 1 || loadErr.Issues[0].Code != "multiple_yaml_documents" {
+		t.Fatalf("issues = %+v, want multiple_yaml_documents", loadErr.Issues)
+	}
+}
+
 func TestLoadRejectsMissingRequiredFields(t *testing.T) {
 	tests := []struct {
 		fixture string
@@ -217,8 +226,28 @@ func TestLoadKeepsValidEdgesAndWarnsForInvalidTopology(t *testing.T) {
 	if len(loaded.Topology) != 2 {
 		t.Fatalf("valid topology edges = %d, want 2", len(loaded.Topology))
 	}
+	if len(loaded.ConfiguredTopology) != 6 {
+		t.Fatalf("configured topology edges = %d, want all 6 source edges", len(loaded.ConfiguredTopology))
+	}
 	if len(loaded.Warnings) != 4 {
 		t.Fatalf("warnings = %d, want 4", len(loaded.Warnings))
+	}
+
+	source, err := MarshalCanonical(loaded)
+	if err != nil {
+		t.Fatalf("MarshalCanonical() failed: %v", err)
+	}
+	roundTripped, err := Load("topology-warnings.yaml", source)
+	if err != nil {
+		t.Fatalf("Load(canonical warning scenario) failed: %v\n%s", err, source)
+	}
+	if len(roundTripped.ConfiguredTopology) != 6 || len(roundTripped.Warnings) != 4 {
+		t.Fatalf("warning topology round trip = %d configured / %d warnings, want 6 / 4", len(roundTripped.ConfiguredTopology), len(roundTripped.Warnings))
+	}
+	for index, edge := range loaded.ConfiguredTopology {
+		if roundTripped.ConfiguredTopology[index].From != edge.From || roundTripped.ConfiguredTopology[index].To != edge.To {
+			t.Fatalf("configured topology order changed at %d: %+v / %+v", index, edge, roundTripped.ConfiguredTopology[index])
+		}
 	}
 }
 

@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import {
   ScenarioDiagnostics,
+  ScenarioFileOperationError,
   ScenarioLoadState,
   ScenarioSelectionLoadError,
 } from './ScenarioLoadState';
@@ -40,6 +41,9 @@ describe('ScenarioLoadState', () => {
           relativePath: 'checkout/successful-order.yaml',
           folderPath: 'checkout',
           sourceFilename: 'scenarios/checkout/successful-order.yaml',
+          source: 'example',
+          sourcePath: '',
+          localStatus: null,
           status: 'valid',
           warnings: [],
           diagnostics: [],
@@ -70,6 +74,9 @@ describe('ScenarioLoadState', () => {
           relativePath: 'broken.yaml',
           folderPath: '',
           sourceFilename: 'scenarios/broken.yaml',
+          source: 'example',
+          sourcePath: '',
+          localStatus: null,
           status: 'invalid',
           warnings: [],
           diagnostics: [
@@ -107,6 +114,35 @@ describe('ScenarioLoadState', () => {
     expect(markup).toContain('scenarios/broken.yaml:8:4');
     expect(markup).toContain('Technical details');
     expect(markup).not.toContain('Retry loading scenario');
+  });
+
+  it('shows import diagnostics with filename, field path, line, column, and details', () => {
+    const markup = renderToStaticMarkup(
+      <ScenarioFileOperationError
+        error={{
+          code: 'scenario_parse_failed',
+          message: 'payment.yaml could not be imported.',
+          retryable: false,
+        }}
+        diagnostics={[
+          {
+            code: 'unknown_yaml_field',
+            path: 'publish.unsupported',
+            message: 'The scenario YAML contains an unknown field.',
+            details: 'field "unsupported" is not supported',
+            sourceFilename: 'payment.yaml',
+            line: 7,
+            column: 5,
+          },
+        ]}
+        onDismiss={() => undefined}
+      />,
+    );
+
+    expect(markup).toContain('payment.yaml:7:5');
+    expect(markup).toContain('publish.unsupported');
+    expect(markup).toContain('The scenario YAML contains an unknown field.');
+    expect(markup).toContain('Technical details');
   });
 });
 

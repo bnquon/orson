@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { initialScenario } from './fixtures';
-import { validateScenario } from './validation';
+import { validateScenario, validateScenarioDraft } from './validation';
 
 const connection = {
   name: 'Local Kafka',
@@ -25,5 +25,28 @@ describe('validateScenario headers', () => {
       'Orson manages this header automatically. Remove it from Custom headers.',
     );
     expect(result.firstInvalidControlId).toBe('header-name-conflict');
+  });
+
+  it('blocks saving when a watched topic activates a configured topology cycle', () => {
+    const draft = {
+      ...initialScenario,
+      rootTopic: 'order.created',
+      watchedTopics: [
+        { id: 'payment', name: 'payment.charged' },
+        { id: 'inventory', name: 'inventory.reserved' },
+      ],
+      configuredTopology: [
+        { id: 'one', from: 'order.created', to: 'payment.charged' },
+        { id: 'two', from: 'payment.charged', to: 'inventory.reserved' },
+        { id: 'three', from: 'inventory.reserved', to: 'order.created' },
+      ],
+    };
+
+    const saveValidation = validateScenarioDraft(draft);
+    const runValidation = validateScenario(draft, connection);
+
+    expect(saveValidation.fieldErrors.watchedTopics).toContain('topology contains a cycle');
+    expect(saveValidation.issueCount).toBeGreaterThan(0);
+    expect(runValidation.fieldErrors.watchedTopics).toBeUndefined();
   });
 });

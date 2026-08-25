@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -21,11 +22,21 @@ type Scenario struct {
 	SourceFilename    string
 	PublishTopic      string
 	PublishPayload    string
+	MessageKey        string
+	Headers           []Header
 	WatchedTopics     []string
 	CorrelationHeader string
 	CaptureTimeout    time.Duration
-	Topology          []TopologyEdge
-	Warnings          []Warning
+	// Topology contains only edges that are safe for Flow and runtime use.
+	Topology []TopologyEdge
+	// ConfiguredTopology retains every YAML edge in source order for lossless saves.
+	ConfiguredTopology []TopologyEdge
+	Warnings           []Warning
+}
+
+type Header struct {
+	Key   string
+	Value string
 }
 
 type TopologyEdge struct {
@@ -37,6 +48,7 @@ type TopologyEdge struct {
 
 type Warning struct {
 	Code    string
+	Path    string
 	Message string
 	Line    int
 	Column  int
@@ -88,8 +100,10 @@ type rawScenario struct {
 }
 
 type rawPublish struct {
-	Topic   *string    `yaml:"topic"`
-	Payload *yaml.Node `yaml:"payload"`
+	Topic   *string      `yaml:"topic"`
+	Key     *string      `yaml:"key"`
+	Headers *[]rawHeader `yaml:"headers"`
+	Payload *yaml.Node   `yaml:"payload"`
 }
 
 func (p *rawPublish) UnmarshalYAML(node *yaml.Node) error {
@@ -109,11 +123,60 @@ func (p *rawPublish) UnmarshalYAML(node *yaml.Node) error {
 			p.Topic = &topic
 		case "payload":
 			p.Payload = value
+		case "key":
+			var messageKey string
+			if err := value.Decode(&messageKey); err != nil {
+				return newSourceError(value, fmt.Sprintf("publish.key: %v", err))
+			}
+			p.Key = &messageKey
+		case "headers":
+			var headers []rawHeader
+			if err := value.Decode(&headers); err != nil {
+				return err
+			}
+			p.Headers = &headers
 		default:
-			return newSourceError(key, fmt.Sprintf("field %q not found in type scenario.rawPublish", key.Value))
+			return newSourceError(key, fmt.Sprintf("unknown field %q", key.Value))
 		}
 	}
 
+	return nil
+}
+
+type rawHeader struct {
+	Key    *string `yaml:"key"`
+	Value  *string `yaml:"value"`
+	Line   int     `yaml:"-"`
+	Column int     `yaml:"-"`
+}
+
+func (h *rawHeader) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return newSourceError(node, "publish header must be a mapping")
+	}
+
+	h.Line = node.Line
+	h.Column = node.Column
+	for index := 0; index+1 < len(node.Content); index += 2 {
+		key := node.Content[index]
+		value := node.Content[index+1]
+		switch key.Value {
+		case "key":
+			var headerKey string
+			if err := value.Decode(&headerKey); err != nil {
+				return newSourceError(value, fmt.Sprintf("publish.headers.key: %v", err))
+			}
+			h.Key = &headerKey
+		case "value":
+			var headerValue string
+			if err := value.Decode(&headerValue); err != nil {
+				return newSourceError(value, fmt.Sprintf("publish.headers.value: %v", err))
+			}
+			h.Value = &headerValue
+		default:
+			return newSourceError(key, fmt.Sprintf("unknown field %q", key.Value))
+		}
+	}
 	return nil
 }
 
@@ -156,7 +219,7 @@ func (e *rawEdge) UnmarshalYAML(node *yaml.Node) error {
 			}
 			e.To = &to
 		default:
-			return newSourceError(key, fmt.Sprintf("field %q not found in type scenario.rawEdge", key.Value))
+			return newSourceError(key, fmt.Sprintf("unknown field %q", key.Value))
 		}
 	}
 
@@ -176,28 +239,16 @@ func Load(filename string, source []byte) (Scenario, error) {
 }
 
 func decode(filename string, source []byte) (rawScenario, map[string]sourceLocation, error) {
-	var raw rawScenario
 	decoder := yaml.NewDecoder(bytes.NewReader(source))
-	decoder.KnownFields(true)
-	if err := decoder.Decode(&raw); err != nil {
+	var document yaml.Node
+	if err := decoder.Decode(&document); err != nil {
 		line, column := yamlErrorLocation(err)
-		var locatedErr *sourceError
-		if errors.As(err, &locatedErr) {
-			line = locatedErr.line
-			column = locatedErr.column
-		}
-		code := "yaml_decode_failed"
-		message := "the scenario YAML could not be parsed"
-		if strings.Contains(err.Error(), "not found in type") {
-			code = "unknown_yaml_field"
-			message = "the scenario YAML contains an unknown field"
-		}
 		return rawScenario{}, nil, &LoadError{
 			Stage: "yaml_parse",
 			Issues: []Issue{{
-				Code:    code,
+				Code:    "yaml_decode_failed",
 				Path:    filename,
-				Message: message,
+				Message: "the scenario YAML could not be parsed",
 				Details: err.Error(),
 				Line:    line,
 				Column:  column,
@@ -205,7 +256,124 @@ func decode(filename string, source []byte) (rawScenario, map[string]sourceLocat
 		}
 	}
 
+	var extra yaml.Node
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		line, column := nodeLocation(&extra)
+		if line == 0 && len(extra.Content) > 0 {
+			line, column = nodeLocation(extra.Content[0])
+		}
+		code := "multiple_yaml_documents"
+		message := "scenario YAML must contain exactly one document"
+		details := "Remove additional YAML documents after the scenario configuration."
+		if err != nil {
+			code = "yaml_decode_failed"
+			message = "the scenario YAML could not be parsed"
+			details = err.Error()
+			line, column = yamlErrorLocation(err)
+		}
+		return rawScenario{}, nil, &LoadError{
+			Stage: "yaml_parse",
+			Issues: []Issue{{
+				Code: code, Path: filename, Message: message, Details: details, Line: line, Column: column,
+			}},
+		}
+	}
+
+	if issue, ok := findUnknownYAMLField(&document); ok {
+		return rawScenario{}, nil, &LoadError{Stage: "yaml_parse", Issues: []Issue{issue}}
+	}
+
+	var raw rawScenario
+	if err := document.Decode(&raw); err != nil {
+		line, column := yamlErrorLocation(err)
+		var locatedErr *sourceError
+		if errors.As(err, &locatedErr) {
+			line = locatedErr.line
+			column = locatedErr.column
+		}
+		return rawScenario{}, nil, &LoadError{
+			Stage: "yaml_parse",
+			Issues: []Issue{{
+				Code: "yaml_decode_failed", Path: filename, Message: "the scenario YAML could not be parsed",
+				Details: err.Error(), Line: line, Column: column,
+			}},
+		}
+	}
+
 	return raw, sourceLocations(source), nil
+}
+
+type yamlFieldSchema struct {
+	fields   map[string]*yamlFieldSchema
+	elements *yamlFieldSchema
+}
+
+var scenarioYAMLSchema = mappingSchema(map[string]*yamlFieldSchema{
+	"name": nil,
+	"publish": mappingSchema(map[string]*yamlFieldSchema{
+		"topic":   nil,
+		"key":     nil,
+		"headers": sequenceSchema(mappingSchema(map[string]*yamlFieldSchema{"key": nil, "value": nil})),
+		"payload": nil,
+	}),
+	"watch":       nil,
+	"correlation": mappingSchema(map[string]*yamlFieldSchema{"header": nil}),
+	"capture":     mappingSchema(map[string]*yamlFieldSchema{"timeout": nil}),
+	"topology":    sequenceSchema(mappingSchema(map[string]*yamlFieldSchema{"from": nil, "to": nil})),
+})
+
+func mappingSchema(fields map[string]*yamlFieldSchema) *yamlFieldSchema {
+	return &yamlFieldSchema{fields: fields}
+}
+
+func sequenceSchema(elements *yamlFieldSchema) *yamlFieldSchema {
+	return &yamlFieldSchema{elements: elements}
+}
+
+func findUnknownYAMLField(document *yaml.Node) (Issue, bool) {
+	return findUnknownFieldAt(document, "", scenarioYAMLSchema)
+}
+
+func findUnknownFieldAt(node *yaml.Node, path string, schema *yamlFieldSchema) (Issue, bool) {
+	if node == nil || schema == nil {
+		return Issue{}, false
+	}
+	if node.Kind == yaml.DocumentNode && len(node.Content) > 0 {
+		return findUnknownFieldAt(node.Content[0], path, schema)
+	}
+	if node.Kind == yaml.AliasNode {
+		return findUnknownFieldAt(node.Alias, path, schema)
+	}
+	if node.Kind == yaml.MappingNode && schema.fields != nil {
+		for index := 0; index+1 < len(node.Content); index += 2 {
+			key := node.Content[index]
+			value := node.Content[index+1]
+			fieldSchema, known := schema.fields[key.Value]
+			fieldPath := key.Value
+			if path != "" {
+				fieldPath = path + "." + key.Value
+			}
+			if !known {
+				return Issue{
+					Code: "unknown_yaml_field", Path: fieldPath,
+					Message: "the scenario YAML contains an unknown field",
+					Details: fmt.Sprintf("Field %q is not supported at %s.", key.Value, fieldPath),
+					Line:    key.Line, Column: key.Column,
+				}, true
+			}
+			if issue, found := findUnknownFieldAt(value, fieldPath, fieldSchema); found {
+				return issue, true
+			}
+		}
+	}
+	if node.Kind == yaml.SequenceNode && schema.elements != nil {
+		for index, child := range node.Content {
+			if issue, found := findUnknownFieldAt(child, fmt.Sprintf("%s[%d]", path, index), schema.elements); found {
+				return issue, true
+			}
+		}
+	}
+	return Issue{}, false
 }
 
 func validate(filename string, raw rawScenario, locations map[string]sourceLocation) (Scenario, error) {
@@ -232,6 +400,8 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 	}
 
 	rootTopic := ""
+	messageKey := ""
+	headers := []Header{{Key: "content-type", Value: "application/json"}}
 	var payloadNode *yaml.Node
 	if raw.Publish == nil {
 		addIssue("missing_publish", "publish", "publish configuration is required", nil)
@@ -244,6 +414,21 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		payloadNode = raw.Publish.Payload
 		if payloadNode == nil || isEmptyPayloadNode(payloadNode) {
 			addIssue("missing_publish_payload", "publish.payload", "publish payload is required", payloadNode)
+		}
+		if raw.Publish.Key != nil {
+			messageKey = *raw.Publish.Key
+		}
+		if raw.Publish.Headers != nil {
+			headers = make([]Header, 0, len(*raw.Publish.Headers))
+			for index, rawHeader := range *raw.Publish.Headers {
+				path := fmt.Sprintf("publish.headers[%d]", index)
+				key := optionalString(rawHeader.Key)
+				if key == "" {
+					addIssue("missing_publish_header_key", path+".key", "publish header name is required", nil)
+					continue
+				}
+				headers = append(headers, Header{Key: key, Value: stringValue(rawHeader.Value)})
+			}
 		}
 	}
 
@@ -261,6 +446,10 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 				addIssue("empty_watch_topic", path, "watched topic cannot be empty", nil)
 				continue
 			}
+			if normalized == rootTopic {
+				addIssue("watched_publish_topic", path, "the publish topic is included automatically and cannot also be watched", nil)
+				continue
+			}
 			if previous, exists := seenTopics[normalized]; exists {
 				addIssue("duplicate_watch_topic", path, fmt.Sprintf("watched topic %q is duplicated from watch[%d]", normalized, previous), nil)
 				continue
@@ -275,6 +464,7 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		line, column := locationForPath(locations, "correlation.header")
 		correlationWarnings = append(correlationWarnings, Warning{
 			Code: "missing_correlation_header",
+			Path: "correlation.header",
 			Message: fmt.Sprintf(
 				"correlation header is missing or blank; %s will be used",
 				correlation.DefaultHeader,
@@ -284,6 +474,16 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		})
 	} else {
 		correlationHeader = correlation.ResolveHeader(*raw.Correlation.Header)
+	}
+	for index, header := range headers {
+		if correlation.HeaderNamesEqual(header.Key, correlationHeader) {
+			addIssue(
+				"managed_correlation_header",
+				fmt.Sprintf("publish.headers[%d].key", index),
+				fmt.Sprintf("header %q is managed automatically by Orson and must be removed from publish headers", correlationHeader),
+				nil,
+			)
+		}
 	}
 
 	var captureTimeout time.Duration
@@ -295,6 +495,8 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 			addIssue("invalid_capture_timeout", "capture.timeout", "capture timeout must be a positive duration", nil)
 		} else if parsed%time.Second != 0 {
 			addIssue("fractional_capture_timeout", "capture.timeout", "capture timeout must resolve to whole seconds", nil)
+		} else if parsed > 300*time.Second {
+			addIssue("capture_timeout_too_large", "capture.timeout", "capture timeout must be 300 seconds or less", nil)
 		} else {
 			captureTimeout = parsed
 		}
@@ -326,15 +528,23 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 
 	warnings := append([]Warning(nil), correlationWarnings...)
 	edges := make([]TopologyEdge, 0, len(raw.Topology))
+	configuredEdges := make([]TopologyEdge, 0, len(raw.Topology))
 	seenEdges := make(map[string]struct{}, len(raw.Topology))
 	connectedTopics := make(map[string]struct{}, len(configuredTopics))
 	for index, rawEdge := range raw.Topology {
 		from := optionalString(rawEdge.From)
 		to := optionalString(rawEdge.To)
 		location := fmt.Sprintf("topology[%d]", index)
+		configuredEdges = append(configuredEdges, TopologyEdge{
+			ID:     fmt.Sprintf("configured-edge:%d", index),
+			From:   from,
+			To:     to,
+			source: sourceLocation{line: rawEdge.Line, column: rawEdge.Column},
+		})
 		if from == "" || to == "" {
 			warnings = append(warnings, Warning{
 				Code:    "invalid_topology_edge",
+				Path:    location,
 				Message: fmt.Sprintf("%s was omitted because both from and to topics are required", location),
 				Line:    rawEdge.Line,
 				Column:  rawEdge.Column,
@@ -344,6 +554,7 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		if from == to {
 			warnings = append(warnings, Warning{
 				Code:    "self_referencing_edge",
+				Path:    location,
 				Message: fmt.Sprintf("topology edge %q -> %q was omitted because it references the same topic", from, to),
 				Line:    rawEdge.Line,
 				Column:  rawEdge.Column,
@@ -353,6 +564,7 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		if _, exists := configuredTopics[from]; !exists {
 			warnings = append(warnings, Warning{
 				Code:    "unknown_topology_source",
+				Path:    location + ".from",
 				Message: fmt.Sprintf("topology edge source %q is not the publish or a watched topic; the edge was omitted", from),
 				Line:    rawEdge.Line,
 				Column:  rawEdge.Column,
@@ -362,6 +574,7 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		if _, exists := configuredTopics[to]; !exists {
 			warnings = append(warnings, Warning{
 				Code:    "unknown_topology_target",
+				Path:    location + ".to",
 				Message: fmt.Sprintf("topology edge target %q is not the publish or a watched topic; the edge was omitted", to),
 				Line:    rawEdge.Line,
 				Column:  rawEdge.Column,
@@ -373,6 +586,7 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 		if _, exists := seenEdges[id]; exists {
 			warnings = append(warnings, Warning{
 				Code:    "duplicate_topology_edge",
+				Path:    location,
 				Message: fmt.Sprintf("topology edge %q -> %q was duplicated; the first edge was retained", from, to),
 				Line:    rawEdge.Line,
 				Column:  rawEdge.Column,
@@ -408,6 +622,7 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 			line, column := locationForPath(locations, fmt.Sprintf("watch[%d]", index))
 			warnings = append(warnings, Warning{
 				Code:    "disconnected_watched_topic",
+				Path:    fmt.Sprintf("watch[%d]", index),
 				Message: fmt.Sprintf("watched topic %q is not connected to any valid topology edge", topic),
 				Line:    line,
 				Column:  column,
@@ -416,15 +631,18 @@ func validate(filename string, raw rawScenario, locations map[string]sourceLocat
 	}
 
 	return Scenario{
-		Name:              name,
-		SourceFilename:    filename,
-		PublishTopic:      rootTopic,
-		PublishPayload:    payload,
-		WatchedTopics:     watchedTopics,
-		CorrelationHeader: correlationHeader,
-		CaptureTimeout:    captureTimeout,
-		Topology:          edges,
-		Warnings:          warnings,
+		Name:               name,
+		SourceFilename:     filename,
+		PublishTopic:       rootTopic,
+		PublishPayload:     payload,
+		MessageKey:         messageKey,
+		Headers:            headers,
+		WatchedTopics:      watchedTopics,
+		CorrelationHeader:  correlationHeader,
+		CaptureTimeout:     captureTimeout,
+		Topology:           edges,
+		ConfiguredTopology: configuredEdges,
+		Warnings:           warnings,
 	}, nil
 }
 
@@ -476,6 +694,7 @@ func collectNestedLocations(locations map[string]sourceLocation, path string, no
 			value := node.Content[index+1]
 			nestedPath := path + "." + key.Value
 			locations[nestedPath] = locationOf(value)
+			collectNestedLocations(locations, nestedPath, value)
 		}
 	case yaml.SequenceNode:
 		for index, value := range node.Content {
@@ -561,6 +780,13 @@ func optionalString(value *string) string {
 		return ""
 	}
 	return strings.TrimSpace(*value)
+}
+
+func stringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 func edgeID(from, to string) string {

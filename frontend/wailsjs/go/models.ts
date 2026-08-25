@@ -325,6 +325,7 @@ export namespace api {
 	}
 	export class ScenarioWarning {
 	    code: string;
+	    path?: string;
 	    message: string;
 	    sourceFilename?: string;
 	    line?: number;
@@ -337,6 +338,7 @@ export namespace api {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
+	        this.path = source["path"];
 	        this.message = source["message"];
 	        this.sourceFilename = source["sourceFilename"];
 	        this.line = source["line"];
@@ -365,12 +367,18 @@ export namespace api {
 	    folderPath?: string;
 	    name: string;
 	    sourceFilename: string;
+	    source: string;
+	    sourcePath?: string;
+	    localStatus?: string;
 	    publishTopic: string;
 	    publishPayload: string;
+	    messageKey: string;
+	    headers: Header[];
 	    watchedTopics: string[];
 	    correlationHeader: string;
 	    captureTimeoutSeconds: number;
 	    topology: ScenarioTopologyEdge[];
+	    configuredTopology: ScenarioTopologyEdge[];
 	    warnings?: ScenarioWarning[];
 
 	    static createFrom(source: any = {}) {
@@ -384,12 +392,18 @@ export namespace api {
 	        this.folderPath = source["folderPath"];
 	        this.name = source["name"];
 	        this.sourceFilename = source["sourceFilename"];
+	        this.source = source["source"];
+	        this.sourcePath = source["sourcePath"];
+	        this.localStatus = source["localStatus"];
 	        this.publishTopic = source["publishTopic"];
 	        this.publishPayload = source["publishPayload"];
+	        this.messageKey = source["messageKey"];
+	        this.headers = this.convertValues(source["headers"], Header);
 	        this.watchedTopics = source["watchedTopics"];
 	        this.correlationHeader = source["correlationHeader"];
 	        this.captureTimeoutSeconds = source["captureTimeoutSeconds"];
 	        this.topology = this.convertValues(source["topology"], ScenarioTopologyEdge);
+	        this.configuredTopology = this.convertValues(source["configuredTopology"], ScenarioTopologyEdge);
 	        this.warnings = this.convertValues(source["warnings"], ScenarioWarning);
 	    }
 
@@ -441,6 +455,9 @@ export namespace api {
 	    relativePath: string;
 	    folderPath?: string;
 	    sourceFilename: string;
+	    source: string;
+	    sourcePath?: string;
+	    localStatus?: string;
 	    status: string;
 	    warnings?: ScenarioWarning[];
 	    diagnostics?: ScenarioDiagnostic[];
@@ -456,6 +473,9 @@ export namespace api {
 	        this.relativePath = source["relativePath"];
 	        this.folderPath = source["folderPath"];
 	        this.sourceFilename = source["sourceFilename"];
+	        this.source = source["source"];
+	        this.sourcePath = source["sourcePath"];
+	        this.localStatus = source["localStatus"];
 	        this.status = source["status"];
 	        this.warnings = this.convertValues(source["warnings"], ScenarioWarning);
 	        this.diagnostics = this.convertValues(source["diagnostics"], ScenarioDiagnostic);
@@ -480,6 +500,122 @@ export namespace api {
 		}
 	}
 
+	export class ScenarioDraft {
+	    name: string;
+	    publishTopic: string;
+	    publishPayload: string;
+	    messageKey: string;
+	    headers: Header[];
+	    watchedTopics: string[];
+	    correlationHeader: string;
+	    captureTimeoutSeconds: number;
+	    topology: ScenarioTopologyEdge[];
+
+	    static createFrom(source: any = {}) {
+	        return new ScenarioDraft(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.publishTopic = source["publishTopic"];
+	        this.publishPayload = source["publishPayload"];
+	        this.messageKey = source["messageKey"];
+	        this.headers = this.convertValues(source["headers"], Header);
+	        this.watchedTopics = source["watchedTopics"];
+	        this.correlationHeader = source["correlationHeader"];
+	        this.captureTimeoutSeconds = source["captureTimeoutSeconds"];
+	        this.topology = this.convertValues(source["topology"], ScenarioTopologyEdge);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ScenarioFileData {
+	    cancelled: boolean;
+	    descriptor?: ScenarioDescriptor;
+	    scenario?: ScenarioData;
+	    diagnostics?: ScenarioDiagnostic[];
+
+	    static createFrom(source: any = {}) {
+	        return new ScenarioFileData(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.cancelled = source["cancelled"];
+	        this.descriptor = this.convertValues(source["descriptor"], ScenarioDescriptor);
+	        this.scenario = this.convertValues(source["scenario"], ScenarioData);
+	        this.diagnostics = this.convertValues(source["diagnostics"], ScenarioDiagnostic);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ScenarioFileResponse {
+	    ok: boolean;
+	    data?: ScenarioFileData;
+	    error?: APIError;
+
+	    static createFrom(source: any = {}) {
+	        return new ScenarioFileResponse(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.data = this.convertValues(source["data"], ScenarioFileData);
+	        this.error = this.convertValues(source["error"], APIError);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class ScenarioListData {
 	    scenarios: ScenarioDescriptor[];
 
