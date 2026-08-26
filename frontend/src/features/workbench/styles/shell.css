@@ -364,6 +364,73 @@
   padding-left: 14px;
 }
 
+.scenario-row__local-wrapper {
+  position: relative;
+}
+
+.scenario-row__local-wrapper .scenario-row {
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    padding-right var(--duration-fast) var(--ease-standard);
+}
+
+.scenario-row__local-wrapper:hover .scenario-row,
+.scenario-row__local-wrapper:focus-within .scenario-row {
+  padding-right: 38px;
+}
+
+.scenario-row__remove {
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-danger);
+  cursor: pointer;
+  display: inline-flex;
+  height: 22px;
+  justify-content: center;
+  opacity: 0;
+  padding: 0;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+  width: 22px;
+  z-index: 1;
+}
+
+.scenario-row__local-wrapper:hover .scenario-row__remove,
+.scenario-row__local-wrapper:focus-within .scenario-row__remove,
+.scenario-row__remove:focus-visible {
+  opacity: 1;
+}
+
+.scenario-row__remove:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 14%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-danger) 50%, var(--color-border));
+  color: var(--color-danger);
+}
+
+.scenario-row__remove:active:not(:disabled) {
+  transform: translateY(-50%) scale(0.94);
+}
+
+.scenario-row__remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.25;
+}
+
+.scenario-row__status-icon--error {
+  color: var(--color-danger);
+}
+
 .scenario-row__dirty,
 .workspace-toolbar__dirty {
   background: var(--color-warning);

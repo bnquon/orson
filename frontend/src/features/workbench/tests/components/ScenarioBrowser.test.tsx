@@ -42,6 +42,7 @@ describe('ScenarioBrowser', () => {
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
         onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
     );
 
@@ -63,6 +64,7 @@ describe('ScenarioBrowser', () => {
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
         onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
     );
 
@@ -113,6 +115,7 @@ describe('ScenarioBrowser', () => {
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
         onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
     );
 
@@ -168,6 +171,7 @@ describe('ScenarioBrowser', () => {
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
         onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
     );
 
@@ -204,11 +208,14 @@ describe('ScenarioBrowser', () => {
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
         onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
     );
 
     expect(markup).toContain('File changed outside Orson');
     expect(markup).toContain('scenario-row__status--warning');
+    expect(markup).toContain('scenario-row__status-icon--error');
+    expect(markup).toContain('Remove changed.yaml from this workspace');
     expect(markup).not.toContain('scenario-row__status--valid"');
   });
 
@@ -231,6 +238,7 @@ describe('ScenarioBrowser', () => {
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
         onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
     );
 

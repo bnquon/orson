@@ -1,0 +1,23 @@
+name: manual-workspace
+
+publish:
+  topic: workspace.created
+  payload:
+    workspaceId: manual-001
+    source: gui-test
+
+watch:
+  - workspace.indexed
+  - workspace.ready
+
+correlation:
+  header: x-correlation-id
+
+capture:
+  timeout: 8s
+
+topology:
+  - from: workspace.created
+    to: workspace.indexed
+  - from: workspace.indexed
+    to: workspace.ready

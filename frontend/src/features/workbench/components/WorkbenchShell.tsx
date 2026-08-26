@@ -4,11 +4,11 @@ import type { KafkaConnection, WorkspaceMode } from '../types';
 import orsonIcon from '../../../assets/orson-icon.png';
 import '../styles/shell.css';
 
-// TODO: [Workspace] Scope open scenario tabs to a workspace when workspaces are introduced.
-// TODO: [Database] Persist workspace and scenario metadata in SQLite when persistence is implemented.
+// TODO: [Workspace] Scope open scenario tabs when multi-tab workspaces are introduced.
 
 interface WorkbenchShellProps {
   connection: KafkaConnection;
+  workspaceSelector: ReactNode;
   connectionDialogOpen: boolean;
   onConnectionToggle: () => void;
   sidebar: ReactNode;
@@ -23,6 +23,7 @@ interface WorkbenchShellProps {
 
 export function WorkbenchShell({
   connection,
+  workspaceSelector,
   connectionDialogOpen,
   onConnectionToggle,
   sidebar,
@@ -47,7 +48,7 @@ export function WorkbenchShell({
           <img className="workbench-brand" src={orsonIcon} alt="" aria-hidden="true" />
           <span className="workbench-wordmark">orson</span>
           <span className="workbench-separator">/</span>
-          <span className="workbench-context-label">Scenarios</span>
+          {workspaceSelector}
         </div>
         <div className="workbench-topbar__group workbench-topbar__group--right">
           <button

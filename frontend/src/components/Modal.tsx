@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { Xmark } from 'iconoir-react';
 import { createPortal } from 'react-dom';
 import './Modal.css';
@@ -11,6 +11,25 @@ interface ModalProps {
   footer?: ReactNode;
   closeDisabled?: boolean;
   onClose: () => void;
+}
+
+type ModalButtonTone = 'secondary' | 'primary' | 'danger';
+
+export function ModalActions({ children }: { children: ReactNode }) {
+  return <div className="modal-actions">{children}</div>;
+}
+
+export function ModalButton({
+  tone = 'secondary',
+  className = '',
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: ModalButtonTone }) {
+  return (
+    <button
+      {...props}
+      className={`modal-button modal-button--${tone}${className ? ` ${className}` : ''}`}
+    />
+  );
 }
 
 const focusableSelector = [

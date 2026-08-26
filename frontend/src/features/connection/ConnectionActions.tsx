@@ -1,4 +1,5 @@
 import type { api } from '../../../wailsjs/go/models';
+import { ModalButton } from '../../components/Modal';
 import { LoadingDots } from '../../components/LoadingDots';
 import type { ConnectionOperation } from './types';
 
@@ -20,13 +21,11 @@ export function ConnectionActions({
   return (
     <div className="connection-actions">
       <span className="connection-actions__hint">
-        {activeConnection
-          ? 'Changes apply to this session only.'
-          : 'Nothing is saved between app launches.'}
+        Settings are remembered for this workspace after a successful connection.
       </span>
       {activeConnection ? (
-        <button
-          className="connection-secondary-button"
+        <ModalButton
+          tone="secondary"
           type="button"
           onClick={onDisconnect}
           disabled={isSubmitting}
@@ -39,10 +38,10 @@ export function ConnectionActions({
           ) : (
             'Disconnect'
           )}
-        </button>
+        </ModalButton>
       ) : null}
-      <button
-        className="connection-primary-button"
+      <ModalButton
+        tone="primary"
         type="submit"
         form={formId}
         disabled={isSubmitting}
@@ -55,7 +54,7 @@ export function ConnectionActions({
         ) : (
           'Connect'
         )}
-      </button>
+      </ModalButton>
     </div>
   );
 }

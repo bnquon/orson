@@ -1,6 +1,7 @@
 package scenario
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"os"
@@ -42,6 +43,112 @@ func TestLocalRegistryImportsExternalFileAndDeduplicatesNormalizedPath(t *testin
 	}
 	if got := len(registry.List()); got != 1 {
 		t.Fatalf("registry count = %d, want deduplicated 1", got)
+	}
+}
+
+func TestLocalRegistryHydratesDurableReferences(t *testing.T) {
+	directory := t.TempDir()
+	validPath := filepath.Join(directory, "valid.yaml")
+	validSource := validCatalogYAML("valid")
+	writeTestScenario(t, validPath, validSource)
+	registry := NewLocalRegistry(nil)
+	descriptor, err := registry.Hydrate(validPath, fingerprint([]byte(validSource)))
+	if err != nil || descriptor.LocalStatus != LocalStatusAvailable || descriptor.Status == StatusInvalid {
+		t.Fatalf("valid hydrate = %+v, err = %v", descriptor, err)
+	}
+
+	changedSource := string(bytes.Replace([]byte(validSource), []byte("valid"), []byte("changed"), 1))
+	writeTestScenario(t, validPath, changedSource)
+	changedRegistry := NewLocalRegistry(nil)
+	changed, err := changedRegistry.Hydrate(validPath, fingerprint([]byte(validSource)))
+	if err != nil || changed.LocalStatus != LocalStatusChanged {
+		t.Fatalf("changed hydrate = %+v, err = %v", changed, err)
+	}
+	if len(changed.Diagnostics) != 1 || changed.Diagnostics[0].Code != "scenario_file_changed" {
+		t.Fatalf("changed hydrate diagnostics = %+v, want scenario_file_changed", changed.Diagnostics)
+	}
+	if _, _, err := changedRegistry.Load(changed.ID); err == nil {
+		t.Fatal("changed hydrated file loaded without explicit refresh")
+	}
+
+	missingRegistry := NewLocalRegistry(nil)
+	missing, err := missingRegistry.Hydrate(filepath.Join(directory, "missing.yaml"), "old")
+	if err == nil || missing.LocalStatus != LocalStatusMissing || len(missing.Diagnostics) == 0 {
+		t.Fatalf("missing hydrate = %+v, err = %v", missing, err)
+	}
+
+	invalidPath := filepath.Join(directory, "invalid.yaml")
+	writeTestScenario(t, invalidPath, "name: [invalid")
+	invalidRegistry := NewLocalRegistry(nil)
+	invalid, err := invalidRegistry.Hydrate(invalidPath, "old")
+	if err == nil || invalid.Status != StatusInvalid || len(invalid.Diagnostics) == 0 {
+		t.Fatalf("invalid hydrate = %+v, err = %v", invalid, err)
+	}
+}
+
+func TestLocalRegistryRetainsDiagnosticsAfterFilesBecomeUnavailable(t *testing.T) {
+	directory := t.TempDir()
+	missingPath := filepath.Join(directory, "missing-after-import.yaml")
+	writeTestScenario(t, missingPath, validCatalogYAML("missing later"))
+	registry := NewLocalRegistry(nil)
+	missingDescriptor, _, err := registry.Import(missingPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(missingPath); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := registry.Load(missingDescriptor.ID); err == nil {
+		t.Fatal("Load() succeeded for a missing file")
+	}
+	missing := registry.List()[0]
+	if missing.LocalStatus != LocalStatusMissing || len(missing.Diagnostics) == 0 || missing.Diagnostics[0].Code != "scenario_file_missing" {
+		t.Fatalf("missing descriptor = %+v, want diagnostics", missing)
+	}
+
+	unreadablePath := filepath.Join(directory, "unreadable-later.yaml")
+	writeTestScenario(t, unreadablePath, validCatalogYAML("unreadable later"))
+	files := &failureLocalFileSystem{OSFileSystem: OSFileSystem{}}
+	unreadableRegistry := NewLocalRegistry(files)
+	unreadableDescriptor, _, err := unreadableRegistry.Import(unreadablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files.readErr = fs.ErrPermission
+	if _, _, err := unreadableRegistry.Load(unreadableDescriptor.ID); err == nil {
+		t.Fatal("Load() succeeded for an unreadable file")
+	}
+	unreadable := unreadableRegistry.List()[0]
+	if unreadable.LocalStatus != LocalStatusUnreadable || len(unreadable.Diagnostics) == 0 || unreadable.Diagnostics[0].Code != "scenario_read_failed" {
+		t.Fatalf("unreadable descriptor = %+v, want diagnostics", unreadable)
+	}
+}
+
+func TestLocalRegistryRemoveUnregistersWithoutTouchingTheFile(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "remove-me.yaml")
+	source := validCatalogYAML("remove me")
+	writeTestScenario(t, path, source)
+	registry := NewLocalRegistry(nil)
+	descriptor, _, err := registry.Import(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Remove(descriptor.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.List()) != 0 {
+		t.Fatalf("registry still contains removed scenario: %+v", registry.List())
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != source {
+		t.Fatalf("Remove() modified file contents: %q", contents)
+	}
+	if err := registry.Remove(descriptor.ID); err == nil {
+		t.Fatal("removing an unknown scenario succeeded")
 	}
 }
 

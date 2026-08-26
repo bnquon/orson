@@ -107,10 +107,11 @@ type ScenarioDraft struct {
 }
 
 type ScenarioFileData struct {
-	Cancelled   bool                 `json:"cancelled"`
-	Descriptor  *ScenarioDescriptor  `json:"descriptor,omitempty"`
-	Scenario    *ScenarioData        `json:"scenario,omitempty"`
-	Diagnostics []ScenarioDiagnostic `json:"diagnostics,omitempty"`
+	Cancelled   bool                        `json:"cancelled"`
+	Descriptor  *ScenarioDescriptor         `json:"descriptor,omitempty"`
+	Scenario    *ScenarioData               `json:"scenario,omitempty"`
+	Diagnostics []ScenarioDiagnostic        `json:"diagnostics,omitempty"`
+	Persistence *WorkspacePersistenceStatus `json:"persistence,omitempty"`
 }
 
 type ScenarioFileResponse struct {

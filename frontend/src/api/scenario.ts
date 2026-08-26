@@ -1,9 +1,9 @@
 import {
   ImportLocalScenario,
-  ListBundledScenarios,
   ListLocalScenarios,
   LoadBundledScenario,
   LoadLocalScenario,
+  RemoveLocalScenario,
   SaveLocalScenario,
   SaveScenarioAs,
 } from '../../wailsjs/go/main/App';
@@ -56,27 +56,6 @@ async function fileCall(
       diagnostics: [],
     };
   }
-}
-
-export function listBundledScenarios(): Promise<Result<api.ScenarioListData>> {
-  return call(async () => {
-    const response = await ListBundledScenarios();
-    if (response.ok && response.data !== undefined) {
-      return {
-        ok: true,
-        data: response.data,
-      };
-    }
-
-    return {
-      ok: false,
-      error: response.error ?? {
-        code: 'scenario_catalog_failed',
-        message: 'The bundled scenario catalog could not be loaded.',
-        retryable: false,
-      },
-    };
-  });
 }
 
 export function loadBundledScenario(id: string): Promise<Result<api.ScenarioData>> {
@@ -134,6 +113,10 @@ export function loadLocalScenario(id: string): Promise<Result<api.ScenarioData>>
       },
     };
   });
+}
+
+export function removeLocalScenario(id: string): Promise<ScenarioFileResult> {
+  return fileCall(() => RemoveLocalScenario(id));
 }
 
 export function saveLocalScenario(

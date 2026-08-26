@@ -71,8 +71,9 @@ type ConnectionAttempt struct {
 }
 
 type ConnectionState struct {
-	Active        *ConnectionInfo   `json:"active,omitempty"`
-	LatestAttempt ConnectionAttempt `json:"latestAttempt"`
+	Active        *ConnectionInfo             `json:"active,omitempty"`
+	LatestAttempt ConnectionAttempt           `json:"latestAttempt"`
+	Persistence   *WorkspacePersistenceStatus `json:"persistence,omitempty"`
 }
 
 type ConnectionResponse struct {

@@ -17,6 +17,7 @@ interface ComposeConfigSectionProps {
   rootTopicEditRef: RefObject<string | null>;
   touched: TouchedState;
   validation: ValidationResult;
+  onReviewConnection: () => void;
   onTouchField: (field: ValidatableField) => void;
   onTouchWatchedTopic: (topicId: string) => void;
 }
@@ -28,6 +29,7 @@ export function ComposeConfigSection({
   rootTopicEditRef,
   touched,
   validation,
+  onReviewConnection,
   onTouchField,
   onTouchWatchedTopic,
 }: ComposeConfigSectionProps) {
@@ -141,7 +143,7 @@ export function ComposeConfigSection({
             {validation.fieldErrors.connection ?? 'The active workspace connection is unavailable.'}
           </span>
           {/* Defensive fallback: the app normally gates the workbench until this is connected. */}
-          <button type="button" onClick={() => focusControl('workbench-environment-selector')}>
+          <button type="button" onClick={onReviewConnection}>
             Review connection
           </button>
         </div>

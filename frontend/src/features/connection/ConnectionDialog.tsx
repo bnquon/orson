@@ -9,7 +9,8 @@ import './styles/connection.css';
 
 interface ConnectionDialogProps {
   open: boolean;
-  activeConnection: api.ConnectionInfo;
+  activeConnection: api.ConnectionInfo | null;
+  rememberedConnection: api.ConnectionInfo | null;
   attempt: ConnectionAttemptState;
   operation: ConnectionOperation;
   error: ApiError | null;
@@ -22,6 +23,7 @@ interface ConnectionDialogProps {
 export function ConnectionDialog({
   open,
   activeConnection,
+  rememberedConnection,
   attempt,
   operation,
   error,
@@ -30,18 +32,18 @@ export function ConnectionDialog({
   onClearErrors,
   onClose,
 }: ConnectionDialogProps) {
-  const initialValues = useMemo<ConnectionFormValues>(
-    () => ({
-      name: activeConnection.name,
-      brokers: activeConnection.brokers.map((address) => ({
+  const initialValues = useMemo<ConnectionFormValues>(() => {
+    const source = activeConnection ?? rememberedConnection;
+    return {
+      name: source?.name ?? '',
+      brokers: (source?.brokers.length ? source.brokers : ['']).map((address) => ({
         id: crypto.randomUUID(),
         address,
       })),
-      clientId: activeConnection.clientId,
-      dialTimeoutSeconds: String(activeConnection.dialTimeoutSeconds),
-    }),
-    [activeConnection],
-  );
+      clientId: source?.clientId ?? 'orson',
+      dialTimeoutSeconds: String(source?.dialTimeoutSeconds ?? 5),
+    };
+  }, [activeConnection, rememberedConnection]);
 
   if (!open) return null;
 
@@ -49,7 +51,7 @@ export function ConnectionDialog({
     <Modal
       open
       title="Kafka connection"
-      description="Update the active session connection without leaving the workbench."
+      description="Connection settings are remembered for this workspace after a successful connection."
       closeDisabled={operation !== 'idle'}
       onClose={onClose}
       footer={
@@ -62,6 +64,7 @@ export function ConnectionDialog({
       }
     >
       <ConnectionForm
+        key={`${initialValues.name}:${initialValues.brokers.map((broker) => broker.address).join(',')}:${initialValues.clientId}:${initialValues.dialTimeoutSeconds}`}
         activeConnection={activeConnection}
         initialAttempt={attempt}
         initialValues={initialValues}

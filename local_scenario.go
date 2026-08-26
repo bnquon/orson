@@ -46,6 +46,9 @@ func (wailsScenarioFileDialogs) SaveScenarioFile(ctx context.Context, defaultFil
 
 // ListLocalScenarios returns imported files registered for this process only.
 func (a *App) ListLocalScenarios() api.ScenarioListResponse {
+	a.scenarioOpMu.Lock()
+	defer a.scenarioOpMu.Unlock()
+
 	descriptors := a.getLocalScenarioRegistry().List()
 	items := make([]api.ScenarioDescriptor, 0, len(descriptors))
 	for _, descriptor := range descriptors {
@@ -83,11 +86,15 @@ func (a *App) ImportLocalScenario() api.ScenarioFileResponse {
 	if err != nil {
 		return localScenarioFailure(err)
 	}
+	if err := a.persistLocalScenarioDescriptor(descriptor); err != nil {
+		return api.ScenarioFileFailure(workspaceAPIError(err), nil)
+	}
 	apiDescriptor := toAPIScenarioDescriptor(descriptor)
 	apiScenario := toAPILocalScenarioData(descriptor, loaded)
 	return api.ScenarioFileSuccess(api.ScenarioFileData{
-		Descriptor: &apiDescriptor,
-		Scenario:   &apiScenario,
+		Descriptor:  &apiDescriptor,
+		Scenario:    &apiScenario,
+		Persistence: a.currentWorkspacePersistence(),
 	})
 }
 
@@ -109,6 +116,31 @@ func (a *App) LoadLocalScenario(id string) api.ScenarioResponse {
 	return api.ScenarioSuccess(toAPILocalScenarioData(descriptor, loaded))
 }
 
+// RemoveLocalScenario removes the current workspace's association with an
+// imported YAML file. The file on disk is never deleted or modified.
+func (a *App) RemoveLocalScenario(id string) api.ScenarioFileResponse {
+	a.scenarioOpMu.Lock()
+	defer a.scenarioOpMu.Unlock()
+
+	if apiErr := a.scenarioFileRunGuard(); apiErr != nil {
+		return api.ScenarioFileFailure(apiErr, nil)
+	}
+	registry := a.getLocalScenarioRegistry()
+	reference, err := registry.Reference(id)
+	if err != nil {
+		return localScenarioFailure(err)
+	}
+	service := a.workspaceService()
+	state := service.Snapshot()
+	if err := service.RemoveScenario(state.ActiveWorkspaceID, reference.CanonicalPath); err != nil {
+		return api.ScenarioFileFailure(workspaceAPIError(err), nil)
+	}
+	if err := registry.Remove(id); err != nil {
+		return localScenarioFailure(err)
+	}
+	return api.ScenarioFileSuccess(api.ScenarioFileData{Persistence: a.currentWorkspacePersistence()})
+}
+
 // SaveLocalScenario writes a valid draft back to the imported file represented
 // by the backend-owned opaque session ID.
 func (a *App) SaveLocalScenario(id string, draft api.ScenarioDraft) api.ScenarioFileResponse {
@@ -122,11 +154,15 @@ func (a *App) SaveLocalScenario(id string, draft api.ScenarioDraft) api.Scenario
 	if err != nil {
 		return localScenarioFailure(err)
 	}
+	if err := a.persistLocalScenarioDescriptor(descriptor); err != nil {
+		return api.ScenarioFileFailure(workspaceAPIError(err), nil)
+	}
 	apiDescriptor := toAPIScenarioDescriptor(descriptor)
 	apiScenario := toAPILocalScenarioData(descriptor, loaded)
 	return api.ScenarioFileSuccess(api.ScenarioFileData{
-		Descriptor: &apiDescriptor,
-		Scenario:   &apiScenario,
+		Descriptor:  &apiDescriptor,
+		Scenario:    &apiScenario,
+		Persistence: a.currentWorkspacePersistence(),
 	})
 }
 
@@ -165,12 +201,31 @@ func (a *App) SaveScenarioAs(draft api.ScenarioDraft) api.ScenarioFileResponse {
 	if err != nil {
 		return localScenarioFailure(err)
 	}
+	if err := a.persistLocalScenarioDescriptor(descriptor); err != nil {
+		return api.ScenarioFileFailure(workspaceAPIError(err), nil)
+	}
 	apiDescriptor := toAPIScenarioDescriptor(descriptor)
 	apiScenario := toAPILocalScenarioData(descriptor, loaded)
 	return api.ScenarioFileSuccess(api.ScenarioFileData{
-		Descriptor: &apiDescriptor,
-		Scenario:   &apiScenario,
+		Descriptor:  &apiDescriptor,
+		Scenario:    &apiScenario,
+		Persistence: a.currentWorkspacePersistence(),
 	})
+}
+
+func (a *App) persistLocalScenarioDescriptor(descriptor scenario.Descriptor) error {
+	service := a.workspaceService()
+	state := service.Snapshot()
+	reference, err := workspaceScenarioReference(state.ActiveWorkspaceID, descriptor, a.getLocalScenarioRegistry(), time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	return service.UpsertScenario(reference)
+}
+
+func (a *App) currentWorkspacePersistence() *api.WorkspacePersistenceStatus {
+	persistence := toAPIPersistence(a.workspaceService().Snapshot().Persistence)
+	return &persistence
 }
 
 func (a *App) getLocalScenarioRegistry() *scenario.LocalRegistry {
