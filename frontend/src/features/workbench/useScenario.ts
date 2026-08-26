@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import type { api } from '../../../wailsjs/go/models';
 import {
   importLocalScenario,
@@ -119,6 +119,15 @@ export function useScenario({
   const exampleDescriptorsRef = useRef<ScenarioDescriptor[]>([]);
   const activeScenarioIdRef = useRef<string | null>(null);
   const bootstrapIdentityRef = useRef('');
+  const bootstrapIdentity =
+    bootstrap === null
+      ? ''
+      : [
+          bootstrap.activeWorkspace.id,
+          bootstrap.selectedScenarioId,
+          bootstrap.selectedScenario?.id ?? '',
+          ...bootstrap.localScenarios.map((descriptor) => descriptor.id),
+        ].join('|');
 
   const allDescriptors = useCallback(
     () => [...exampleDescriptorsRef.current, ...localDescriptorsRef.current],
@@ -343,9 +352,12 @@ export function useScenario({
     };
   }, []);
 
+  useLayoutEffect(() => {
+    requestIdRef.current += 1;
+  }, [bootstrapIdentity]);
+
   useEffect(() => {
     if (!mountedRef.current) return;
-    requestIdRef.current += 1;
 
     void Promise.resolve().then(() => {
       if (!mountedRef.current) return;
@@ -356,12 +368,6 @@ export function useScenario({
         return;
       }
 
-      const bootstrapIdentity = [
-        bootstrap.activeWorkspace.id,
-        bootstrap.selectedScenarioId,
-        bootstrap.selectedScenario?.id ?? '',
-        ...bootstrap.localScenarios.map((descriptor) => descriptor.id),
-      ].join('|');
       if (bootstrapIdentityRef.current === bootstrapIdentity) return;
       bootstrapIdentityRef.current = bootstrapIdentity;
 
@@ -411,7 +417,7 @@ export function useScenario({
         }
       }
     });
-  }, [bootstrap, bootstrapError, replaceLocalDescriptors]);
+  }, [bootstrap, bootstrapError, bootstrapIdentity, replaceLocalDescriptors]);
 
   const descriptors = [...examples, ...localSession.descriptors];
   const selectedDescriptor =
