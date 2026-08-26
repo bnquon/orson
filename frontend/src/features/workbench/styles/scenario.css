@@ -143,22 +143,6 @@
   margin: 0;
 }
 
-.scenario-switch-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.scenario-discard-button {
-  background: var(--color-danger);
-  border: 1px solid var(--color-danger);
-  border-radius: var(--radius-sm);
-  color: var(--color-bg);
-  cursor: pointer;
-  font-size: var(--text-xs);
-  padding: 7px 10px;
-}
-
 .scenario-diagnostics {
   background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
   border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 36%, var(--color-border));

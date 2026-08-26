@@ -4,8 +4,6 @@ export type ConnectionAttemptStatus = 'disconnected' | 'connecting' | 'connected
 
 export type ConnectionOperation = 'idle' | 'connecting' | 'disconnecting';
 
-export type StartupStatus = 'loading' | 'ready' | 'failed';
-
 export interface ConnectionAttemptState {
   status: ConnectionAttemptStatus;
   error: ApiError | null;

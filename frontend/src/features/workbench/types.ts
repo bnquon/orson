@@ -7,7 +7,7 @@ export interface KafkaConnection {
   brokers: string[];
   clientId: string;
   dialTimeoutSeconds: number;
-  status: 'connected';
+  status: 'connected' | 'disconnected';
 }
 
 interface WatchedTopic {
@@ -92,7 +92,7 @@ export interface LoadedScenario {
   warnings: ScenarioWarning[];
 }
 
-export type ScenarioFileOperation = 'idle' | 'importing' | 'saving' | 'saving_as';
+export type ScenarioFileOperation = 'idle' | 'importing' | 'removing' | 'saving' | 'saving_as';
 
 export type ScenarioFileOperationOutcome = 'succeeded' | 'cancelled' | 'failed';
 

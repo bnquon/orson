@@ -1,20 +1,14 @@
 import { CheckCircle } from 'iconoir-react';
-import type { ConnectionAttemptState, ConnectionOperation, StartupStatus } from './types';
+import type { ConnectionAttemptState, ConnectionOperation } from './types';
 import { PixelGridLoader } from '../../components/PixelGridLoader';
 
 interface ConnectionStatusProps {
   attempt: ConnectionAttemptState;
-  startupStatus: StartupStatus;
   operation: ConnectionOperation;
   hasError: boolean;
 }
 
-export function ConnectionStatus({
-  attempt,
-  startupStatus,
-  operation,
-  hasError,
-}: ConnectionStatusProps) {
+export function ConnectionStatus({ attempt, operation, hasError }: ConnectionStatusProps) {
   const statusLabel =
     operation === 'connecting'
       ? 'Connecting to Kafka'
@@ -30,18 +24,6 @@ export function ConnectionStatus({
 
   return (
     <>
-      {startupStatus === 'loading' ? (
-        <div
-          className="connection-startup-status"
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <PixelGridLoader size="status" />
-          <span>Checking connection state</span>
-        </div>
-      ) : null}
-
       {showAttemptStatus ? (
         <div
           className={`connection-attempt connection-attempt--${attempt.status}`}

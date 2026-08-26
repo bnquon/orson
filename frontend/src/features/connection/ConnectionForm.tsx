@@ -10,7 +10,6 @@ import type {
   ConnectionFieldErrors,
   ConnectionFormValues,
   ConnectionOperation,
-  StartupStatus,
 } from './types';
 import { hasConnectionFieldErrors, validateConnectionValues } from './validation';
 import './styles/connection.css';
@@ -19,14 +18,12 @@ interface ConnectionFormProps {
   activeConnection: api.ConnectionInfo | null;
   initialAttempt: ConnectionAttemptState;
   initialValues: ConnectionFormValues;
-  startupStatus?: StartupStatus;
   error?: ApiError | null;
   operation: ConnectionOperation;
   formId: string;
   showActions?: boolean;
   onConnect: (values: ConnectionFormValues) => void;
   onDisconnect: () => void;
-  onRetryStartup?: () => void;
   onClearErrors: () => void;
 }
 
@@ -34,14 +31,12 @@ export function ConnectionForm({
   activeConnection,
   initialAttempt,
   initialValues,
-  startupStatus = 'ready',
   error = null,
   operation,
   formId,
   showActions = true,
   onConnect,
   onDisconnect,
-  onRetryStartup,
   onClearErrors,
 }: ConnectionFormProps) {
   const [values, setValues] = useState<ConnectionFormValues>(initialValues);
@@ -116,19 +111,8 @@ export function ConnectionForm({
 
   return (
     <form id={formId} className="connection-form" onSubmit={handleSubmit} noValidate>
-      <ConnectionStatus
-        attempt={initialAttempt}
-        startupStatus={startupStatus}
-        operation={operation}
-        hasError={error !== null}
-      />
-      <ConnectionError
-        fieldErrors={fieldErrors}
-        error={error}
-        startupStatus={startupStatus}
-        isSubmitting={isSubmitting}
-        onRetryStartup={onRetryStartup}
-      />
+      <ConnectionStatus attempt={initialAttempt} operation={operation} hasError={error !== null} />
+      <ConnectionError fieldErrors={fieldErrors} error={error} />
       <ConnectionFields
         values={values}
         fieldErrors={fieldErrors}
@@ -140,8 +124,6 @@ export function ConnectionForm({
         onRemoveBroker={removeBroker}
       />
 
-      {/* TODO: [Database] Persist connection profiles when saved connections are introduced. */}
-      {/* TODO: [Persistence] Keep session-only behavior until SQLite-backed workspaces are implemented. */}
       {/* TODO: [Keychain] Store credentials once authenticated Kafka connections are supported. */}
       {showActions ? (
         <ConnectionActions

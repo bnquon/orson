@@ -1,0 +1,299 @@
+package workspace
+
+import (
+	"database/sql"
+	"errors"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func testService(t *testing.T) *Service {
+	t.Helper()
+	service := NewService(Options{DatabasePath: filepath.Join(t.TempDir(), "orson.db")})
+	t.Cleanup(func() { _ = service.Close() })
+	return service
+}
+
+func TestDatabaseMigrationAndDefaultWorkspace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orson.db")
+	service := NewService(Options{DatabasePath: path})
+	state := service.Snapshot()
+	if state.Persistence.Mode != "persistent" || len(state.Workspaces) != 1 || state.Workspaces[0].Name != DefaultName {
+		t.Fatalf("initial state = %+v", state)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := openSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version int
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 1 {
+		t.Fatalf("migration version = %d, err = %v", version, err)
+	}
+}
+
+func TestWorkspaceCRUDOrderingAndFinalProtection(t *testing.T) {
+	service := testService(t)
+	state, err := service.Create("  SECOND  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondID := state.ActiveWorkspaceID
+	if state.Workspaces[0].ID != secondID || state.Workspaces[0].Name != "SECOND" {
+		t.Fatalf("create state = %+v", state.Workspaces)
+	}
+	if _, err := service.Create("second"); !errors.Is(err, ErrWorkspaceNameDuplicate) {
+		t.Fatalf("duplicate error = %v", err)
+	}
+	if _, err := service.Rename(secondID, "   "); !errors.Is(err, ErrWorkspaceNameRequired) {
+		t.Fatalf("blank rename error = %v", err)
+	}
+	state, err = service.Delete(secondID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.ActiveWorkspaceID == secondID || len(state.Workspaces) != 1 {
+		t.Fatalf("delete state = %+v", state)
+	}
+	if _, err := service.Delete(state.ActiveWorkspaceID); !errors.Is(err, ErrFinalWorkspace) {
+		t.Fatalf("final delete error = %v", err)
+	}
+}
+
+func TestScenarioAssociationsAreWorkspaceScoped(t *testing.T) {
+	service := testService(t)
+	state := service.Snapshot()
+	firstID := state.ActiveWorkspaceID
+	state, err := service.Create("Second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondID := state.ActiveWorkspaceID
+	now := time.Now().UTC()
+	for _, workspaceID := range []string{firstID, secondID} {
+		if err := service.UpsertScenario(ScenarioReference{WorkspaceID: workspaceID, CanonicalPath: "/tmp/order.yaml", DisplayFilename: "order.yaml", ImportedAt: now, Fingerprint: workspaceID}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := service.UpsertScenario(ScenarioReference{WorkspaceID: secondID, CanonicalPath: "/tmp/order.yaml", DisplayFilename: "order.yaml", ImportedAt: now.Add(time.Hour), Fingerprint: "updated"}); err != nil {
+		t.Fatal(err)
+	}
+	state = service.Snapshot()
+	if len(state.Scenarios[firstID]) != 1 || len(state.Scenarios[secondID]) != 1 || state.Scenarios[secondID][0].Fingerprint != "updated" {
+		t.Fatalf("scenario state = %+v", state.Scenarios)
+	}
+	if !state.Scenarios[secondID][0].ImportedAt.Equal(now) {
+		t.Fatalf("duplicate import changed imported timestamp")
+	}
+}
+
+func TestRemoveScenarioOnlyRemovesTheWorkspaceAssociation(t *testing.T) {
+	service := testService(t)
+	first := service.Snapshot().ActiveWorkspaceID
+	state, err := service.Create("Second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := state.ActiveWorkspaceID
+	for _, workspaceID := range []string{first, second} {
+		if err := service.UpsertScenario(ScenarioReference{
+			WorkspaceID: workspaceID, CanonicalPath: "/tmp/shared.yaml", DisplayFilename: "shared.yaml",
+			ImportedAt: time.Now().UTC(), Fingerprint: workspaceID,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := service.SetSelection(Selection{WorkspaceID: second, Source: "local", Reference: "/tmp/shared.yaml"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.RemoveScenario(second, "/tmp/shared.yaml"); err != nil {
+		t.Fatal(err)
+	}
+	state = service.Snapshot()
+	if len(state.Scenarios[second]) != 0 || state.Selections[second] != nil {
+		t.Fatalf("removed workspace still has scenario state: %+v / %+v", state.Scenarios, state.Selections)
+	}
+	if len(state.Scenarios[first]) != 1 {
+		t.Fatalf("other workspace association was removed: %+v", state.Scenarios)
+	}
+}
+
+func TestConnectionPersistenceContainsOnlyNonSecretColumns(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orson.db")
+	service := NewService(Options{DatabasePath: path})
+	state := service.Snapshot()
+	config := ConnectionConfig{WorkspaceID: state.ActiveWorkspaceID, Name: "Local", Brokers: []string{"localhost:9092"}, ClientID: "orson", DialTimeoutSeconds: 5, UpdatedAt: time.Now().UTC()}
+	if err := service.SaveConnection(config); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened := NewService(Options{DatabasePath: path})
+	defer reopened.Close()
+	got := reopened.Snapshot().Connections[state.ActiveWorkspaceID]
+	if got == nil || got.Name != config.Name || len(got.Brokers) != 1 {
+		t.Fatalf("connection = %+v", got)
+	}
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`PRAGMA table_info(workspace_connections)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, dataType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &dataType, &notnull, &defaultValue, &pk); err != nil {
+			t.Fatal(err)
+		}
+		lower := strings.ToLower(name)
+		if strings.Contains(lower, "secret") || strings.Contains(lower, "password") || strings.Contains(lower, "payload") || strings.Contains(lower, "correlation") || strings.Contains(lower, "private") {
+			t.Fatalf("unexpected sensitive column %q", name)
+		}
+	}
+}
+
+func TestFallbackWarningAndConfirmedSnapshotRecovery(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orson.db")
+	durable := NewService(Options{DatabasePath: path})
+	if _, err := durable.Create("Durable only"); err != nil {
+		t.Fatal(err)
+	}
+	if err := durable.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var fail atomic.Bool
+	fail.Store(true)
+	service := NewService(Options{
+		DatabasePath: path,
+		OpenDatabase: func(path string) (*sql.DB, error) {
+			if fail.Load() {
+				return nil, errors.New("database unavailable")
+			}
+			return openSQLite(path)
+		},
+	})
+	state := service.Snapshot()
+	if state.Persistence.Mode != "session_only" || !strings.Contains(state.Persistence.Warning, "lost when Orson closes") {
+		t.Fatalf("fallback persistence = %+v", state.Persistence)
+	}
+	if _, err := service.Create("Session only"); err != nil {
+		t.Fatal(err)
+	}
+	fail.Store(false)
+	if _, err := service.Retry(false); !errors.Is(err, ErrRecoveryConfirmationRequired) {
+		t.Fatalf("unconfirmed retry error = %v", err)
+	}
+	recovered, err := service.Retry(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.Persistence.Mode != "persistent" {
+		t.Fatalf("recovered persistence = %+v", recovered.Persistence)
+	}
+	names := make(map[string]bool)
+	for _, item := range recovered.Workspaces {
+		names[item.Name] = true
+	}
+	if !names["Durable only"] || !names["Session only"] || !names["My workspace (recovered)"] {
+		t.Fatalf("recovered names = %+v", names)
+	}
+}
+
+func TestNewerMigrationFallsBackWithoutTouchingDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orson.db")
+	db, err := openSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL); INSERT INTO schema_migrations VALUES(99, 'now')`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	service := NewService(Options{DatabasePath: path})
+	defer service.Close()
+	if service.Snapshot().Persistence.Mode != "session_only" {
+		t.Fatalf("newer database did not trigger fallback")
+	}
+}
+
+func TestRuntimeWriteFailureFallsBackAndRecoveryReplaysDeletionTombstone(t *testing.T) {
+	service := testService(t)
+	state, err := service.Create("Delete during fallback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deletedID := state.ActiveWorkspaceID
+	if err := service.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	state, err = service.Delete(deletedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Persistence.Mode != "session_only" || !state.Persistence.SessionDirty {
+		t.Fatalf("write failure persistence = %+v", state.Persistence)
+	}
+	recovered, err := service.Retry(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workspaceIndex(recovered, deletedID) >= 0 {
+		t.Fatalf("explicitly deleted workspace returned after recovery")
+	}
+}
+
+func TestRecoveryAppliesTombstoneWhenDurableStateHasOneWorkspace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orson.db")
+	durable := NewService(Options{DatabasePath: path})
+	durableID := durable.Snapshot().ActiveWorkspaceID
+	if err := durable.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	nextIDs := []string{durableID, "session-workspace-id"}
+	service := NewService(Options{
+		DatabasePath: path,
+		NewID: func() string {
+			id := nextIDs[0]
+			nextIDs = nextIDs[1:]
+			return id
+		},
+		OpenDatabase: func(path string) (*sql.DB, error) {
+			return nil, errors.New("database unavailable")
+		},
+	})
+	defer service.Close()
+	state, err := service.Create("Session workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Delete(durableID); err != nil {
+		t.Fatal(err)
+	}
+
+	service.open = openSQLite
+	recovered, err := service.Retry(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recovered.Workspaces) != 1 || recovered.Workspaces[0].Name != "Session workspace" {
+		t.Fatalf("recovered workspaces = %+v", recovered.Workspaces)
+	}
+	if recovered.ActiveWorkspaceID != state.ActiveWorkspaceID {
+		t.Fatalf("active workspace = %q, want %q", recovered.ActiveWorkspaceID, state.ActiveWorkspaceID)
+	}
+}

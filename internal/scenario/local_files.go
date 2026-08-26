@@ -16,8 +16,6 @@ import (
 	"sync"
 )
 
-// TODO: [Database] Persist imported scenario metadata across launches.
-// TODO: [Workspace] Associate local scenarios with workspaces.
 // TODO: [Files] Detect moved or deleted local scenario files.
 
 type TempFile interface {
@@ -124,6 +122,111 @@ func (r *LocalRegistry) List() []Descriptor {
 	return result
 }
 
+// Hydrate registers a durable file reference for this process. The persisted
+// fingerprint remains the baseline so externally changed files are surfaced
+// instead of silently replacing a previous workspace selection.
+func (r *LocalRegistry) Hydrate(selectedPath, expectedFingerprint string) (Descriptor, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	normalized, key, err := r.normalizePath(selectedPath)
+	if err != nil {
+		return Descriptor{}, err
+	}
+	entry := r.entryForPath(key)
+	if entry == nil {
+		id, identityErr := newLocalID()
+		if identityErr != nil {
+			return Descriptor{}, &FileError{Code: "scenario_identity_failed", Message: "the imported scenario could not be registered", Err: identityErr}
+		}
+		filename := filepath.Base(normalized)
+		entry = &localEntry{
+			normalized: normalized,
+			descriptor: Descriptor{
+				ID:             id,
+				DisplayName:    filename,
+				RelativePath:   filename,
+				SourceFilename: filename,
+				Source:         SourceLocal,
+				SourcePath:     normalized,
+				Status:         StatusInvalid,
+			},
+		}
+		r.entries[id] = entry
+		r.byPath[key] = id
+		r.order = append(r.order, id)
+	}
+
+	loaded, source, readErr := r.readScenario(normalized)
+	if readErr != nil {
+		r.markEntryError(entry, readErr)
+		if len(entry.descriptor.Diagnostics) == 0 {
+			var fileErr *FileError
+			_ = errors.As(readErr, &fileErr)
+			code := "scenario_read_failed"
+			message := "The scenario file could not be read."
+			if fileErr != nil {
+				code = fileErr.Code
+				message = fileErr.Message
+			}
+			entry.descriptor.Diagnostics = []Diagnostic{{Code: code, Path: normalized, Message: message, Details: readErr.Error(), SourceFilename: filepath.Base(normalized)}}
+		}
+		entry.fingerprint = expectedFingerprint
+		return cloneDescriptor(entry.descriptor), readErr
+	}
+
+	currentFingerprint := fingerprint(source)
+	r.updateEntry(entry, normalized, loaded, source)
+	if expectedFingerprint != "" && expectedFingerprint != currentFingerprint {
+		changed := changedFileError(normalized, "import the file again to refresh the session copy")
+		entry.fingerprint = expectedFingerprint
+		entry.descriptor.LocalStatus = LocalStatusChanged
+		entry.descriptor.Diagnostics = append([]Diagnostic(nil), changed.Diagnostics...)
+	}
+	return cloneDescriptor(entry.descriptor), nil
+}
+
+type LocalReference struct {
+	CanonicalPath string
+	Fingerprint   string
+}
+
+func (r *LocalRegistry) Reference(id string) (LocalReference, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, err := r.entry(id)
+	if err != nil {
+		return LocalReference{}, err
+	}
+	return LocalReference{CanonicalPath: entry.normalized, Fingerprint: entry.fingerprint}, nil
+}
+
+// Remove unregisters an imported file from this process without touching the
+// file on disk.
+func (r *LocalRegistry) Remove(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	trimmedID := strings.TrimSpace(id)
+	_, err := r.entry(trimmedID)
+	if err != nil {
+		return err
+	}
+	delete(r.entries, trimmedID)
+	for path, registeredID := range r.byPath {
+		if registeredID == trimmedID {
+			delete(r.byPath, path)
+		}
+	}
+	for index, registeredID := range r.order {
+		if registeredID == trimmedID {
+			r.order = append(r.order[:index], r.order[index+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
 func (r *LocalRegistry) Import(selectedPath string) (Descriptor, Scenario, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -175,12 +278,9 @@ func (r *LocalRegistry) Load(id string) (Descriptor, Scenario, error) {
 	}
 	if fingerprint(source) != entry.fingerprint {
 		entry.descriptor.LocalStatus = LocalStatusChanged
-		return Descriptor{}, Scenario{}, &FileError{
-			Code:    "scenario_file_changed",
-			Message: "the scenario file changed outside Orson",
-			Path:    entry.normalized,
-			Err:     errors.New("import the file again to refresh the session copy"),
-		}
+		changed := changedFileError(entry.normalized, "import the file again to refresh the session copy")
+		entry.descriptor.Diagnostics = append([]Diagnostic(nil), changed.Diagnostics...)
+		return Descriptor{}, Scenario{}, changed
 	}
 	r.updateEntry(entry, entry.normalized, loaded, source)
 	return cloneDescriptor(entry.descriptor), cloneScenario(entry.scenario), nil
@@ -383,12 +483,7 @@ func (r *LocalRegistry) verifyFingerprint(target, expected string) error {
 		return r.readFileError(target, err)
 	}
 	if fingerprint(current) != expected {
-		return &FileError{
-			Code:    "scenario_file_changed",
-			Message: "the scenario file changed outside Orson",
-			Path:    target,
-			Err:     errors.New("import the file again before saving"),
-		}
+		return changedFileError(target, "import the file again before saving")
 	}
 	return nil
 }
@@ -473,20 +568,59 @@ func (r *LocalRegistry) markEntryError(entry *localEntry, err error) {
 	var fileErr *FileError
 	if !errors.As(err, &fileErr) {
 		entry.descriptor.LocalStatus = LocalStatusUnreadable
+		entry.descriptor.Diagnostics = []Diagnostic{{
+			Code:           "scenario_read_failed",
+			Path:           entry.normalized,
+			Message:        "the scenario file could not be read",
+			Details:        err.Error(),
+			SourceFilename: filepath.Base(entry.normalized),
+		}}
 		return
 	}
 	switch fileErr.Code {
 	case "scenario_file_missing":
 		entry.descriptor.LocalStatus = LocalStatusMissing
+		entry.descriptor.Diagnostics = fileErrorDiagnostics(fileErr)
 	case "scenario_file_changed":
 		entry.descriptor.LocalStatus = LocalStatusChanged
+		entry.descriptor.Diagnostics = fileErrorDiagnostics(fileErr)
 	case "scenario_parse_failed", "scenario_validation_failed":
 		entry.descriptor.Status = StatusInvalid
 		entry.descriptor.Warnings = nil
-		entry.descriptor.Diagnostics = append([]Diagnostic(nil), fileErr.Diagnostics...)
+		entry.descriptor.Diagnostics = fileErrorDiagnostics(fileErr)
 		entry.descriptor.LocalStatus = LocalStatusAvailable
 	default:
 		entry.descriptor.LocalStatus = LocalStatusUnreadable
+		entry.descriptor.Diagnostics = fileErrorDiagnostics(fileErr)
+	}
+}
+
+func fileErrorDiagnostics(fileErr *FileError) []Diagnostic {
+	if len(fileErr.Diagnostics) > 0 {
+		return append([]Diagnostic(nil), fileErr.Diagnostics...)
+	}
+	return []Diagnostic{{
+		Code:           fileErr.Code,
+		Path:           fileErr.Path,
+		Message:        fileErr.Message,
+		Details:        fileErr.Error(),
+		SourceFilename: filepath.Base(fileErr.Path),
+	}}
+}
+
+func changedFileError(path, detail string) *FileError {
+	return &FileError{
+		Code:    "scenario_file_changed",
+		Message: "the scenario file changed outside Orson",
+		Path:    path,
+		Diagnostics: []Diagnostic{{
+			Code:           "scenario_file_changed",
+			Path:           path,
+			Message:        "the scenario file changed outside Orson",
+			Details:        detail,
+			SourceFilename: filepath.Base(path),
+		}},
+		Err: errors.New(detail),
 	}
 }
 

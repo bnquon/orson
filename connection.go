@@ -9,6 +9,7 @@ import (
 	"orson/internal/kafka"
 	"orson/internal/run"
 	"orson/internal/scenario"
+	"orson/internal/workspace"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -62,10 +63,17 @@ type App struct {
 	scenarioCatalog  *scenario.Catalog
 	localScenarios   *scenario.LocalRegistry
 	scenarioDialogs  scenarioFileDialogs
+	workspacePath    string
+	workspaces       *workspace.Service
 }
 
 func NewApp() *App {
 	app := newApp(kafkaConnector{})
+	if databasePath, err := workspace.DefaultDatabasePath(); err == nil {
+		app.workspacePath = databasePath
+	} else {
+		app.workspacePath = ""
+	}
 	app.emitEvent = func(ctx context.Context, name string, event api.RunEvent) {
 		runtime.EventsEmit(ctx, name, event)
 	}
@@ -84,6 +92,7 @@ func newApp(connector KafkaConnector) *App {
 		latestAttempt: api.ConnectionAttempt{
 			Status: api.ConnectionStatusDisconnected,
 		},
+		workspacePath: ":memory:",
 	}
 }
 
@@ -94,11 +103,17 @@ func (a *App) startup(ctx context.Context) {
 		ctx = context.Background()
 	}
 
+	service := workspace.NewService(workspace.Options{DatabasePath: a.workspacePath})
+	state := service.Snapshot()
+	registry := hydrateWorkspaceRegistry(state)
+
 	a.stateMu.Lock()
-	defer a.stateMu.Unlock()
 
 	a.ctx = ctx
 	a.runCtx, a.cancelRun = context.WithCancel(ctx)
+	a.workspaces = service
+	a.localScenarios = registry
+	a.stateMu.Unlock()
 }
 
 func (a *App) shutdown(context.Context) {
@@ -125,6 +140,15 @@ func (a *App) shutdown(context.Context) {
 
 	if activeKafka != nil {
 		activeKafka.Close()
+	}
+	a.scenarioOpMu.Lock()
+	defer a.scenarioOpMu.Unlock()
+	a.stateMu.Lock()
+	service := a.workspaces
+	a.workspaces = nil
+	a.stateMu.Unlock()
+	if service != nil {
+		_ = service.Close()
 	}
 }
 
@@ -240,6 +264,17 @@ func (a *App) Connect(request api.ConnectionRequest) api.ConnectionResponse {
 	if oldConnection != nil {
 		oldConnection.Close()
 	}
+	workspaceState := a.workspaceService().Snapshot()
+	_ = a.workspaceService().SaveConnection(workspace.ConnectionConfig{
+		WorkspaceID:        workspaceState.ActiveWorkspaceID,
+		Name:               normalizedRequest.Name,
+		Brokers:            append([]string(nil), config.Brokers...),
+		ClientID:           config.ClientID,
+		DialTimeoutSeconds: normalizedRequest.DialTimeoutSeconds,
+		UpdatedAt:          time.Now().UTC(),
+	})
+	persistence := toAPIPersistence(a.workspaceService().Snapshot().Persistence)
+	state.Persistence = &persistence
 
 	return api.ConnectionSuccess(state)
 }
@@ -276,15 +311,19 @@ func (a *App) Disconnect() api.ConnectionStatusResponse {
 	if activeKafka != nil {
 		activeKafka.Close()
 	}
+	persistence := toAPIPersistence(a.workspaceService().Snapshot().Persistence)
+	state.Persistence = &persistence
 
 	return api.ConnectionStatusSuccess(state)
 }
 
 func (a *App) GetConnectionStatus() api.ConnectionStatusResponse {
 	a.stateMu.Lock()
-	defer a.stateMu.Unlock()
-
-	return api.ConnectionStatusSuccess(a.connectionStateLocked())
+	state := a.connectionStateLocked()
+	a.stateMu.Unlock()
+	persistence := toAPIPersistence(a.workspaceService().Snapshot().Persistence)
+	state.Persistence = &persistence
+	return api.ConnectionStatusSuccess(state)
 }
 
 func (a *App) beginRun() (*run.Coordinator, context.Context, run.RunID, *api.APIError) {

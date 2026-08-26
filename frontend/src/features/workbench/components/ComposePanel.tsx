@@ -33,6 +33,7 @@ interface ComposePanelProps {
   jsonValidationPending: boolean;
   configHeight: number | null;
   onConfigHeightChange: (height: number | null) => void;
+  onReviewConnection: () => void;
   onTouchField: (field: ValidatableField) => void;
   onTouchWatchedTopic: (topicId: string) => void;
   onTouchHeader: (headerId: string) => void;
@@ -62,6 +63,7 @@ export function ComposePanel({
   jsonValidationPending,
   configHeight,
   onConfigHeightChange,
+  onReviewConnection,
   onTouchField,
   onTouchWatchedTopic,
   onTouchHeader,
@@ -157,6 +159,7 @@ export function ComposePanel({
         rootTopicEditRef={rootTopicEditRef}
         touched={touched}
         validation={validation}
+        onReviewConnection={onReviewConnection}
         onTouchField={onTouchField}
         onTouchWatchedTopic={onTouchWatchedTopic}
       />

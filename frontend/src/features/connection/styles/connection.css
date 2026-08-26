@@ -114,16 +114,6 @@
   padding: 0 10px;
 }
 
-.connection-startup-status {
-  align-items: center;
-  color: var(--color-text-muted);
-  display: flex;
-  font-family: var(--font-code);
-  font-size: 10px;
-  gap: 8px;
-  min-height: 28px;
-}
-
 .connection-attempt--connecting {
   border-color: color-mix(in srgb, var(--color-warning) 55%, var(--color-border));
   color: var(--color-warning);
@@ -333,75 +323,6 @@
   font-family: var(--font-code);
   font-size: 9px;
   margin-right: auto;
-}
-
-.connection-primary-button,
-.connection-secondary-button {
-  align-items: center;
-  display: inline-flex;
-  gap: 6px;
-  justify-content: center;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 10px;
-  min-height: 32px;
-  min-width: 92px;
-  padding: 0 12px;
-}
-
-.connection-primary-button {
-  background: var(--color-accent);
-  border: 1px solid var(--color-accent);
-  color: var(--color-text-inverse);
-  font-weight: var(--weight-semibold);
-}
-
-.connection-primary-button:hover:not(:disabled) {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
-}
-
-.connection-secondary-button {
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-muted);
-}
-
-.connection-retry-button {
-  align-items: center;
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  color: var(--color-text-muted);
-  cursor: pointer;
-  display: inline-flex;
-  font-family: var(--font-code);
-  font-size: 9px;
-  gap: 6px;
-  margin-top: 9px;
-  min-height: 28px;
-  padding: 0 9px;
-}
-
-.connection-retry-button:hover:not(:disabled) {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
-}
-
-.connection-retry-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
-.connection-secondary-button:hover:not(:disabled) {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
-}
-
-.connection-primary-button:disabled,
-.connection-secondary-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
 }
 
 @media (prefers-reduced-motion: reduce) {

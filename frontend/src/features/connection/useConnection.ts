@@ -7,13 +7,12 @@ import type {
   ConnectionAttemptStatus,
   ConnectionFormValues,
   ConnectionOperation,
-  StartupStatus,
 } from './types';
 import {
   isReconciliationConfirmed,
   type ConnectionReconciliation,
 } from './connectionReconciliation';
-import { selectDialogError, selectSetupError } from './errorSelection';
+import { selectDialogError } from './errorSelection';
 
 const initialAttempt: ConnectionAttemptState = {
   status: 'disconnected',
@@ -48,24 +47,16 @@ function isBridgeError(error: ApiError): boolean {
 export interface ConnectionController {
   activeConnection: api.ConnectionInfo | null;
   latestAttempt: ConnectionAttemptState;
-  startup: {
-    status: StartupStatus;
-    error: ApiError | null;
-  };
-  setupError: ApiError | null;
   dialogError: ApiError | null;
   operation: ConnectionOperation;
   connect(values: ConnectionFormValues): Promise<Result<api.ConnectionState>>;
   disconnect(): Promise<Result<api.ConnectionState>>;
-  retryStartup(): Promise<void>;
   clearTransientErrors(): void;
 }
 
-export function useConnection(): ConnectionController {
+export function useConnection(initialState: api.ConnectionState | null): ConnectionController {
   const [activeConnection, setActiveConnection] = useState<api.ConnectionInfo | null>(null);
   const [latestAttempt, setLatestAttempt] = useState<ConnectionAttemptState>(initialAttempt);
-  const [startupStatus, setStartupStatus] = useState<StartupStatus>('loading');
-  const [startupError, setStartupError] = useState<ApiError | null>(null);
   const [operation, setOperation] = useState<ConnectionOperation>('idle');
   const [connectionError, setConnectionError] = useState<ApiError | null>(null);
   const [bridgeError, setBridgeError] = useState<ApiError | null>(null);
@@ -105,38 +96,26 @@ export function useConnection(): ConnectionController {
     [applyState, isCurrent],
   );
 
-  const loadStartupStatus = useCallback(async () => {
-    const requestId = ++requestIdRef.current;
-    setStartupStatus('loading');
-
-    const result = await getConnectionStatus();
-    if (!isCurrent(requestId)) return;
-
-    if (!result.ok) {
-      setStartupStatus('failed');
-      setStartupError(result.error);
-      return;
-    }
-
-    applyState(result.data);
-    setStartupError(null);
-    setStartupStatus('ready');
-  }, [applyState, isCurrent]);
-
   useEffect(() => {
     mountedRef.current = true;
-    void Promise.resolve().then(() => loadStartupStatus());
-
     return () => {
       mountedRef.current = false;
       requestIdRef.current += 1;
     };
-  }, [loadStartupStatus]);
+  }, []);
+
+  useEffect(() => {
+    if (initialState === null) return;
+    void Promise.resolve().then(() => {
+      if (!mountedRef.current) return;
+      requestIdRef.current += 1;
+      applyState(initialState);
+    });
+  }, [applyState, initialState]);
 
   const clearTransientErrors = useCallback(() => {
     setConnectionError(null);
     setBridgeError(null);
-    setStartupError(null);
     setLatestAttempt((current) => {
       if (current.status !== 'failed') return current;
 
@@ -154,8 +133,6 @@ export function useConnection(): ConnectionController {
       setOperation('connecting');
       setConnectionError(null);
       setBridgeError(null);
-      setStartupError(null);
-      setStartupStatus('ready');
       setLatestAttempt({ status: 'connecting', error: null });
 
       const result = await connect(request);
@@ -210,22 +187,15 @@ export function useConnection(): ConnectionController {
     return result;
   }, [applyState, isCurrent, reconcileStatus]);
 
-  const setupError = selectSetupError(startupError, bridgeError, connectionError);
   const dialogError = selectDialogError(bridgeError, connectionError);
 
   return {
     activeConnection,
     latestAttempt,
-    startup: {
-      status: startupStatus,
-      error: startupError,
-    },
-    setupError,
     dialogError,
     operation,
     connect: connectToKafka,
     disconnect: disconnectFromKafka,
-    retryStartup: loadStartupStatus,
     clearTransientErrors,
   };
 }

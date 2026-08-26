@@ -35,7 +35,8 @@ order.created
 
 ## Current features
 
-- Session-only Kafka connections
+- Persistent local workspaces with workspace-scoped imported scenarios
+- One remembered non-secret Kafka connection configuration per workspace
 - Root event publishing
 - Correlation-header based event tracking
 - Live downstream event updates
@@ -60,9 +61,9 @@ events belonging to the same run, but do not by themselves prove direct causalit
 
 Orson is an early MVP.
 
-The current version is focused on local development and demonstration. Connections are session-only,
-Kafka is currently configured for plaintext development use, and workspaces, saved connections, and
-persistent run history are not implemented yet.
+The current version is focused on local development and demonstration. Kafka connections are
+established explicitly for each app session, non-secret connection settings are remembered per
+workspace, and persistent run history is not implemented yet.
 
 The deeper product and architecture notes live in [PROJECT.md](PROJECT.md).
 
@@ -129,8 +130,7 @@ The demo services use plaintext Kafka and are intended for local development onl
 
 ## Roadmap
 
-- Saved connections
-- Workspaces
+- Multiple saved connection profiles
 - SQLite-backed run history
 - TLS and SASL configuration
 - More flexible correlation strategies

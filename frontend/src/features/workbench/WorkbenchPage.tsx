@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type SubmitEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode, type SubmitEvent } from 'react';
+import type { WorkspaceGuardState } from '../workspace/useWorkspace';
 import { CheckCircle, DotArrowRight, WarningCircle } from 'iconoir-react';
 import { LoadingDots } from '../../components/LoadingDots';
-import { Modal } from '../../components/Modal';
+import { Modal, ModalActions, ModalButton } from '../../components/Modal';
 import { Toast } from '../../components/Toast';
 import { ComposePanel } from './components/ComposePanel';
 import { FlowPanel } from './components/FlowPanel';
@@ -81,12 +82,15 @@ interface WorkbenchPageProps {
   fileFeedback: ScenarioFileFeedback;
   onSelectScenario: (id: string) => Promise<void>;
   onImportScenario: () => Promise<ScenarioFileOperationOutcome>;
+  onRemoveScenario: (id: string) => Promise<ScenarioFileOperationOutcome>;
   onSaveScenario: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
   onSaveScenarioAs: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
   onClearFileFeedback: () => void;
   onRetrySelectedScenario: () => Promise<void>;
   connectionDialogOpen: boolean;
   onConnectionToggle: () => void;
+  workspaceSelector: ReactNode;
+  onWorkspaceGuardChange: (guards: WorkspaceGuardState) => void;
 }
 
 export function WorkbenchPage({
@@ -107,12 +111,15 @@ export function WorkbenchPage({
   fileFeedback,
   onSelectScenario,
   onImportScenario,
+  onRemoveScenario,
   onSaveScenario,
   onSaveScenarioAs,
   onClearFileFeedback,
   onRetrySelectedScenario,
   connectionDialogOpen,
   onConnectionToggle,
+  workspaceSelector,
+  onWorkspaceGuardChange,
 }: WorkbenchPageProps) {
   const [mode, setMode] = useState<WorkspaceMode>('compose');
   const { draft, savedDraft, setDraft, markSaveStarted, markSaveFailed } =
@@ -202,6 +209,10 @@ export function WorkbenchPage({
     onSaveScenarioAs,
     onClearFileFeedback,
   });
+
+  useEffect(() => {
+    onWorkspaceGuardChange({ runActive: isRunActive, draftDirty: fileOperations.draftIsDirty });
+  }, [fileOperations.draftIsDirty, isRunActive, onWorkspaceGuardChange]);
 
   const touchField = (field: ValidatableField) => {
     setTouched((current) => ({
@@ -354,6 +365,7 @@ export function WorkbenchPage({
       fileActions={fileActions}
       onSelectScenario={fileOperations.requestScenarioSelection}
       onImportScenario={fileOperations.requestImport}
+      onRemoveScenario={onRemoveScenario}
     />
   );
   const workspaceToolbar = (
@@ -407,12 +419,15 @@ export function WorkbenchPage({
     <>
       <WorkbenchShell
         connection={connection}
+        workspaceSelector={workspaceSelector}
         connectionDialogOpen={connectionDialogOpen}
         onConnectionToggle={onConnectionToggle}
         sidebar={scenarioSidebar}
         toolbar={workspaceToolbar}
         workspaceMode={mode}
-        workspaceInert={fileFeedback.operation === 'importing'}
+        workspaceInert={
+          fileFeedback.operation === 'importing' || fileFeedback.operation === 'removing'
+        }
         workspace={
           mode === 'compose' ? (
             <>
@@ -430,6 +445,7 @@ export function WorkbenchPage({
                 jsonValidationPending={jsonValidationPending}
                 configHeight={composeConfigHeight}
                 onConfigHeightChange={setComposeConfigHeight}
+                onReviewConnection={onConnectionToggle}
                 onTouchField={touchField}
                 onTouchWatchedTopic={touchWatchedTopic}
                 onTouchHeader={touchHeader}
@@ -479,22 +495,18 @@ export function WorkbenchPage({
         }
         onClose={fileOperations.cancelPendingScenarioAction}
         footer={
-          <div className="scenario-switch-actions">
-            <button
-              type="button"
-              className="connection-secondary-button"
-              onClick={fileOperations.cancelPendingScenarioAction}
-            >
+          <ModalActions>
+            <ModalButton type="button" onClick={fileOperations.cancelPendingScenarioAction}>
               Cancel
-            </button>
-            <button
+            </ModalButton>
+            <ModalButton
+              tone="danger"
               type="button"
-              className="scenario-discard-button"
               onClick={fileOperations.confirmPendingScenarioAction}
             >
               Discard changes
-            </button>
-          </div>
+            </ModalButton>
+          </ModalActions>
         }
       >
         <p className="scenario-switch-copy">

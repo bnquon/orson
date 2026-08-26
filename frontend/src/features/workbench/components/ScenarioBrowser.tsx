@@ -10,7 +10,13 @@ import {
   Xmark,
 } from 'iconoir-react';
 import { LoadingDots } from '../../../components/LoadingDots';
-import type { ApiError, ScenarioDescriptor, ScenarioFileOperation } from '../types';
+import { Modal, ModalActions, ModalButton } from '../../../components/Modal';
+import type {
+  ApiError,
+  ScenarioDescriptor,
+  ScenarioFileOperation,
+  ScenarioFileOperationOutcome,
+} from '../types';
 import {
   buildScenarioTree,
   getScenarioTreeFolderPaths,
@@ -36,6 +42,7 @@ interface ScenarioBrowserProps {
   fileActions: ReactNode;
   onSelectScenario: (id: string) => void;
   onImportScenario: () => void;
+  onRemoveScenario: (id: string) => Promise<ScenarioFileOperationOutcome>;
 }
 
 function ScenarioStatusMark({ descriptor }: { descriptor: ScenarioDescriptor }) {
@@ -44,7 +51,18 @@ function ScenarioStatusMark({ descriptor }: { descriptor: ScenarioDescriptor }) 
     descriptor.status === 'valid_with_warnings' ||
     (descriptor.source === 'local' && descriptor.localStatus !== 'available')
   ) {
-    return <WarningCircle width={14} height={14} aria-hidden="true" />;
+    return (
+      <WarningCircle
+        className={
+          descriptor.source === 'local' && descriptor.localStatus !== 'available'
+            ? 'scenario-row__status-icon--error'
+            : undefined
+        }
+        width={14}
+        height={14}
+        aria-hidden="true"
+      />
+    );
   }
   return <CheckCircle width={14} height={14} aria-hidden="true" />;
 }
@@ -255,6 +273,7 @@ function LocalScenarioRow({
   activeScenarioDirty,
   hasSaveError,
   onSelectScenario,
+  onRemoveScenarioRequest,
 }: {
   descriptor: ScenarioDescriptor;
   selectedScenarioId: string | null;
@@ -264,6 +283,7 @@ function LocalScenarioRow({
   activeScenarioDirty: boolean;
   hasSaveError: boolean;
   onSelectScenario: (id: string) => void;
+  onRemoveScenarioRequest: (descriptor: ScenarioDescriptor) => void;
 }) {
   const isActive = descriptor.id === activeScenarioId;
   const isSelected = descriptor.id === selectedScenarioId;
@@ -272,34 +292,52 @@ function LocalScenarioRow({
     : isActive && activeScenarioDirty
       ? 'Unsaved changes'
       : statusLabel(descriptor);
+  const disabled = selectionDisabled || scenarioLoadingId !== null;
+  const removeDisabled = disabled || (isActive && activeScenarioDirty);
   return (
-    <button
-      className={`scenario-row scenario-row--scenario scenario-row--local ${isActive ? 'scenario-row--active' : ''} ${isSelected && !isActive ? 'scenario-row--selected' : ''} ${descriptor.status === 'invalid' && isSelected ? 'scenario-row--invalid-selected' : ''} ${hasSaveError ? 'scenario-row--save-error' : ''}`}
-      type="button"
-      aria-current={isActive ? 'page' : undefined}
-      aria-label={`${descriptor.sourceFilename}, local file, ${rowStatus}${isActive ? ', active' : ''}`}
-      title={`${descriptor.sourcePath || descriptor.sourceFilename} · ${rowStatus}`}
-      disabled={selectionDisabled || scenarioLoadingId !== null}
-      onClick={() => onSelectScenario(descriptor.id)}
-    >
-      <EmptyPage width={14} height={14} className="scenario-row__file" aria-hidden="true" />
-      <span className="scenario-row__name">{descriptor.sourceFilename}</span>
-      {isActive && activeScenarioDirty ? (
-        <span className="scenario-row__dirty" aria-hidden="true" />
-      ) : null}
-      <span
-        className={`scenario-row__status scenario-row__status--${hasSaveError ? 'invalid' : statusTone(descriptor)}`}
-        aria-label={rowStatus}
+    <div className="scenario-row__local-wrapper">
+      <button
+        className={`scenario-row scenario-row--scenario scenario-row--local ${isActive ? 'scenario-row--active' : ''} ${isSelected && !isActive ? 'scenario-row--selected' : ''} ${descriptor.status === 'invalid' && isSelected ? 'scenario-row--invalid-selected' : ''} ${hasSaveError ? 'scenario-row--save-error' : ''}`}
+        type="button"
+        aria-current={isActive ? 'page' : undefined}
+        aria-label={`${descriptor.sourceFilename}, local file, ${rowStatus}${isActive ? ', active' : ''}`}
+        title={`${descriptor.sourcePath || descriptor.sourceFilename} · ${rowStatus}`}
+        disabled={disabled}
+        onClick={() => onSelectScenario(descriptor.id)}
       >
-        {scenarioLoadingId === descriptor.id ? (
-          <LoadingDots size="inline" />
-        ) : hasSaveError ? (
-          <WarningCircle width={14} height={14} aria-hidden="true" />
-        ) : (
-          <ScenarioStatusMark descriptor={descriptor} />
-        )}
-      </span>
-    </button>
+        <EmptyPage width={14} height={14} className="scenario-row__file" aria-hidden="true" />
+        <span className="scenario-row__name">{descriptor.sourceFilename}</span>
+        {isActive && activeScenarioDirty ? (
+          <span className="scenario-row__dirty" aria-hidden="true" />
+        ) : null}
+        <span
+          className={`scenario-row__status scenario-row__status--${hasSaveError ? 'invalid' : statusTone(descriptor)}`}
+          aria-label={rowStatus}
+        >
+          {scenarioLoadingId === descriptor.id ? (
+            <LoadingDots size="inline" />
+          ) : hasSaveError ? (
+            <WarningCircle width={14} height={14} aria-hidden="true" />
+          ) : (
+            <ScenarioStatusMark descriptor={descriptor} />
+          )}
+        </span>
+      </button>
+      <button
+        className="scenario-row__remove"
+        type="button"
+        aria-label={`Remove ${descriptor.sourceFilename} from this workspace`}
+        title={
+          isActive && activeScenarioDirty
+            ? 'Save or discard changes before removing'
+            : 'Remove from workspace'
+        }
+        disabled={removeDisabled}
+        onClick={() => onRemoveScenarioRequest(descriptor)}
+      >
+        <Xmark width={14} height={14} strokeWidth={2} />
+      </button>
+    </div>
   );
 }
 
@@ -322,11 +360,13 @@ export function ScenarioBrowser({
   fileActions,
   onSelectScenario,
   onImportScenario,
+  onRemoveScenario,
 }: ScenarioBrowserProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [internalExamplesExpanded, setInternalExamplesExpanded] = useState(true);
   const [internalExamplesDismissed, setInternalExamplesDismissed] = useState(false);
   const [localsExpanded, setLocalsExpanded] = useState(true);
+  const [pendingRemoval, setPendingRemoval] = useState<ScenarioDescriptor | null>(null);
   const importDisabledDescriptionId = useId();
   const examplesExpanded = controlledExamplesExpanded ?? internalExamplesExpanded;
   const examplesDismissed = controlledExamplesDismissed ?? internalExamplesDismissed;
@@ -365,6 +405,24 @@ export function ScenarioBrowser({
         ? 'Wait for the selected scenario to finish loading'
         : '';
 
+  const requestRemove = (descriptor: ScenarioDescriptor) => {
+    if (
+      scenarioSelectionDisabled ||
+      fileBusy ||
+      (descriptor.id === activeScenarioId && activeScenarioDirty)
+    ) {
+      return;
+    }
+    setPendingRemoval(descriptor);
+  };
+
+  const confirmRemove = () => {
+    const descriptor = pendingRemoval;
+    if (descriptor === null) return;
+    setPendingRemoval(null);
+    void onRemoveScenario(descriptor.id);
+  };
+
   const toggleFolder = (folderPath: string) => {
     setCollapsedFolders((current) => {
       const next = new Set(current);
@@ -375,140 +433,164 @@ export function ScenarioBrowser({
   };
 
   return (
-    <aside className="scenario-sidebar" aria-label="Scenario browser">
-      <div className="scenario-sidebar__header">
-        <div className="scenario-sidebar__title">
-          <strong>Scenarios</strong>
-          <MoreHoriz width={16} height={16} aria-hidden="true" />
-        </div>
-        <label className="scenario-search">
-          <Search width={16} height={16} />
-          <span className="sr-only">Filter scenarios</span>
-          <input
-            type="search"
-            placeholder="Filter scenarios"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
-        </label>
-      </div>
-
-      <div className="scenario-sidebar__scroll">
-        {examplesDismissed ? (
-          <button
-            className="scenario-examples-restore"
-            type="button"
-            onClick={() => setExamplesDismissed(false)}
-          >
-            Examples hidden <span>Restore</span>
-          </button>
-        ) : (
-          <section aria-label="Examples">
-            <SectionLabel
-              label="Examples"
-              count={examples.length}
-              expanded={examplesExpanded}
-              onToggle={() => setExamplesExpanded(!examplesExpanded)}
-              onDismiss={() => setExamplesDismissed(true)}
+    <>
+      <aside className="scenario-sidebar" aria-label="Scenario browser">
+        <div className="scenario-sidebar__header">
+          <div className="scenario-sidebar__title">
+            <strong>Scenarios</strong>
+            <MoreHoriz width={16} height={16} aria-hidden="true" />
+          </div>
+          <label className="scenario-search">
+            <Search width={16} height={16} />
+            <span className="sr-only">Filter scenarios</span>
+            <input
+              type="search"
+              placeholder="Filter scenarios"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
             />
-            {examplesExpanded ? (
-              scenarioCatalogLoading ? (
-                <div className="scenario-sidebar__state" role="status" aria-busy="true">
-                  <LoadingDots size="inline" /> Discovering examples…
-                </div>
-              ) : tree.folders.length === 0 && tree.scenarios.length === 0 ? (
-                <div className="scenario-sidebar__state">No matching examples.</div>
-              ) : (
-                <ScenarioRows
-                  folders={tree.folders}
-                  scenarios={tree.scenarios}
-                  expandedFolders={expandedFolders}
-                  selectedScenarioId={selectedScenarioId}
-                  activeScenarioId={activeScenarioId}
-                  scenarioLoadingId={scenarioLoadingId}
-                  selectionDisabled={scenarioSelectionDisabled || fileBusy}
-                  onToggleFolder={toggleFolder}
-                  onSelectScenario={onSelectScenario}
-                  folderToggleDisabled={searchActive}
-                />
-              )
+          </label>
+        </div>
+
+        <div className="scenario-sidebar__scroll">
+          {examplesDismissed ? (
+            <button
+              className="scenario-examples-restore"
+              type="button"
+              onClick={() => setExamplesDismissed(false)}
+            >
+              Examples hidden <span>Restore</span>
+            </button>
+          ) : (
+            <section aria-label="Examples">
+              <SectionLabel
+                label="Examples"
+                count={examples.length}
+                expanded={examplesExpanded}
+                onToggle={() => setExamplesExpanded(!examplesExpanded)}
+                onDismiss={() => setExamplesDismissed(true)}
+              />
+              {examplesExpanded ? (
+                scenarioCatalogLoading ? (
+                  <div className="scenario-sidebar__state" role="status" aria-busy="true">
+                    <LoadingDots size="inline" /> Discovering examples…
+                  </div>
+                ) : tree.folders.length === 0 && tree.scenarios.length === 0 ? (
+                  <div className="scenario-sidebar__state">No matching examples.</div>
+                ) : (
+                  <ScenarioRows
+                    folders={tree.folders}
+                    scenarios={tree.scenarios}
+                    expandedFolders={expandedFolders}
+                    selectedScenarioId={selectedScenarioId}
+                    activeScenarioId={activeScenarioId}
+                    scenarioLoadingId={scenarioLoadingId}
+                    selectionDisabled={scenarioSelectionDisabled || fileBusy}
+                    onToggleFolder={toggleFolder}
+                    onSelectScenario={onSelectScenario}
+                    folderToggleDisabled={searchActive}
+                  />
+                )
+              ) : null}
+            </section>
+          )}
+
+          <section aria-label="My scenarios">
+            <SectionLabel
+              label="My scenarios"
+              count={localScenarios.length}
+              expanded={localsExpanded}
+              onToggle={() => setLocalsExpanded((expanded) => !expanded)}
+            />
+            {localsExpanded ? (
+              <>
+                {matchingLocals.map((descriptor) => (
+                  <LocalScenarioRow
+                    key={descriptor.id}
+                    descriptor={descriptor}
+                    selectedScenarioId={selectedScenarioId}
+                    activeScenarioId={activeScenarioId}
+                    scenarioLoadingId={scenarioLoadingId}
+                    selectionDisabled={scenarioSelectionDisabled || fileBusy}
+                    activeScenarioDirty={activeScenarioDirty}
+                    hasSaveError={
+                      descriptor.id === activeScenarioId &&
+                      fileError !== null &&
+                      (fileErrorOperation === 'saving' || fileErrorOperation === 'saving_as')
+                    }
+                    onSelectScenario={onSelectScenario}
+                    onRemoveScenarioRequest={requestRemove}
+                  />
+                ))}
+                {matchingLocals.length === 0 ? (
+                  <div className="scenario-sidebar__empty-local">
+                    <span>
+                      {searchActive && localScenarios.length > 0
+                        ? 'No matching local files.'
+                        : 'No local scenarios yet. Import a YAML file below to add one for this session.'}
+                    </span>
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </section>
-        )}
+        </div>
 
-        <section aria-label="My scenarios">
-          <SectionLabel
-            label="My scenarios"
-            count={localScenarios.length}
-            expanded={localsExpanded}
-            onToggle={() => setLocalsExpanded((expanded) => !expanded)}
-          />
-          {localsExpanded ? (
-            <>
-              {matchingLocals.map((descriptor) => (
-                <LocalScenarioRow
-                  key={descriptor.id}
-                  descriptor={descriptor}
-                  selectedScenarioId={selectedScenarioId}
-                  activeScenarioId={activeScenarioId}
-                  scenarioLoadingId={scenarioLoadingId}
-                  selectionDisabled={scenarioSelectionDisabled || fileBusy}
-                  activeScenarioDirty={activeScenarioDirty}
-                  hasSaveError={
-                    descriptor.id === activeScenarioId &&
-                    fileError !== null &&
-                    (fileErrorOperation === 'saving' || fileErrorOperation === 'saving_as')
-                  }
-                  onSelectScenario={onSelectScenario}
-                />
-              ))}
-              {matchingLocals.length === 0 ? (
-                <div className="scenario-sidebar__empty-local">
-                  <span>
-                    {searchActive && localScenarios.length > 0
-                      ? 'No matching local files.'
-                      : 'No local scenarios yet. Import a YAML file below to add one for this session.'}
-                  </span>
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </section>
-      </div>
-
-      <div className="scenario-sidebar__footer">
-        <div className="scenario-sidebar__file-actions">{fileActions}</div>
-        <span
-          className="scenario-disabled-action"
-          tabIndex={importDisabled ? 0 : undefined}
-          aria-label={importDisabled ? importDisabledReason : undefined}
-          title={importDisabled ? importDisabledReason : undefined}
-        >
-          <button
-            className="scenario-import-button"
-            type="button"
-            disabled={importDisabled}
-            aria-describedby={importDisabled ? importDisabledDescriptionId : undefined}
-            title={importDisabled ? undefined : 'Choose a YAML file from your computer'}
-            onClick={onImportScenario}
+        <div className="scenario-sidebar__footer">
+          <div className="scenario-sidebar__file-actions">{fileActions}</div>
+          <span
+            className="scenario-disabled-action"
+            tabIndex={importDisabled ? 0 : undefined}
+            aria-label={importDisabled ? importDisabledReason : undefined}
+            title={importDisabled ? importDisabledReason : undefined}
           >
-            {fileOperation === 'importing' ? (
-              <>
-                <LoadingDots size="inline" /> Importing YAML…
-              </>
-            ) : (
-              <>
-                <Plus width={15} height={15} /> Import YAML
-              </>
-            )}
-          </button>
-          {importDisabled ? (
-            <span className="sr-only" id={importDisabledDescriptionId}>
-              {importDisabledReason}
-            </span>
-          ) : null}
-        </span>
-      </div>
-    </aside>
+            <button
+              className="scenario-import-button"
+              type="button"
+              disabled={importDisabled}
+              aria-describedby={importDisabled ? importDisabledDescriptionId : undefined}
+              title={importDisabled ? undefined : 'Choose a YAML file from your computer'}
+              onClick={onImportScenario}
+            >
+              {fileOperation === 'importing' ? (
+                <>
+                  <LoadingDots size="inline" /> Importing YAML…
+                </>
+              ) : (
+                <>
+                  <Plus width={15} height={15} /> Import YAML
+                </>
+              )}
+            </button>
+            {importDisabled ? (
+              <span className="sr-only" id={importDisabledDescriptionId}>
+                {importDisabledReason}
+              </span>
+            ) : null}
+          </span>
+        </div>
+      </aside>
+      <Modal
+        open={pendingRemoval !== null}
+        title="Remove scenario import?"
+        description="This removes the scenario from the current workspace. The YAML file on disk will not be deleted or modified."
+        onClose={() => setPendingRemoval(null)}
+        footer={
+          <ModalActions>
+            <ModalButton type="button" onClick={() => setPendingRemoval(null)}>
+              Cancel
+            </ModalButton>
+            <ModalButton tone="danger" type="button" onClick={confirmRemove}>
+              Remove from workspace
+            </ModalButton>
+          </ModalActions>
+        }
+      >
+        <p className="scenario-switch-copy">
+          <strong>{pendingRemoval?.sourceFilename}</strong> will no longer appear in this workspace.
+          You can import the same YAML file again later.
+        </p>
+      </Modal>
+    </>
   );
 }

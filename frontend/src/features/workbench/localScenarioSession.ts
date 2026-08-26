@@ -5,8 +5,6 @@ import type {
   ScenarioFileOperation,
 } from './types';
 
-// TODO: [Database] Persist imported scenario metadata across launches.
-// TODO: [Workspace] Associate local scenarios with workspaces.
 // TODO: [Files] Detect moved or deleted local scenario files.
 
 export interface LocalScenarioSessionState {

@@ -43,6 +43,35 @@ func TestImportLocalScenarioUsesDialogAndReturnsBackendIdentity(t *testing.T) {
 	}
 }
 
+func TestRemoveLocalScenarioRemovesOnlyTheWorkspaceAssociation(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "remove-me.yaml")
+	source := localAPITestYAML("remove me")
+	writeLocalAPITestFile(t, path, source)
+	app := &App{
+		localScenarios:  scenario.NewLocalRegistry(nil),
+		scenarioDialogs: &fakeScenarioDialogs{openPaths: []string{path}},
+	}
+	imported := app.ImportLocalScenario()
+	if !imported.OK || imported.Data == nil || imported.Data.Descriptor == nil {
+		t.Fatalf("ImportLocalScenario() = %+v", imported)
+	}
+	removed := app.RemoveLocalScenario(imported.Data.Descriptor.ID)
+	if !removed.OK || removed.Data == nil {
+		t.Fatalf("RemoveLocalScenario() = %+v", removed)
+	}
+	if listed := app.ListLocalScenarios(); listed.Data == nil || len(listed.Data.Scenarios) != 0 {
+		t.Fatalf("listed scenarios after removal = %+v", listed)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != source {
+		t.Fatalf("RemoveLocalScenario() modified YAML: %q", contents)
+	}
+}
+
 func TestImportLocalScenarioCancellationAndFailuresPreserveRegistry(t *testing.T) {
 	directory := t.TempDir()
 	invalidPath := filepath.Join(directory, "invalid.yaml")
