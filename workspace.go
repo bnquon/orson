@@ -176,13 +176,10 @@ func (a *App) RetryWorkspacePersistence(confirmSessionWrite bool) api.WorkspaceB
 
 func (a *App) workspaceBootstrapResponse(state workspacepkg.State) api.WorkspaceBootstrapResponse {
 	active, ok := state.ActiveWorkspace()
-	if !ok {
-		return api.WorkspaceBootstrapFailure(api.NewError("workspace_bootstrap_failed", "Workspaces could not be loaded.", "No active workspace is available.", true))
-	}
 
 	workspaces := make([]api.Workspace, 0, len(state.Workspaces))
 	for _, item := range state.Workspaces {
-		workspaces = append(workspaces, toAPIWorkspace(item))
+		workspaces = append(workspaces, toAPIWorkspace(item, state))
 	}
 	bundledDescriptors, err := a.getScenarioCatalog().List()
 	if err != nil {
@@ -199,10 +196,16 @@ func (a *App) workspaceBootstrapResponse(state workspacepkg.State) api.Workspace
 		locals = append(locals, toAPIScenarioDescriptor(descriptor))
 	}
 
-	selectedID, selectedScenario := a.restoreWorkspaceScenario(state, registry, bundledDescriptors, localDescriptors)
+	selectedID := ""
+	var selectedScenario *api.ScenarioData
+	if ok {
+		selectedID, selectedScenario = a.restoreWorkspaceScenario(state, registry, bundledDescriptors, localDescriptors)
+	}
 	var remembered *api.ConnectionInfo
-	if config := state.Connections[state.ActiveWorkspaceID]; config != nil {
-		remembered = &api.ConnectionInfo{Name: config.Name, Brokers: append([]string(nil), config.Brokers...), ClientID: config.ClientID, DialTimeoutSeconds: config.DialTimeoutSeconds}
+	if ok {
+		if config := state.Connections[state.ActiveWorkspaceID]; config != nil {
+			remembered = &api.ConnectionInfo{Name: config.Name, Brokers: append([]string(nil), config.Brokers...), ClientID: config.ClientID, DialTimeoutSeconds: config.DialTimeoutSeconds}
+		}
 	}
 	a.stateMu.Lock()
 	connection := a.connectionStateLocked()
@@ -211,7 +214,7 @@ func (a *App) workspaceBootstrapResponse(state workspacepkg.State) api.Workspace
 	connection.Persistence = &persistence
 	return api.WorkspaceBootstrapSuccess(api.WorkspaceBootstrapData{
 		Workspaces:           workspaces,
-		ActiveWorkspace:      toAPIWorkspace(active),
+		ActiveWorkspace:      toAPIWorkspace(active, state),
 		BundledScenarios:     bundled,
 		LocalScenarios:       locals,
 		SelectedScenarioID:   selectedID,
@@ -222,17 +225,22 @@ func (a *App) workspaceBootstrapResponse(state workspacepkg.State) api.Workspace
 	})
 }
 
-func toAPIWorkspace(item workspacepkg.Workspace) api.Workspace {
+func toAPIWorkspace(item workspacepkg.Workspace, state workspacepkg.State) api.Workspace {
 	return api.Workspace{
-		ID:           item.ID,
-		Name:         item.Name,
-		CreatedAt:    item.CreatedAt.Format(time.RFC3339Nano),
-		UpdatedAt:    item.UpdatedAt.Format(time.RFC3339Nano),
-		LastOpenedAt: item.LastOpenedAt.Format(time.RFC3339Nano),
+		ID:                      item.ID,
+		Name:                    item.Name,
+		CreatedAt:               item.CreatedAt.Format(time.RFC3339Nano),
+		UpdatedAt:               item.UpdatedAt.Format(time.RFC3339Nano),
+		LastOpenedAt:            item.LastOpenedAt.Format(time.RFC3339Nano),
+		ScenarioCount:           len(state.Scenarios[item.ID]),
+		HasRememberedConnection: state.Connections[item.ID] != nil,
 	}
 }
 
 func (a *App) restoreWorkspaceScenario(state workspacepkg.State, registry *scenario.LocalRegistry, bundled, locals []scenario.Descriptor) (string, *api.ScenarioData) {
+	if state.ActiveWorkspaceID == "" {
+		return "", nil
+	}
 	selection := state.Selections[state.ActiveWorkspaceID]
 	selectedID := ""
 	if selection != nil && selection.Source == string(api.ScenarioSourceLocal) {
@@ -297,8 +305,6 @@ func workspaceAPIError(err error) *api.APIError {
 		return api.NewError("workspace_name_required", "Workspace name is required.", err.Error(), false)
 	case errors.Is(err, workspacepkg.ErrWorkspaceNameDuplicate):
 		return api.NewError("workspace_name_duplicate", "A workspace with that name already exists.", err.Error(), false)
-	case errors.Is(err, workspacepkg.ErrFinalWorkspace):
-		return api.NewError("final_workspace", "The final workspace cannot be deleted.", err.Error(), false)
 	case errors.Is(err, workspacepkg.ErrWorkspaceNotFound):
 		return api.NewError("workspace_not_found", "That workspace no longer exists.", err.Error(), false)
 	case errors.Is(err, workspacepkg.ErrRecoveryConfirmationRequired):

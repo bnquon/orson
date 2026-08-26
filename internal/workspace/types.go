@@ -2,8 +2,6 @@ package workspace
 
 import "time"
 
-const DefaultName = "My workspace"
-
 type Workspace struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`

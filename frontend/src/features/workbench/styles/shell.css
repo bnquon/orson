@@ -28,6 +28,32 @@
   min-width: 0;
 }
 
+.workbench-home {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 6px;
+  padding: 2px 4px;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.workbench-home:hover,
+.workbench-home:focus-visible {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border);
+}
+
+.workbench-home:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
 .workbench-brand {
   border-radius: var(--radius-sm);
   display: inline-flex;

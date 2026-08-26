@@ -1,11 +1,13 @@
 package api
 
 type Workspace struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	CreatedAt    string `json:"createdAt"`
-	UpdatedAt    string `json:"updatedAt"`
-	LastOpenedAt string `json:"lastOpenedAt"`
+	ID                      string `json:"id"`
+	Name                    string `json:"name"`
+	CreatedAt               string `json:"createdAt"`
+	UpdatedAt               string `json:"updatedAt"`
+	LastOpenedAt            string `json:"lastOpenedAt"`
+	ScenarioCount           int    `json:"scenarioCount"`
+	HasRememberedConnection bool   `json:"hasRememberedConnection"`
 }
 
 type WorkspacePersistenceStatus struct {

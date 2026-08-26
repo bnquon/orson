@@ -35,6 +35,7 @@ function controller(): WorkspaceController {
     create: vi.fn(),
     rename: vi.fn(),
     requestSwitch: vi.fn(() => 'started' as const),
+    requestNavigateHome: vi.fn(() => 'started' as const),
     requestDelete: vi.fn(() => 'confirm' as const),
     confirmPending: vi.fn(),
     cancelPending: vi.fn(),
@@ -95,9 +96,7 @@ describe('WorkspaceSelector', () => {
       ),
     );
     act(() => host.querySelector<HTMLButtonElement>('.workspace-selector__trigger')?.click());
-    const second = Array.from(
-      host.querySelectorAll<HTMLButtonElement>('.workspace-selector__workspace'),
-    ).find((button) => button.textContent === 'Second');
+    const second = host.querySelector<HTMLButtonElement>('[data-workspace-id="two"]');
     act(() => second?.click());
 
     expect(host.textContent).toContain('Finish the active run before switching workspaces.');

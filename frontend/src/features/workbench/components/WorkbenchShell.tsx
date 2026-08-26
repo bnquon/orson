@@ -9,6 +9,7 @@ import '../styles/shell.css';
 interface WorkbenchShellProps {
   connection: KafkaConnection;
   workspaceSelector: ReactNode;
+  onNavigateHome: () => void;
   connectionDialogOpen: boolean;
   onConnectionToggle: () => void;
   sidebar: ReactNode;
@@ -24,6 +25,7 @@ interface WorkbenchShellProps {
 export function WorkbenchShell({
   connection,
   workspaceSelector,
+  onNavigateHome,
   connectionDialogOpen,
   onConnectionToggle,
   sidebar,
@@ -45,8 +47,16 @@ export function WorkbenchShell({
     <div className="workbench-shell">
       <header className="workbench-topbar">
         <div className="workbench-topbar__group">
-          <img className="workbench-brand" src={orsonIcon} alt="" aria-hidden="true" />
-          <span className="workbench-wordmark">orson</span>
+          <button
+            className="workbench-home"
+            type="button"
+            aria-label="Open workspace launcher"
+            title="Open workspace launcher"
+            onClick={onNavigateHome}
+          >
+            <img className="workbench-brand" src={orsonIcon} alt="" aria-hidden="true" />
+            <span className="workbench-wordmark">orson</span>
+          </button>
           <span className="workbench-separator">/</span>
           {workspaceSelector}
         </div>

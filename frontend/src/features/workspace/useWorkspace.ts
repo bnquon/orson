@@ -15,7 +15,7 @@ type WorkspaceStatus = 'loading' | 'ready' | 'failed';
 type WorkspaceOperation = 'idle' | 'creating' | 'renaming' | 'deleting' | 'switching' | 'retrying';
 
 interface PendingAction {
-  kind: 'switch' | 'delete';
+  kind: 'switch' | 'delete' | 'home';
   workspaceId: string;
   dirty: boolean;
 }
@@ -112,6 +112,7 @@ export interface WorkspaceController extends WorkspaceState {
   create(name: string): Promise<boolean>;
   rename(id: string, name: string): Promise<boolean>;
   requestSwitch(id: string, guards: WorkspaceGuardState): 'blocked' | 'confirm' | 'started';
+  requestNavigateHome(guards: WorkspaceGuardState): 'blocked' | 'confirm' | 'started';
   requestDelete(id: string, guards: WorkspaceGuardState): 'blocked' | 'confirm';
   confirmPending(): Promise<boolean>;
   cancelPending(): void;
@@ -178,6 +179,7 @@ export function useWorkspace(): WorkspaceController {
 
   const executePending = useCallback(
     async (pending: PendingAction) => {
+      if (pending.kind === 'home') return true;
       return applyRequest(pending.kind === 'switch' ? 'switching' : 'deleting', () =>
         pending.kind === 'switch'
           ? setActiveWorkspace(pending.workspaceId)
@@ -202,6 +204,18 @@ export function useWorkspace(): WorkspaceController {
     [executePending],
   );
 
+  const requestNavigateHome = useCallback(
+    (guards: WorkspaceGuardState): 'blocked' | 'confirm' | 'started' => {
+      if (guards.runActive || stateRef.current.operation !== 'idle') return 'blocked';
+      if (guards.draftDirty) {
+        dispatch({ type: 'pending', pending: { kind: 'home', workspaceId: '', dirty: true } });
+        return 'confirm';
+      }
+      return 'started';
+    },
+    [],
+  );
+
   const requestDelete = useCallback(
     (id: string, guards: WorkspaceGuardState): 'blocked' | 'confirm' => {
       if (guards.runActive || stateRef.current.operation !== 'idle') return 'blocked';
@@ -220,7 +234,12 @@ export function useWorkspace(): WorkspaceController {
 
   const confirmPending = useCallback(async () => {
     const pending = stateRef.current.pending;
-    return pending === null ? false : executePending(pending);
+    if (pending === null) return false;
+    if (pending.kind === 'home') {
+      dispatch({ type: 'pending_cleared' });
+      return true;
+    }
+    return executePending(pending);
   }, [executePending]);
 
   const retryPersistence = useCallback(async (confirm = false) => {
@@ -268,6 +287,7 @@ export function useWorkspace(): WorkspaceController {
     create,
     rename,
     requestSwitch,
+    requestNavigateHome,
     requestDelete,
     confirmPending,
     cancelPending: () => dispatch({ type: 'pending_cleared' }),

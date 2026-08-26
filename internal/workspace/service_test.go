@@ -13,15 +13,18 @@ import (
 func testService(t *testing.T) *Service {
 	t.Helper()
 	service := NewService(Options{DatabasePath: filepath.Join(t.TempDir(), "orson.db")})
+	if _, err := service.Create("Test workspace"); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = service.Close() })
 	return service
 }
 
-func TestDatabaseMigrationAndDefaultWorkspace(t *testing.T) {
+func TestDatabaseMigrationStartsWithoutWorkspace(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orson.db")
 	service := NewService(Options{DatabasePath: path})
 	state := service.Snapshot()
-	if state.Persistence.Mode != "persistent" || len(state.Workspaces) != 1 || state.Workspaces[0].Name != DefaultName {
+	if state.Persistence.Mode != "persistent" || len(state.Workspaces) != 0 || state.ActiveWorkspaceID != "" {
 		t.Fatalf("initial state = %+v", state)
 	}
 	if err := service.Close(); err != nil {
@@ -38,7 +41,7 @@ func TestDatabaseMigrationAndDefaultWorkspace(t *testing.T) {
 	}
 }
 
-func TestWorkspaceCRUDOrderingAndFinalProtection(t *testing.T) {
+func TestWorkspaceCRUDOrderingAndEmptyState(t *testing.T) {
 	service := testService(t)
 	state, err := service.Create("  SECOND  ")
 	if err != nil {
@@ -61,8 +64,12 @@ func TestWorkspaceCRUDOrderingAndFinalProtection(t *testing.T) {
 	if state.ActiveWorkspaceID == secondID || len(state.Workspaces) != 1 {
 		t.Fatalf("delete state = %+v", state)
 	}
-	if _, err := service.Delete(state.ActiveWorkspaceID); !errors.Is(err, ErrFinalWorkspace) {
-		t.Fatalf("final delete error = %v", err)
+	state, err = service.Delete(state.ActiveWorkspaceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Workspaces) != 0 || state.ActiveWorkspaceID != "" {
+		t.Fatalf("empty delete state = %+v", state)
 	}
 }
 
@@ -127,6 +134,9 @@ func TestRemoveScenarioOnlyRemovesTheWorkspaceAssociation(t *testing.T) {
 func TestConnectionPersistenceContainsOnlyNonSecretColumns(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orson.db")
 	service := NewService(Options{DatabasePath: path})
+	if _, err := service.Create("Test workspace"); err != nil {
+		t.Fatal(err)
+	}
 	state := service.Snapshot()
 	config := ConnectionConfig{WorkspaceID: state.ActiveWorkspaceID, Name: "Local", Brokers: []string{"localhost:9092"}, ClientID: "orson", DialTimeoutSeconds: 5, UpdatedAt: time.Now().UTC()}
 	if err := service.SaveConnection(config); err != nil {
@@ -208,7 +218,7 @@ func TestFallbackWarningAndConfirmedSnapshotRecovery(t *testing.T) {
 	for _, item := range recovered.Workspaces {
 		names[item.Name] = true
 	}
-	if !names["Durable only"] || !names["Session only"] || !names["My workspace (recovered)"] {
+	if !names["Durable only"] || !names["Session only"] {
 		t.Fatalf("recovered names = %+v", names)
 	}
 }
@@ -256,9 +266,43 @@ func TestRuntimeWriteFailureFallsBackAndRecoveryReplaysDeletionTombstone(t *test
 	}
 }
 
+func TestRuntimeWriteFailureRecoversDeletionOfFinalWorkspace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orson.db")
+	service := NewService(Options{DatabasePath: path})
+	defer service.Close()
+
+	state, err := service.Create("Only workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deletedID := state.ActiveWorkspaceID
+	if err := service.db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	state, err = service.Delete(deletedID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Workspaces) != 0 || state.ActiveWorkspaceID != "" {
+		t.Fatalf("fallback delete state = %+v", state)
+	}
+
+	recovered, err := service.Retry(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recovered.Workspaces) != 0 || recovered.ActiveWorkspaceID != "" {
+		t.Fatalf("recovered final delete state = %+v", recovered)
+	}
+}
+
 func TestRecoveryAppliesTombstoneWhenDurableStateHasOneWorkspace(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "orson.db")
 	durable := NewService(Options{DatabasePath: path})
+	if _, err := durable.Create("Durable workspace"); err != nil {
+		t.Fatal(err)
+	}
 	durableID := durable.Snapshot().ActiveWorkspaceID
 	if err := durable.Close(); err != nil {
 		t.Fatal(err)
@@ -277,6 +321,9 @@ func TestRecoveryAppliesTombstoneWhenDurableStateHasOneWorkspace(t *testing.T) {
 		},
 	})
 	defer service.Close()
+	if _, err := service.Create("Durable workspace"); err != nil {
+		t.Fatal(err)
+	}
 	state, err := service.Create("Session workspace")
 	if err != nil {
 		t.Fatal(err)
