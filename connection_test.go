@@ -11,11 +11,19 @@ import (
 	"orson/internal/kafka"
 )
 
+func startConnectionTestApp(t *testing.T, app *App) {
+	t.Helper()
+	app.startup(context.Background())
+	if response := app.CreateWorkspace("Test workspace"); !response.OK {
+		t.Fatalf("CreateWorkspace() = %+v", response)
+	}
+}
+
 func TestAppConnectNormalizesRequest(t *testing.T) {
 	connection := &fakeKafkaConnection{}
 	connector := &fakeKafkaConnector{connections: []KafkaConnection{connection}}
 	app := newApp(connector)
-	app.startup(context.Background())
+	startConnectionTestApp(t, app)
 	defer app.shutdown(context.Background())
 
 	response := app.Connect(api.ConnectionRequest{
@@ -64,7 +72,7 @@ func TestAppFailedReconnectPreservesActiveConnection(t *testing.T) {
 		errors:      []error{nil, errors.New("dial tcp: connection refused")},
 	}
 	app := newApp(connector)
-	app.startup(context.Background())
+	startConnectionTestApp(t, app)
 	defer app.shutdown(context.Background())
 
 	request := validConnectionRequest("Local Kafka")
@@ -107,7 +115,7 @@ func TestAppRejectsConnectionChangesDuringRun(t *testing.T) {
 	}
 	connector := &fakeKafkaConnector{connections: []KafkaConnection{active}}
 	app := newApp(connector)
-	app.startup(context.Background())
+	startConnectionTestApp(t, app)
 	defer app.shutdown(context.Background())
 
 	if response := app.Connect(validConnectionRequest("Local Kafka")); !response.OK {
@@ -180,7 +188,7 @@ func TestAppRejectsOverlappingRuns(t *testing.T) {
 	active := &fakeKafkaConnection{}
 	connector := &fakeKafkaConnector{connections: []KafkaConnection{active}}
 	app := newApp(connector)
-	app.startup(context.Background())
+	startConnectionTestApp(t, app)
 	defer app.shutdown(context.Background())
 
 	if response := app.Connect(validConnectionRequest("Local Kafka")); !response.OK {
@@ -219,7 +227,7 @@ func TestAppShutdownWaitsForActiveRunBeforeClosingConnection(t *testing.T) {
 	}
 	connector := &fakeKafkaConnector{connections: []KafkaConnection{active}}
 	app := newApp(connector)
-	app.startup(context.Background())
+	startConnectionTestApp(t, app)
 
 	if response := app.Connect(validConnectionRequest("Local Kafka")); !response.OK {
 		t.Fatalf("Connect() failed: %+v", response.Error)
@@ -266,7 +274,7 @@ func TestAppStartRunReturnsIDAndStopRunEmitsCancellation(t *testing.T) {
 	}
 	connector := &fakeKafkaConnector{connections: []KafkaConnection{active}}
 	app := newApp(connector)
-	app.startup(context.Background())
+	startConnectionTestApp(t, app)
 	defer app.shutdown(context.Background())
 	events := make(chan api.RunEvent, 8)
 	app.emitEvent = func(_ context.Context, _ string, event api.RunEvent) {
@@ -324,7 +332,7 @@ func TestAppStartRunPropagatesConfiguredCorrelationHeader(t *testing.T) {
 	active := &fakeKafkaConnection{}
 	connector := &fakeKafkaConnector{connections: []KafkaConnection{active}}
 	app := newApp(connector)
-	app.startup(context.Background())
+	startConnectionTestApp(t, app)
 	defer app.shutdown(context.Background())
 
 	if response := app.Connect(validConnectionRequest("Local Kafka")); !response.OK {
