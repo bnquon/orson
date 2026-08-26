@@ -13,12 +13,22 @@ import (
 	"orson/internal/scenario"
 )
 
+func startWorkspaceScenarioTestApp(t *testing.T, app *App) {
+	t.Helper()
+	app.startup(context.Background())
+	t.Cleanup(func() { app.shutdown(context.Background()) })
+	if response := app.CreateWorkspace("Test workspace"); !response.OK {
+		t.Fatalf("CreateWorkspace() = %+v", response)
+	}
+}
+
 func TestImportLocalScenarioUsesDialogAndReturnsBackendIdentity(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "payment-debug.yaml")
 	writeLocalAPITestFile(t, path, localAPITestYAML("payment debug"))
 	dialogs := &fakeScenarioDialogs{openPaths: []string{path, path}}
 	app := &App{scenarioDialogs: dialogs, localScenarios: scenario.NewLocalRegistry(nil)}
+	startWorkspaceScenarioTestApp(t, app)
 
 	first := app.ImportLocalScenario()
 	second := app.ImportLocalScenario()
@@ -52,6 +62,7 @@ func TestRemoveLocalScenarioRemovesOnlyTheWorkspaceAssociation(t *testing.T) {
 		localScenarios:  scenario.NewLocalRegistry(nil),
 		scenarioDialogs: &fakeScenarioDialogs{openPaths: []string{path}},
 	}
+	startWorkspaceScenarioTestApp(t, app)
 	imported := app.ImportLocalScenario()
 	if !imported.OK || imported.Data == nil || imported.Data.Descriptor == nil {
 		t.Fatalf("ImportLocalScenario() = %+v", imported)
@@ -80,6 +91,7 @@ func TestImportLocalScenarioCancellationAndFailuresPreserveRegistry(t *testing.T
 		scenarioDialogs: &fakeScenarioDialogs{openPaths: []string{"", invalidPath}},
 		localScenarios:  scenario.NewLocalRegistry(nil),
 	}
+	startWorkspaceScenarioTestApp(t, app)
 
 	cancelled := app.ImportLocalScenario()
 	if !cancelled.OK || cancelled.Data == nil || !cancelled.Data.Cancelled || cancelled.Error != nil {
@@ -91,6 +103,26 @@ func TestImportLocalScenarioCancellationAndFailuresPreserveRegistry(t *testing.T
 	}
 	if got := app.ListLocalScenarios(); got.Data == nil || len(got.Data.Scenarios) != 0 {
 		t.Fatalf("invalid import registered a local source: %+v", got)
+	}
+}
+
+func TestImportLocalScenarioRequiresWorkspaceBeforeRegistering(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "requires-workspace.yaml")
+	writeLocalAPITestFile(t, path, localAPITestYAML("requires workspace"))
+	app := &App{
+		scenarioDialogs: &fakeScenarioDialogs{openPaths: []string{path}},
+		localScenarios:  scenario.NewLocalRegistry(nil),
+	}
+	app.startup(context.Background())
+	defer app.shutdown(context.Background())
+
+	response := app.ImportLocalScenario()
+	if response.OK || response.Error == nil || response.Error.Code != "workspace_required" {
+		t.Fatalf("ImportLocalScenario() without workspace = %+v, want workspace_required", response)
+	}
+	if listed := app.ListLocalScenarios(); listed.Data == nil || len(listed.Data.Scenarios) != 0 {
+		t.Fatalf("import without workspace registered a scenario: %+v", listed)
 	}
 }
 
@@ -107,6 +139,7 @@ func TestSaveScenarioAsThenSaveLocalScenario(t *testing.T) {
 	target := filepath.Join(directory, "branched.yaml")
 	dialogs := &fakeScenarioDialogs{savePaths: []string{target}}
 	app := &App{scenarioDialogs: dialogs, localScenarios: scenario.NewLocalRegistry(nil)}
+	startWorkspaceScenarioTestApp(t, app)
 	draft := localAPITestDraft()
 
 	savedAs := app.SaveScenarioAs(draft)
@@ -140,6 +173,7 @@ func TestSaveScenarioAsReplacesExistingSelectedFile(t *testing.T) {
 	writeLocalAPITestFile(t, target, localAPITestYAML("existing scenario"))
 	dialogs := &fakeScenarioDialogs{savePaths: []string{target}}
 	app := &App{scenarioDialogs: dialogs, localScenarios: scenario.NewLocalRegistry(nil)}
+	startWorkspaceScenarioTestApp(t, app)
 	draft := localAPITestDraft()
 	draft.Name = "replacement scenario"
 

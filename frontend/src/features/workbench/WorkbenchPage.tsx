@@ -89,6 +89,7 @@ interface WorkbenchPageProps {
   onRetrySelectedScenario: () => Promise<void>;
   connectionDialogOpen: boolean;
   onConnectionToggle: () => void;
+  onNavigateHome: () => void;
   workspaceSelector: ReactNode;
   onWorkspaceGuardChange: (guards: WorkspaceGuardState) => void;
 }
@@ -118,6 +119,7 @@ export function WorkbenchPage({
   onRetrySelectedScenario,
   connectionDialogOpen,
   onConnectionToggle,
+  onNavigateHome,
   workspaceSelector,
   onWorkspaceGuardChange,
 }: WorkbenchPageProps) {
@@ -420,6 +422,7 @@ export function WorkbenchPage({
       <WorkbenchShell
         connection={connection}
         workspaceSelector={workspaceSelector}
+        onNavigateHome={onNavigateHome}
         connectionDialogOpen={connectionDialogOpen}
         onConnectionToggle={onConnectionToggle}
         sidebar={scenarioSidebar}

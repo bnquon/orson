@@ -172,6 +172,15 @@ func (a *App) Connect(request api.ConnectionRequest) api.ConnectionResponse {
 		a.stateMu.Unlock()
 		return api.ConnectionFailure(err)
 	}
+	a.stateMu.Unlock()
+	if a.workspaceService().Snapshot().ActiveWorkspaceID == "" {
+		err := workspaceRequiredError()
+		a.stateMu.Lock()
+		a.setAttemptLocked(api.ConnectionStatusFailed, err)
+		a.stateMu.Unlock()
+		return api.ConnectionFailure(err)
+	}
+	a.stateMu.Lock()
 
 	normalizedRequest := request.Normalize()
 	if err := normalizedRequest.Validate(); err != nil {

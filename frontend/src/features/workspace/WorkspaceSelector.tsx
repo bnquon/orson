@@ -1,16 +1,30 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { CheckCircle, Cube, EditPencil, MoreVert, NavArrowDown, Plus, Trash } from 'iconoir-react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react';
+import { CheckCircle, EditPencil, MoreVert, NavArrowDown, Plus, Trash } from 'iconoir-react';
 import { Modal, ModalActions, ModalButton } from '../../components/Modal';
 import { Toast } from '../../components/Toast';
+import {
+  WorkspaceActionDialog,
+  WorkspaceNameDialog,
+  type WorkspaceDialog,
+} from './WorkspaceDialogs';
 import type { WorkspaceController, WorkspaceGuardState } from './useWorkspace';
 import { validateWorkspaceName } from './validation';
+import { workspaceAccent, workspaceInitials } from './workspaceVisual';
 import './workspace.css';
 
 interface WorkspaceSelectorProps {
   controller: WorkspaceController;
   guards: WorkspaceGuardState;
   onCreated?: (workspaceName: string) => void;
-  onDeleted?: (workspaceName: string) => void;
+  onDeleted?: (workspaceName: string, returnToLauncher: boolean) => void;
+  onHomeConfirmed?: () => void;
 }
 
 interface OperationFeedback {
@@ -23,11 +37,12 @@ export function WorkspaceSelector({
   guards,
   onCreated,
   onDeleted,
+  onHomeConfirmed,
 }: WorkspaceSelectorProps) {
   const [open, setOpen] = useState(false);
   const [menuRendered, setMenuRendered] = useState(false);
   const [openActionsId, setOpenActionsId] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<'create' | 'rename' | null>(null);
+  const [dialog, setDialog] = useState<WorkspaceDialog | null>(null);
   const [editingId, setEditingId] = useState('');
   const [name, setName] = useState('');
   const [blockedMessage, setBlockedMessage] = useState('');
@@ -203,12 +218,18 @@ export function WorkspaceSelector({
   const confirmPending = () => {
     const pendingWorkspaceName =
       controller.pending?.kind === 'delete' ? pendingWorkspace?.name : undefined;
+    const deletedActiveWorkspace =
+      controller.pending?.kind === 'delete' && pendingWorkspace?.id === data.activeWorkspace.id;
     if (controller.pending?.kind === 'switch' && pendingWorkspace !== undefined) {
       switchTargetRef.current = { id: pendingWorkspace.id, name: pendingWorkspace.name };
       setOperationFeedback({ message: `Switching to ${pendingWorkspace.name}…`, tone: 'info' });
     }
+    const pendingKind = controller.pending?.kind;
     void Promise.resolve(controller.confirmPending()).then((ok) => {
-      if (ok && pendingWorkspaceName !== undefined) onDeleted?.(pendingWorkspaceName);
+      if (ok && pendingKind === 'home') onHomeConfirmed?.();
+      if (ok && pendingWorkspaceName !== undefined) {
+        onDeleted?.(pendingWorkspaceName, deletedActiveWorkspace);
+      }
     });
   };
 
@@ -240,7 +261,6 @@ export function WorkspaceSelector({
             }
           }}
         >
-          <Cube className="workspace-selector__trigger-icon" width={15} height={15} />
           <span>{data.activeWorkspace.name}</span>
           <NavArrowDown className="workspace-selector__chevron" width={14} height={14} />
         </button>
@@ -272,7 +292,15 @@ export function WorkspaceSelector({
                   data-workspace-id={workspace.id}
                   onClick={() => switchWorkspace(workspace.id)}
                 >
-                  <Cube className="workspace-selector__workspace-icon" width={16} height={16} />
+                  <span
+                    className="workspace-selector__workspace-icon"
+                    style={
+                      { '--workspace-accent': workspaceAccent(workspace.name) } as CSSProperties
+                    }
+                    aria-hidden="true"
+                  >
+                    {workspaceInitials(workspace.name)}
+                  </span>
                   <span className="workspace-selector__workspace-name">{workspace.name}</span>
                   {workspace.id === data.activeWorkspace.id ? (
                     <CheckCircle
@@ -312,7 +340,6 @@ export function WorkspaceSelector({
                         type="button"
                         role="menuitem"
                         className="workspace-selector__actions-delete"
-                        disabled={data.workspaces.length === 1}
                         onClick={() => deleteWorkspace(workspace.id)}
                       >
                         <Trash width={14} height={14} /> Delete
@@ -357,103 +384,31 @@ export function WorkspaceSelector({
         />
       ) : null}
 
-      <Modal
-        open={dialog !== null}
-        title={dialog === 'create' ? 'Create workspace' : 'Rename workspace'}
-        description="Workspace names are unique and surrounding whitespace is removed."
-        closeDisabled={controller.operation !== 'idle'}
+      <WorkspaceNameDialog
+        dialog={dialog}
+        controller={controller}
+        name={name}
+        nameError={nameError}
+        formId="workspace-name-form"
+        variant="selector"
         onClose={() => setDialog(null)}
-        footer={
-          <ModalActions>
-            <ModalButton type="button" onClick={() => setDialog(null)}>
-              Cancel
-            </ModalButton>
-            <ModalButton
-              tone="primary"
-              type="submit"
-              form="workspace-name-form"
-              disabled={controller.operation !== 'idle'}
-            >
-              {controller.operation === 'creating'
-                ? 'Creating…'
-                : controller.operation === 'renaming'
-                  ? 'Renaming…'
-                  : dialog === 'create'
-                    ? 'Create'
-                    : 'Rename'}
-            </ModalButton>
-          </ModalActions>
-        }
-      >
-        <form id="workspace-name-form" onSubmit={submitName}>
-          <label className="workspace-dialog__field">
-            <span>Workspace name</span>
-            <input
-              autoFocus
-              value={name}
-              aria-invalid={nameError !== ''}
-              onChange={(event) => {
-                setName(event.target.value);
-                setNameError('');
-              }}
-            />
-          </label>
-          {nameError ? (
-            <p className="workspace-dialog__error" role="alert">
-              {nameError}
-            </p>
-          ) : null}
-          {controller.error ? (
-            <p className="workspace-dialog__error" role="alert">
-              {controller.error.message}
-            </p>
-          ) : null}
-        </form>
-      </Modal>
+        onNameChange={(nextName) => {
+          setName(nextName);
+          setNameError('');
+        }}
+        onSubmit={submitName}
+      />
 
-      <Modal
+      <WorkspaceActionDialog
         open={controller.pending !== null}
-        title={controller.pending?.kind === 'delete' ? 'Delete workspace?' : 'Switch workspace?'}
-        description={
-          controller.pending?.kind === 'delete'
-            ? `Delete ${pendingWorkspace?.name ?? 'this workspace'} metadata? Imported YAML files on disk will not be deleted or modified.`
-            : 'Switching workspaces clears the current run and workspace session state.'
-        }
-        closeDisabled={controller.operation !== 'idle'}
+        action={controller.pending?.kind ?? 'switch'}
+        controller={controller}
+        workspaceName={pendingWorkspace?.name}
+        dirty={controller.pending?.dirty ?? false}
+        variant="selector"
         onClose={() => controller.cancelPending()}
-        footer={
-          <ModalActions>
-            <ModalButton type="button" onClick={() => controller.cancelPending()}>
-              Cancel
-            </ModalButton>
-            <ModalButton
-              tone={controller.pending?.kind === 'delete' ? 'danger' : 'primary'}
-              type="button"
-              disabled={controller.operation !== 'idle'}
-              onClick={confirmPending}
-            >
-              {controller.operation === 'deleting'
-                ? 'Deleting…'
-                : controller.operation === 'switching'
-                  ? 'Switching…'
-                  : controller.pending?.kind === 'delete'
-                    ? 'Delete workspace'
-                    : 'Switch workspace'}
-            </ModalButton>
-          </ModalActions>
-        }
-      >
-        {controller.error ? (
-          <p className="workspace-dialog__error" role="alert">
-            {controller.error.message}
-          </p>
-        ) : null}
-        {controller.pending?.dirty ? (
-          <p>You have unsaved scenario changes. They will be discarded.</p>
-        ) : (
-          <p>Your YAML files remain unchanged.</p>
-        )}
-      </Modal>
+        onConfirm={confirmPending}
+      />
     </>
   );
 }

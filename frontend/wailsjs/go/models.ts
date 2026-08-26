@@ -744,6 +744,8 @@ export namespace api {
 	    createdAt: string;
 	    updatedAt: string;
 	    lastOpenedAt: string;
+	    scenarioCount: number;
+	    hasRememberedConnection: boolean;
 
 	    static createFrom(source: any = {}) {
 	        return new Workspace(source);
@@ -756,6 +758,8 @@ export namespace api {
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	        this.lastOpenedAt = source["lastOpenedAt"];
+	        this.scenarioCount = source["scenarioCount"];
+	        this.hasRememberedConnection = source["hasRememberedConnection"];
 	    }
 	}
 	export class WorkspaceActionResponse {

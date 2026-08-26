@@ -31,7 +31,7 @@ capture:
 	return path
 }
 
-func TestWorkspaceBootstrapCreatesDefaultAndIncludesGlobalExamples(t *testing.T) {
+func TestWorkspaceBootstrapStartsEmptyAndIncludesGlobalExamples(t *testing.T) {
 	app := newApp(&fakeKafkaConnector{})
 	app.startup(context.Background())
 	defer app.shutdown(context.Background())
@@ -40,7 +40,7 @@ func TestWorkspaceBootstrapCreatesDefaultAndIncludesGlobalExamples(t *testing.T)
 	if !response.OK || response.Data == nil {
 		t.Fatalf("BootstrapWorkspace() = %+v", response)
 	}
-	if len(response.Data.Workspaces) != 1 || response.Data.ActiveWorkspace.Name != "My workspace" {
+	if len(response.Data.Workspaces) != 0 || response.Data.ActiveWorkspace.ID != "" {
 		t.Fatalf("workspaces = %+v", response.Data.Workspaces)
 	}
 	if len(response.Data.BundledScenarios) == 0 || len(response.Data.LocalScenarios) != 0 {
@@ -58,7 +58,11 @@ func TestWorkspaceSwitchIsolatesLocalScenariosAndRestoresSelection(t *testing.T)
 	defer app.shutdown(context.Background())
 	app.scenarioDialogs = &fakeScenarioDialogs{openPaths: []string{path}}
 
-	first := app.BootstrapWorkspace().Data
+	createdFirst := app.CreateWorkspace("First")
+	if !createdFirst.OK || createdFirst.Data == nil {
+		t.Fatalf("CreateWorkspace(First) = %+v", createdFirst)
+	}
+	first := createdFirst.Data
 	imported := app.ImportLocalScenario()
 	if !imported.OK || imported.Data == nil || imported.Data.Descriptor == nil {
 		t.Fatalf("ImportLocalScenario() = %+v, error = %+v", imported, imported.Error)
@@ -88,6 +92,9 @@ func TestSuccessfulConnectionIsRememberedAndSwitchDisconnects(t *testing.T) {
 	app := newApp(&fakeKafkaConnector{connections: []KafkaConnection{connection}})
 	app.startup(context.Background())
 	defer app.shutdown(context.Background())
+	if response := app.CreateWorkspace("First"); !response.OK {
+		t.Fatalf("CreateWorkspace() = %+v", response)
+	}
 
 	request := validConnectionRequest("Local Kafka")
 	if response := app.Connect(request); !response.OK {
@@ -114,6 +121,9 @@ func TestFailedConnectionDoesNotOverwriteRememberedSettings(t *testing.T) {
 	app := newApp(connector)
 	app.startup(context.Background())
 	defer app.shutdown(context.Background())
+	if response := app.CreateWorkspace("First"); !response.OK {
+		t.Fatalf("CreateWorkspace() = %+v", response)
+	}
 	if response := app.Connect(validConnectionRequest("Remember me")); !response.OK {
 		t.Fatalf("first Connect() = %+v", response)
 	}
@@ -132,7 +142,11 @@ func TestDeletingWorkspaceNeverDeletesImportedYAML(t *testing.T) {
 	app.startup(context.Background())
 	defer app.shutdown(context.Background())
 	app.scenarioDialogs = &fakeScenarioDialogs{openPaths: []string{path}}
-	firstID := app.BootstrapWorkspace().Data.ActiveWorkspace.ID
+	first := app.CreateWorkspace("First")
+	if !first.OK || first.Data == nil {
+		t.Fatalf("CreateWorkspace() = %+v", first)
+	}
+	firstID := first.Data.ActiveWorkspace.ID
 	if response := app.ImportLocalScenario(); !response.OK {
 		t.Fatalf("ImportLocalScenario() = %+v, error = %+v", response, response.Error)
 	}
@@ -208,7 +222,11 @@ func TestWorkspaceReadsAndRenamesShareTransitionSerialization(t *testing.T) {
 		t.Fatalf("BootstrapWorkspace() = %+v", response)
 	}
 
-	activeID := app.BootstrapWorkspace().Data.ActiveWorkspace.ID
+	created := app.CreateWorkspace("First")
+	if !created.OK || created.Data == nil {
+		t.Fatalf("CreateWorkspace() = %+v", created)
+	}
+	activeID := created.Data.ActiveWorkspace.ID
 	app.lifecycleMu.Lock()
 	renameDone := make(chan api.WorkspaceBootstrapResponse, 1)
 	go func() {

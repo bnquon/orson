@@ -24,7 +24,6 @@ var (
 	ErrWorkspaceNotFound            = errors.New("workspace not found")
 	ErrWorkspaceNameRequired        = errors.New("workspace name is required")
 	ErrWorkspaceNameDuplicate       = errors.New("workspace name already exists")
-	ErrFinalWorkspace               = errors.New("the final workspace cannot be deleted")
 	ErrRecoveryConfirmationRequired = errors.New("persistence recovery confirmation is required")
 )
 
@@ -110,10 +109,6 @@ func (s *Service) initialize() {
 	if err == nil {
 		var state State
 		state, err = loadState(db)
-		if err == nil && len(state.Workspaces) == 0 {
-			state = s.defaultState()
-			err = replaceState(db, state)
-		}
 		if err == nil {
 			state.Persistence = persistentStatus()
 			s.db = db
@@ -124,19 +119,15 @@ func (s *Service) initialize() {
 	if db != nil {
 		_ = db.Close()
 	}
-	s.state = s.defaultState()
+	s.state = s.emptyState()
 	s.state.Persistence = fallbackStatus(err, false)
 }
 
-func (s *Service) defaultState() State {
-	now := s.now()
-	id := s.newID()
+func (s *Service) emptyState() State {
 	return State{
-		Workspaces:        []Workspace{{ID: id, Name: DefaultName, CreatedAt: now, UpdatedAt: now, LastOpenedAt: now}},
-		ActiveWorkspaceID: id,
-		Scenarios:         make(map[string][]ScenarioReference),
-		Connections:       make(map[string]*ConnectionConfig),
-		Selections:        make(map[string]*Selection),
+		Scenarios:   make(map[string][]ScenarioReference),
+		Connections: make(map[string]*ConnectionConfig),
+		Selections:  make(map[string]*Selection),
 	}
 }
 
@@ -213,9 +204,6 @@ func (s *Service) SetActive(id string) (State, error) {
 func (s *Service) Delete(id string) (State, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.state.Workspaces) <= 1 {
-		return State{}, ErrFinalWorkspace
-	}
 	next := cloneState(s.state)
 	index := workspaceIndex(next, id)
 	if index < 0 {
@@ -225,9 +213,11 @@ func (s *Service) Delete(id string) (State, error) {
 	delete(next.Scenarios, id)
 	delete(next.Connections, id)
 	delete(next.Selections, id)
-	if next.ActiveWorkspaceID == id {
+	if next.ActiveWorkspaceID == id && len(next.Workspaces) > 0 {
 		sortWorkspaces(next.Workspaces)
 		next.ActiveWorkspaceID = next.Workspaces[0].ID
+	} else if len(next.Workspaces) == 0 {
+		next.ActiveWorkspaceID = ""
 	}
 	wasFallback := s.db == nil
 	s.commit(next, "delete workspace")
@@ -374,11 +364,7 @@ func (s *Service) Retry(confirm bool) (State, error) {
 			return State{}, loadErr
 		}
 		if len(state.Workspaces) == 0 {
-			state = s.defaultState()
-			if err := replaceState(db, state); err != nil {
-				_ = db.Close()
-				return State{}, err
-			}
+			state = s.emptyState()
 		}
 		state.Persistence = persistentStatus()
 		s.db = db
@@ -515,7 +501,7 @@ func mergeRecovered(durable, session State, deleted map[string]struct{}, now tim
 	}
 	for id := range deleted {
 		index := workspaceIndex(merged, id)
-		if index >= 0 && len(merged.Workspaces) > 1 {
+		if index >= 0 {
 			merged.Workspaces = append(merged.Workspaces[:index], merged.Workspaces[index+1:]...)
 			delete(merged.Scenarios, id)
 			delete(merged.Connections, id)
@@ -524,6 +510,9 @@ func mergeRecovered(durable, session State, deleted map[string]struct{}, now tim
 	}
 	merged.ActiveWorkspaceID = session.ActiveWorkspaceID
 	sortWorkspaces(merged.Workspaces)
+	if workspaceIndex(merged, merged.ActiveWorkspaceID) < 0 && len(merged.Workspaces) > 0 {
+		merged.ActiveWorkspaceID = merged.Workspaces[0].ID
+	}
 	return merged
 }
 
@@ -612,6 +601,9 @@ func loadState(db *sql.DB) (State, error) {
 	_ = db.QueryRow(`SELECT value FROM app_state WHERE key = 'active_workspace_id'`).Scan(&state.ActiveWorkspaceID)
 	if state.ActiveWorkspaceID == "" && len(state.Workspaces) > 0 {
 		state.ActiveWorkspaceID = state.Workspaces[0].ID
+	}
+	if len(state.Workspaces) == 0 {
+		state.ActiveWorkspaceID = ""
 	}
 	rows, err = db.Query(`SELECT workspace_id, canonical_path, display_filename, imported_at, fingerprint, modified_at_ns, size_bytes FROM workspace_scenarios ORDER BY imported_at ASC, canonical_path ASC`)
 	if err != nil {
