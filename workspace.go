@@ -314,6 +314,15 @@ func workspaceAPIError(err error) *api.APIError {
 	}
 }
 
+func workspaceRequiredError() *api.APIError {
+	return api.NewError(
+		"workspace_required",
+		"Select a workspace first.",
+		"Create or select a workspace before continuing.",
+		false,
+	)
+}
+
 func workspaceScenarioReference(workspaceID string, descriptor scenario.Descriptor, registry *scenario.LocalRegistry, importedAt time.Time) (workspacepkg.ScenarioReference, error) {
 	reference, err := registry.Reference(descriptor.ID)
 	if err != nil {

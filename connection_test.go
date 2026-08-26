@@ -42,6 +42,21 @@ func TestAppConnectNormalizesRequest(t *testing.T) {
 	}
 }
 
+func TestAppConnectRequiresActiveWorkspace(t *testing.T) {
+	connector := &fakeKafkaConnector{connections: []KafkaConnection{&fakeKafkaConnection{}}}
+	app := newApp(connector)
+	app.startup(context.Background())
+	defer app.shutdown(context.Background())
+
+	response := app.Connect(validConnectionRequest("No workspace"))
+	if response.OK || response.Error == nil || response.Error.Code != "workspace_required" {
+		t.Fatalf("Connect() without workspace = %+v, want workspace_required", response)
+	}
+	if len(connector.configs) != 0 {
+		t.Fatalf("connector was called without a workspace: %+v", connector.configs)
+	}
+}
+
 func TestAppFailedReconnectPreservesActiveConnection(t *testing.T) {
 	active := &fakeKafkaConnection{}
 	connector := &fakeKafkaConnector{

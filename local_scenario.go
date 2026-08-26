@@ -81,6 +81,9 @@ func (a *App) ImportLocalScenario() api.ScenarioFileResponse {
 	if apiErr := a.scenarioFileRunGuard(); apiErr != nil {
 		return api.ScenarioFileFailure(apiErr, nil)
 	}
+	if a.workspaceService().Snapshot().ActiveWorkspaceID == "" {
+		return api.ScenarioFileFailure(workspaceRequiredError(), nil)
+	}
 
 	descriptor, loaded, err := a.getLocalScenarioRegistry().Import(selectedPath)
 	if err != nil {

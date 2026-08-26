@@ -91,6 +91,7 @@ func TestImportLocalScenarioCancellationAndFailuresPreserveRegistry(t *testing.T
 		scenarioDialogs: &fakeScenarioDialogs{openPaths: []string{"", invalidPath}},
 		localScenarios:  scenario.NewLocalRegistry(nil),
 	}
+	startWorkspaceScenarioTestApp(t, app)
 
 	cancelled := app.ImportLocalScenario()
 	if !cancelled.OK || cancelled.Data == nil || !cancelled.Data.Cancelled || cancelled.Error != nil {
@@ -102,6 +103,26 @@ func TestImportLocalScenarioCancellationAndFailuresPreserveRegistry(t *testing.T
 	}
 	if got := app.ListLocalScenarios(); got.Data == nil || len(got.Data.Scenarios) != 0 {
 		t.Fatalf("invalid import registered a local source: %+v", got)
+	}
+}
+
+func TestImportLocalScenarioRequiresWorkspaceBeforeRegistering(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "requires-workspace.yaml")
+	writeLocalAPITestFile(t, path, localAPITestYAML("requires workspace"))
+	app := &App{
+		scenarioDialogs: &fakeScenarioDialogs{openPaths: []string{path}},
+		localScenarios:  scenario.NewLocalRegistry(nil),
+	}
+	app.startup(context.Background())
+	defer app.shutdown(context.Background())
+
+	response := app.ImportLocalScenario()
+	if response.OK || response.Error == nil || response.Error.Code != "workspace_required" {
+		t.Fatalf("ImportLocalScenario() without workspace = %+v, want workspace_required", response)
+	}
+	if listed := app.ListLocalScenarios(); listed.Data == nil || len(listed.Data.Scenarios) != 0 {
+		t.Fatalf("import without workspace registered a scenario: %+v", listed)
 	}
 }
 
