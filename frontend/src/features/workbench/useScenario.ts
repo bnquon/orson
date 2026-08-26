@@ -344,9 +344,11 @@ export function useScenario({
   }, []);
 
   useEffect(() => {
+    if (!mountedRef.current) return;
+    requestIdRef.current += 1;
+
     void Promise.resolve().then(() => {
       if (!mountedRef.current) return;
-      requestIdRef.current += 1;
       if (bootstrap === null) {
         bootstrapIdentityRef.current = '';
         setCatalogStatus(bootstrapError === null ? 'loading' : 'failed');
