@@ -16,9 +16,11 @@ interface WorkbenchShellProps {
   toolbar: ReactNode;
   workspace: ReactNode;
   workspaceMode: WorkspaceMode;
+  workspaceAriaLabel?: string;
   workspaceInert: boolean;
   previousRun: ReactNode;
   runStatus: string;
+  runStatusLabel?: string;
   statusDetail: string;
 }
 
@@ -32,9 +34,11 @@ export function WorkbenchShell({
   toolbar,
   workspace,
   workspaceMode,
+  workspaceAriaLabel,
   workspaceInert,
   previousRun,
   runStatus,
+  runStatusLabel,
   statusDetail,
 }: WorkbenchShellProps) {
   const brokerSummary =
@@ -89,9 +93,11 @@ export function WorkbenchShell({
             className="workspace-view"
             id="workspace-view"
             role="tabpanel"
-            aria-labelledby={`workspace-mode-tab-${workspaceMode}`}
+            {...(workspaceAriaLabel === undefined
+              ? { 'aria-labelledby': `workspace-mode-tab-${workspaceMode}` }
+              : { 'aria-label': workspaceAriaLabel })}
             inert={workspaceInert}
-            key={workspaceMode}
+            key={workspaceAriaLabel ?? workspaceMode}
           >
             {workspace}
           </div>
@@ -100,7 +106,7 @@ export function WorkbenchShell({
       </div>
 
       <footer className="workbench-statusbar">
-        <span>Capture {runStatus}</span>
+        <span>{runStatusLabel ?? `Capture ${runStatus}`}</span>
         <span>{statusDetail}</span>
       </footer>
     </div>

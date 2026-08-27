@@ -6,7 +6,9 @@ import { Modal, ModalActions, ModalButton } from '../../components/Modal';
 import { Toast } from '../../components/Toast';
 import { ComposePanel } from './components/ComposePanel';
 import { FlowPanel } from './components/FlowPanel';
-import { PreviousRunPanel } from './components/PreviousRunPanel';
+import { HistoricalRunPanel } from './components/HistoricalRunPanel';
+import { HistoricalRunToolbar } from './components/HistoricalRunToolbar';
+import { RunContextPanel } from './components/RunContextPanel';
 import { ScenarioBrowser } from './components/ScenarioBrowser';
 import { ScenarioFileActions } from './components/ScenarioFileActions';
 import { WorkbenchShell } from './components/WorkbenchShell';
@@ -16,21 +18,21 @@ import {
   ScenarioFileOperationError,
   ScenarioSelectionLoadError,
 } from './components/ScenarioLoadState';
-import { buildFlowViewModel, getRunRecordId } from './flowModel';
-import { formatStatusLabel, isActiveRunStatus } from './runStatus';
+import { buildFlowViewModel } from './flowModel';
+import { toObservedRun } from './observedRun';
+import { formatStatusLabel, isActiveRunStatus, terminalRunStatuses } from './runStatus';
 import { toRunRequest } from './runMapping';
 import type { ScenarioDraftData } from './scenarioMapping';
 import { useScenarioDraftSession } from './scenarioDraftSession';
 import { useScenarioFileOperations } from './useScenarioFileOperations';
 import { useRun } from './useRun';
+import { useRunHistory } from './useRunHistory';
 import type {
   ComposeEditorTab,
-  EventRecord,
   KafkaConnection,
   TouchedState,
   ValidatableField,
   WorkspaceMode,
-  ObservedEvent,
   LoadedScenario,
   ScenarioDescriptor,
   ScenarioDiagnostic,
@@ -47,24 +49,8 @@ const initialTouched: TouchedState = {
   headerIds: [],
 };
 
-function toObservedEvent(runId: string, record: EventRecord, isRoot: boolean): ObservedEvent {
-  const id = getRunRecordId(runId, record);
-  return {
-    id,
-    name: isRoot ? 'Root event published' : record.topic,
-    topic: record.topic,
-    kind: isRoot ? ('root' as const) : ('downstream' as const),
-    timestamp: record.timestamp || 'Timestamp unavailable',
-    elapsed: '',
-    partition: record.partition,
-    offset: record.offset,
-    metadata: `Kafka · ${record.value.length} B · observed live`,
-    headers: record.headers.map((header) => ({ name: header.key, value: header.value })),
-    payload: record.value,
-  };
-}
-
 interface WorkbenchPageProps {
+  workspaceId: string;
   connection: KafkaConnection;
   scenario: LoadedScenario;
   examples: ScenarioDescriptor[];
@@ -95,6 +81,7 @@ interface WorkbenchPageProps {
 }
 
 export function WorkbenchPage({
+  workspaceId,
   connection,
   scenario,
   examples,
@@ -141,7 +128,10 @@ export function WorkbenchPage({
     error: getJsonError(scenario.draft.payload),
   }));
   const run = useRun();
+  const history = useRunHistory(scenario.id, workspaceId);
+  const refreshHistory = history.refresh;
   const previousScenarioIdRef = useRef(scenario.id);
+  const refreshedRunRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (previousScenarioIdRef.current === scenario.id) return;
@@ -156,6 +146,15 @@ export function WorkbenchPage({
     rootTopicEditRef.current = null;
     run.resetRun();
   }, [run, scenario.id]);
+
+  useEffect(() => {
+    const runId = run.state.runId;
+    if (runId === null || !terminalRunStatuses.has(run.state.status)) return;
+    const refreshKey = `${runId}:${run.state.status}`;
+    if (refreshedRunRef.current === refreshKey) return;
+    refreshedRunRef.current = refreshKey;
+    void refreshHistory();
+  }, [refreshHistory, run.state.runId, run.state.status]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -174,18 +173,7 @@ export function WorkbenchPage({
     () => validateScenario(draft, connection, jsonValidation.error),
     [connection, draft, jsonValidation.error],
   );
-  const liveRun = useMemo(
-    () => ({
-      id: run.state.runId ?? '—',
-      status: run.state.status,
-      error: run.state.error,
-      trackedEvents: run.state.trackedEvents,
-      events: run.state.records.map((record) =>
-        toObservedEvent(run.state.runId ?? 'pending', record, run.state.rootRecord === record),
-      ),
-    }),
-    [run.state],
-  );
+  const liveRun = useMemo(() => toObservedRun(run.state, 'live'), [run.state]);
   const flowModel = useMemo(() => buildFlowViewModel(draft, run.state), [draft, run.state]);
   const selectedEvent =
     liveRun.events.find((event) => event.id === run.state.selectedRecordId) ?? null;
@@ -242,7 +230,8 @@ export function WorkbenchPage({
   };
 
   const publishRun = () => {
-    if (fileOperations.fileBusy || scenarioSelectionLoading) return;
+    if (history.mode === 'historical' || fileOperations.fileBusy || scenarioSelectionLoading)
+      return;
     const currentJsonError = getJsonError(draft.payload);
     const currentValidation = validateScenario(draft, connection, currentJsonError);
 
@@ -278,7 +267,15 @@ export function WorkbenchPage({
       return;
     }
 
-    void run.startRun(toRunRequest(draft));
+    void run.startRun(
+      toRunRequest(draft, {
+        source: scenario.source,
+        scenarioId: scenario.id,
+        sourcePath: scenario.sourcePath,
+        sourceFilename: scenario.sourceFilename,
+        displayName: scenario.name,
+      }),
+    );
   };
 
   const handlePublish = (event: SubmitEvent<HTMLFormElement>) => {
@@ -290,6 +287,7 @@ export function WorkbenchPage({
     <ScenarioFileActions
       source={scenario.source}
       sourceFilename={scenario.sourceFilename}
+      readOnly={history.mode === 'historical'}
       dirty={fileOperations.draftIsDirty}
       saveDisabled={fileOperations.saveDisabled}
       saveAsDisabled={fileOperations.saveDisabled}
@@ -306,46 +304,51 @@ export function WorkbenchPage({
   } else if (scenarioSelectionLoading) {
     publishTitle = 'Wait for the selected scenario to finish loading';
   }
-  const publishAction = isRunActive ? (
-    <button
-      className="publish-button publish-button--stop"
-      type="button"
-      onClick={() => void run.stopRun()}
-      title="Stop the active run"
-    >
-      <LoadingDots size="inline" /> Stop
-    </button>
-  ) : (
-    <>
-      <span
-        className={`publish-summary ${publishAttempted && validation.issueCount > 0 ? 'publish-summary--invalid' : ''}`}
-        aria-live="polite"
-      >
-        {publishAttempted ? (
-          validation.issueCount > 0 ? (
-            <>
-              <WarningCircle width={16} height={16} /> {validation.issueCount}{' '}
-              {validation.issueCount === 1 ? 'issue' : 'issues'}
-            </>
-          ) : (
-            <>
-              <CheckCircle width={16} height={16} /> Ready
-            </>
-          )
-        ) : null}
+  const publishAction =
+    history.mode === 'historical' ? (
+      <span className="publish-summary" aria-label="Historical run is read-only">
+        Read-only run
       </span>
+    ) : isRunActive ? (
       <button
-        className="publish-button"
-        type={mode === 'compose' ? 'submit' : 'button'}
-        form={mode === 'compose' ? 'compose-form' : undefined}
-        onClick={mode === 'flow' ? publishRun : undefined}
-        disabled={fileOperations.fileBusy || scenarioSelectionLoading}
-        title={publishTitle}
+        className="publish-button publish-button--stop"
+        type="button"
+        onClick={() => void run.stopRun()}
+        title="Stop the active run"
       >
-        Publish <DotArrowRight width={20} height={20} strokeWidth={1.5} />
+        <LoadingDots size="inline" /> Stop
       </button>
-    </>
-  );
+    ) : (
+      <>
+        <span
+          className={`publish-summary ${publishAttempted && validation.issueCount > 0 ? 'publish-summary--invalid' : ''}`}
+          aria-live="polite"
+        >
+          {publishAttempted ? (
+            validation.issueCount > 0 ? (
+              <>
+                <WarningCircle width={16} height={16} /> {validation.issueCount}{' '}
+                {validation.issueCount === 1 ? 'issue' : 'issues'}
+              </>
+            ) : (
+              <>
+                <CheckCircle width={16} height={16} /> Ready
+              </>
+            )
+          ) : null}
+        </span>
+        <button
+          className="publish-button"
+          type={mode === 'compose' ? 'submit' : 'button'}
+          form={mode === 'compose' ? 'compose-form' : undefined}
+          onClick={mode === 'flow' ? publishRun : undefined}
+          disabled={fileOperations.fileBusy || scenarioSelectionLoading}
+          title={publishTitle}
+        >
+          Publish <DotArrowRight width={20} height={20} strokeWidth={1.5} />
+        </button>
+      </>
+    );
 
   const scenarioSidebar = (
     <ScenarioBrowser
@@ -355,6 +358,7 @@ export function WorkbenchPage({
       activeScenarioId={scenario.id}
       scenarioLoadingId={scenarioLoadingId}
       scenarioCatalogLoading={scenarioCatalogLoading}
+      readOnly={history.mode === 'historical'}
       examplesExpanded={examplesExpanded}
       examplesDismissed={examplesDismissed}
       onExamplesExpandedChange={onExamplesExpandedChange}
@@ -370,26 +374,32 @@ export function WorkbenchPage({
       onRemoveScenario={onRemoveScenario}
     />
   );
-  const workspaceToolbar = (
-    <WorkspaceToolbar
-      mode={mode}
-      onModeChange={setMode}
-      scenario={{
-        name: scenario.name,
-        rootTopic: draft.rootTopic,
-        source: scenario.source,
-        sourceFilename: scenario.sourceFilename,
-        sourcePath: scenario.sourcePath,
-        dirty: fileOperations.draftIsDirty,
-      }}
-      warnings={{
-        count: scenario.warnings.length,
-        dismissed: scenarioWarningsDismissed,
-        onRestore: restoreScenarioWarnings,
-      }}
-      action={publishAction}
-    />
-  );
+  const workspaceToolbar =
+    history.mode === 'historical' && history.selectedSummary !== null ? (
+      <HistoricalRunToolbar
+        summary={history.selectedSummary}
+        onReturnToCurrent={() => history.setMode('current')}
+      />
+    ) : (
+      <WorkspaceToolbar
+        mode={mode}
+        onModeChange={setMode}
+        scenario={{
+          name: scenario.name,
+          rootTopic: draft.rootTopic,
+          source: scenario.source,
+          sourceFilename: scenario.sourceFilename,
+          sourcePath: scenario.sourcePath,
+          dirty: fileOperations.draftIsDirty,
+        }}
+        warnings={{
+          count: scenario.warnings.length,
+          dismissed: scenarioWarningsDismissed,
+          onRestore: restoreScenarioWarnings,
+        }}
+        action={publishAction}
+      />
+    );
 
   const scenarioDiagnostics = (
     <>
@@ -428,11 +438,21 @@ export function WorkbenchPage({
         sidebar={scenarioSidebar}
         toolbar={workspaceToolbar}
         workspaceMode={mode}
+        workspaceAriaLabel={history.mode === 'historical' ? 'Historical run detail' : undefined}
         workspaceInert={
           fileFeedback.operation === 'importing' || fileFeedback.operation === 'removing'
         }
         workspace={
-          mode === 'compose' ? (
+          history.mode === 'historical' ? (
+            <HistoricalRunPanel
+              run={history.selectedRun}
+              detailStatus={history.detailStatus}
+              errorMessage={history.error?.message ?? null}
+              selectedRecordId={history.selectedRecordId}
+              onSelectRecord={history.selectRecord}
+              onBackToHistory={() => history.setMode('history')}
+            />
+          ) : mode === 'compose' ? (
             <>
               {scenarioDiagnostics}
               <ComposePanel
@@ -467,18 +487,22 @@ export function WorkbenchPage({
           )
         }
         previousRun={
-          <PreviousRunPanel
-            run={liveRun}
-            selectedEventId={run.state.selectedRecordId}
-            selectedEvent={selectedEvent}
-            onSelectEvent={(recordId) => run.selectRecord(recordId)}
+          <RunContextPanel
+            currentRun={liveRun}
+            currentSelectedEventId={run.state.selectedRecordId}
+            currentSelectedEvent={selectedEvent}
+            onSelectCurrentEvent={(recordId) => run.selectRecord(recordId)}
+            history={history}
           />
         }
         runStatus={formatStatusLabel(run.state.status)}
+        runStatusLabel={history.mode === 'historical' ? 'Viewing historical run' : undefined}
         statusDetail={
-          scenario.source === 'local'
-            ? 'Imported files are remembered for this session'
-            : 'Examples are read-only'
+          history.mode === 'historical'
+            ? 'Read-only snapshot · return to the current workspace to edit'
+            : scenario.source === 'local'
+              ? 'Imported files are remembered for this session'
+              : 'Examples are read-only'
         }
       />
       {fileFeedback.successMessage ? (
@@ -486,6 +510,13 @@ export function WorkbenchPage({
           message={fileFeedback.successMessage}
           tone="success"
           onDismiss={fileOperations.clearFileFeedback}
+        />
+      ) : null}
+      {run.historyError ? (
+        <Toast
+          message={run.historyError.message}
+          tone="error"
+          onDismiss={() => run.clearHistoryError()}
         />
       ) : null}
       <Modal

@@ -19,4 +19,21 @@ describe('toRunRequest', () => {
     expect(request.watchedTopics).toEqual(['payment.charged']);
     expect(request.headers).toEqual([{ key: 'content-type', value: 'application/json' }]);
   });
+
+  it('includes the immutable scenario snapshot when publishing', () => {
+    const request = toRunRequest(initialScenario, {
+      source: 'local',
+      scenarioId: 'checkout.yaml',
+      sourcePath: '/tmp/checkout.yaml',
+      sourceFilename: 'checkout.yaml',
+      displayName: 'Checkout flow',
+    });
+
+    expect(request.scenarioSnapshot).toMatchObject({
+      version: 1,
+      source: 'local',
+      scenarioId: 'checkout.yaml',
+      rootTopic: 'order.created',
+    });
+  });
 });

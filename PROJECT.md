@@ -179,7 +179,9 @@ topology:
 
 Captured run data is local-only.
 
-The initial demo may keep the current run in memory. SQLite can be added when run history and comparison are implemented.
+The active run remains in memory while it is being captured. Terminal runs are persisted in the
+workspace SQLite database with an immutable scenario snapshot and captured event data so they can
+be inspected later, even if the scenario file changes or is removed.
 
 Runs must not automatically be committed to Git because message payloads may contain sensitive data.
 
@@ -196,7 +198,7 @@ Eventually, secrets should be stored in the operating system keychain. Environme
 - React and TypeScript frontend
 - franz-go Kafka client
 - YAML scenario files
-- SQLite for future run history
+- SQLite for workspace state and persistent run history
 - plain SVG for the initial timeline and flow map
 
 Do not add React Flow during the hardcoded MVP.
@@ -455,7 +457,8 @@ Do not include in the initial MVP:
 9. Save and open YAML scenario files.
 10. Generalize topic and header configuration.
 11. Validate the product with real Kafka developers.
-12. Only then consider run history, diffing, schemas, CI, or additional correlation methods.
+12. Validate persistent run history and historical inspection with real Kafka developers.
+13. Consider run comparison, schemas, CI, or additional correlation methods.
 
 ## MVP success condition
 

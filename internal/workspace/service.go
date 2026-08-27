@@ -537,30 +537,74 @@ func migrate(db *sql.DB, now time.Time) error {
 	if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&latest); err != nil {
 		return err
 	}
-	if latest > 1 {
-		return fmt.Errorf("workspace database version %d is newer than supported version 1", latest)
+	if latest > 2 {
+		return fmt.Errorf("workspace database version %d is newer than supported version 2", latest)
+	}
+	if latest == 0 {
+		if err := applyMigration(db, 1, now, []string{
+			`CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_opened_at TEXT NOT NULL)`,
+			`CREATE TABLE workspace_scenarios (workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, canonical_path TEXT NOT NULL, display_filename TEXT NOT NULL, imported_at TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '', modified_at_ns INTEGER NOT NULL DEFAULT 0, size_bytes INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (workspace_id, canonical_path))`,
+			`CREATE TABLE workspace_connections (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE, name TEXT NOT NULL, brokers_json TEXT NOT NULL, client_id TEXT NOT NULL, dial_timeout_seconds INTEGER NOT NULL, updated_at TEXT NOT NULL)`,
+			`CREATE TABLE workspace_preferences (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE, selected_scenario_source TEXT NOT NULL, selected_scenario_ref TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+			`CREATE TABLE app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+		}); err != nil {
+			return err
+		}
+		latest = 1
 	}
 	if latest == 1 {
-		return nil
+		return applyMigration(db, 2, now, []string{
+			`CREATE TABLE run_history (
+				id TEXT PRIMARY KEY,
+				workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+				scenario_source TEXT NOT NULL,
+				scenario_reference TEXT NOT NULL,
+				scenario_display_name TEXT NOT NULL,
+				scenario_snapshot_json TEXT NOT NULL,
+				root_topic TEXT NOT NULL,
+				status TEXT NOT NULL,
+				started_at TEXT NOT NULL,
+				finished_at TEXT NOT NULL,
+				duration_ns INTEGER NOT NULL,
+				event_count INTEGER NOT NULL,
+				failure_stage TEXT,
+				failure_message TEXT,
+				connection_name TEXT NOT NULL,
+				tracked_topics_json TEXT NOT NULL
+			)`,
+			`CREATE INDEX run_history_workspace_finished_idx ON run_history(workspace_id, finished_at DESC, id ASC)`,
+			`CREATE TABLE run_history_records (
+				run_id TEXT NOT NULL REFERENCES run_history(id) ON DELETE CASCADE,
+				sequence INTEGER NOT NULL,
+				kind TEXT NOT NULL,
+				is_root INTEGER NOT NULL CHECK(is_root IN (0, 1)),
+				topic TEXT NOT NULL,
+				message_key BLOB NOT NULL,
+				payload BLOB NOT NULL,
+				headers_json TEXT NOT NULL,
+				partition INTEGER NOT NULL,
+				offset INTEGER NOT NULL,
+				record_timestamp TEXT NOT NULL,
+				PRIMARY KEY (run_id, sequence)
+			)`,
+			`CREATE INDEX run_history_records_order_idx ON run_history_records(run_id, sequence ASC)`,
+		})
 	}
+	return nil
+}
+
+func applyMigration(db *sql.DB, version int, now time.Time, statements []string) error {
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	statements := []string{
-		`CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_opened_at TEXT NOT NULL)`,
-		`CREATE TABLE workspace_scenarios (workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, canonical_path TEXT NOT NULL, display_filename TEXT NOT NULL, imported_at TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '', modified_at_ns INTEGER NOT NULL DEFAULT 0, size_bytes INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (workspace_id, canonical_path))`,
-		`CREATE TABLE workspace_connections (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE, name TEXT NOT NULL, brokers_json TEXT NOT NULL, client_id TEXT NOT NULL, dial_timeout_seconds INTEGER NOT NULL, updated_at TEXT NOT NULL)`,
-		`CREATE TABLE workspace_preferences (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE, selected_scenario_source TEXT NOT NULL, selected_scenario_ref TEXT NOT NULL, updated_at TEXT NOT NULL)`,
-		`CREATE TABLE app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
-	}
 	for _, statement := range statements {
 		if _, err := tx.Exec(statement); err != nil {
 			return err
 		}
 	}
-	if _, err := tx.Exec(`INSERT INTO schema_migrations(version, applied_at) VALUES(1, ?)`, now.Format(time.RFC3339Nano)); err != nil {
+	if _, err := tx.Exec(`INSERT INTO schema_migrations(version, applied_at) VALUES(?, ?)`, version, now.Format(time.RFC3339Nano)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -681,14 +725,54 @@ func replaceState(db *sql.DB, state State) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"workspace_preferences", "workspace_connections", "workspace_scenarios", "app_state", "workspaces"} {
+	for _, table := range []string{"workspace_preferences", "workspace_connections", "workspace_scenarios", "app_state"} {
 		if _, err := tx.Exec(`DELETE FROM ` + table); err != nil {
 			return err
 		}
 	}
-	for _, item := range state.Workspaces {
-		if _, err := tx.Exec(`INSERT INTO workspaces(id, name, name_key, created_at, updated_at, last_opened_at) VALUES(?, ?, ?, ?, ?, ?)`, item.ID, item.Name, strings.ToLower(strings.TrimSpace(item.Name)), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), item.LastOpenedAt.Format(time.RFC3339Nano)); err != nil {
+	rows, err := tx.Query(`SELECT id FROM workspaces`)
+	if err != nil {
+		return err
+	}
+	existingIDs := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
 			return err
+		}
+		existingIDs = append(existingIDs, id)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	desiredIDs := make(map[string]struct{}, len(state.Workspaces))
+	for _, item := range state.Workspaces {
+		desiredIDs[item.ID] = struct{}{}
+	}
+	for _, id := range existingIDs {
+		if _, keep := desiredIDs[id]; !keep {
+			if _, err := tx.Exec(`DELETE FROM workspaces WHERE id = ?`, id); err != nil {
+				return err
+			}
+		}
+	}
+	for _, item := range state.Workspaces {
+		result, err := tx.Exec(`UPDATE workspaces SET name = ?, name_key = ?, created_at = ?, updated_at = ?, last_opened_at = ? WHERE id = ?`, item.Name, strings.ToLower(strings.TrimSpace(item.Name)), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), item.LastOpenedAt.Format(time.RFC3339Nano), item.ID)
+		if err != nil {
+			return err
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			if _, err := tx.Exec(`INSERT INTO workspaces(id, name, name_key, created_at, updated_at, last_opened_at) VALUES(?, ?, ?, ?, ?, ?)`, item.ID, item.Name, strings.ToLower(strings.TrimSpace(item.Name)), item.CreatedAt.Format(time.RFC3339Nano), item.UpdatedAt.Format(time.RFC3339Nano), item.LastOpenedAt.Format(time.RFC3339Nano)); err != nil {
+				return err
+			}
 		}
 	}
 	if _, err := tx.Exec(`INSERT INTO app_state(key, value) VALUES('active_workspace_id', ?)`, state.ActiveWorkspaceID); err != nil {

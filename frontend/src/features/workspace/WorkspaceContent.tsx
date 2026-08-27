@@ -49,6 +49,7 @@ function WorkspaceStateShell({
       toolbar={<div />}
       workspace={children}
       workspaceMode="compose"
+      workspaceAriaLabel="Workspace state"
       workspaceInert={false}
       previousRun={<aside />}
       runStatus="idle"
@@ -119,6 +120,7 @@ export function WorkspaceContent({
   return (
     <WorkbenchPage
       key={data.activeWorkspace.id}
+      workspaceId={data.activeWorkspace.id}
       connection={connection}
       scenario={scenario.scenario}
       examples={scenario.examples}

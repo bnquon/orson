@@ -67,6 +67,18 @@ export function getRunRecordId(runId: string, record: EventRecord): string {
   return `${runId}:${record.topic}:${record.partition}:${record.offset}`;
 }
 
+export function nextRecordIdForNode(
+  node: Pick<FlowNode, 'recordId' | 'recordIds'>,
+  selectedRecordId: string | null,
+): string | null {
+  if (node.recordIds.length === 0) return node.recordId;
+  if (node.recordIds.length === 1) return node.recordIds[0] ?? node.recordId;
+
+  const selectedIndex = selectedRecordId === null ? -1 : node.recordIds.indexOf(selectedRecordId);
+  if (selectedIndex < 0) return node.recordIds[node.recordIds.length - 1] ?? node.recordId;
+  return node.recordIds[(selectedIndex + 1) % node.recordIds.length] ?? node.recordId;
+}
+
 function sameRecord(left: EventRecord, right: EventRecord): boolean {
   return (
     left.topic === right.topic && left.partition === right.partition && left.offset === right.offset

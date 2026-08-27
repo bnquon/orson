@@ -6,6 +6,7 @@ import type { ScenarioFileOperation, ScenarioSource } from '../types';
 interface ScenarioFileActionsProps {
   source: ScenarioSource;
   sourceFilename: string;
+  readOnly?: boolean;
   dirty: boolean;
   saveDisabled: boolean;
   saveAsDisabled: boolean;
@@ -59,6 +60,7 @@ function FileAction({
 export function ScenarioFileActions({
   source,
   sourceFilename,
+  readOnly = false,
   dirty,
   saveDisabled,
   saveAsDisabled,
@@ -68,11 +70,15 @@ export function ScenarioFileActions({
   onSave,
   onSaveAs,
 }: ScenarioFileActionsProps) {
-  const saveIsDisabled = saveDisabled || !dirty;
-  const effectiveSaveDisabledReason = !dirty
-    ? 'No changes to save'
-    : saveDisabledReason || 'Saving is currently unavailable';
-  const effectiveSaveAsDisabledReason = saveAsDisabledReason || 'Save as is currently unavailable';
+  const saveIsDisabled = readOnly || saveDisabled || !dirty;
+  const effectiveSaveDisabledReason = readOnly
+    ? 'Return to the current workspace to edit scenarios'
+    : !dirty
+      ? 'No changes to save'
+      : saveDisabledReason || 'Saving is currently unavailable';
+  const effectiveSaveAsDisabledReason = readOnly
+    ? 'Return to the current workspace to edit scenarios'
+    : saveAsDisabledReason || 'Save as is currently unavailable';
   return (
     <div className={`scenario-file-actions scenario-file-actions--${source}`}>
       {source === 'local' ? (
@@ -94,7 +100,7 @@ export function ScenarioFileActions({
         </FileAction>
       ) : null}
       <FileAction
-        disabled={saveAsDisabled}
+        disabled={readOnly || saveAsDisabled}
         disabledReason={effectiveSaveAsDisabledReason}
         enabledTitle="Choose a filename and folder in the native save dialog"
         onClick={onSaveAs}

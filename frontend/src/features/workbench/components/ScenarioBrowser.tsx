@@ -30,6 +30,7 @@ interface ScenarioBrowserProps {
   activeScenarioId: string;
   scenarioLoadingId: string | null;
   scenarioCatalogLoading: boolean;
+  readOnly?: boolean;
   examplesExpanded?: boolean;
   examplesDismissed?: boolean;
   onExamplesExpandedChange?: (expanded: boolean) => void;
@@ -348,6 +349,7 @@ export function ScenarioBrowser({
   activeScenarioId,
   scenarioLoadingId,
   scenarioCatalogLoading,
+  readOnly = false,
   examplesExpanded: controlledExamplesExpanded,
   examplesDismissed: controlledExamplesDismissed,
   onExamplesExpandedChange,
@@ -396,18 +398,21 @@ export function ScenarioBrowser({
     return availableFolders;
   }, [collapsedFolders, searchActive, tree]);
   const fileBusy = fileOperation !== 'idle';
-  const importDisabled = scenarioSelectionDisabled || fileBusy || scenarioLoadingId !== null;
-  const importDisabledReason = scenarioSelectionDisabled
-    ? 'Finish the active run before importing another scenario'
-    : fileBusy
-      ? 'Wait for the current scenario file operation to finish'
-      : scenarioLoadingId !== null
-        ? 'Wait for the selected scenario to finish loading'
-        : '';
+  const interactionDisabled = scenarioSelectionDisabled || readOnly;
+  const importDisabled = interactionDisabled || fileBusy || scenarioLoadingId !== null;
+  const importDisabledReason = readOnly
+    ? 'Return to the current workspace to edit scenarios'
+    : scenarioSelectionDisabled
+      ? 'Finish the active run before importing another scenario'
+      : fileBusy
+        ? 'Wait for the current scenario file operation to finish'
+        : scenarioLoadingId !== null
+          ? 'Wait for the selected scenario to finish loading'
+          : '';
 
   const requestRemove = (descriptor: ScenarioDescriptor) => {
     if (
-      scenarioSelectionDisabled ||
+      interactionDisabled ||
       fileBusy ||
       (descriptor.id === activeScenarioId && activeScenarioDirty)
     ) {
@@ -450,6 +455,9 @@ export function ScenarioBrowser({
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </label>
+          {readOnly ? (
+            <span className="scenario-sidebar__readonly">Historical view · editing disabled</span>
+          ) : null}
         </div>
 
         <div className="scenario-sidebar__scroll">
@@ -485,7 +493,7 @@ export function ScenarioBrowser({
                     selectedScenarioId={selectedScenarioId}
                     activeScenarioId={activeScenarioId}
                     scenarioLoadingId={scenarioLoadingId}
-                    selectionDisabled={scenarioSelectionDisabled || fileBusy}
+                    selectionDisabled={interactionDisabled || fileBusy}
                     onToggleFolder={toggleFolder}
                     onSelectScenario={onSelectScenario}
                     folderToggleDisabled={searchActive}
@@ -511,7 +519,7 @@ export function ScenarioBrowser({
                     selectedScenarioId={selectedScenarioId}
                     activeScenarioId={activeScenarioId}
                     scenarioLoadingId={scenarioLoadingId}
-                    selectionDisabled={scenarioSelectionDisabled || fileBusy}
+                    selectionDisabled={interactionDisabled || fileBusy}
                     activeScenarioDirty={activeScenarioDirty}
                     hasSaveError={
                       descriptor.id === activeScenarioId &&

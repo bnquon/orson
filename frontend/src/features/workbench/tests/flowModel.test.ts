@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFlowViewModel, getRunRecordId } from '../flowModel';
+import { buildFlowViewModel, getRunRecordId, nextRecordIdForNode } from '../flowModel';
 import { initialScenario } from '../fixtures';
 import { initialRunState } from '../runReducer';
 import type { EventRecord, RunState, ScenarioDraft } from '../types';
@@ -392,6 +392,13 @@ describe('buildFlowViewModel', () => {
       getRunRecordId('run-1', first),
       getRunRecordId('run-1', latest),
     ]);
+    expect(nextRecordIdForNode(model.nodes[1], null)).toBe(getRunRecordId('run-1', latest));
+    expect(nextRecordIdForNode(model.nodes[1], getRunRecordId('run-1', latest))).toBe(
+      getRunRecordId('run-1', first),
+    );
+    expect(nextRecordIdForNode(model.nodes[1], getRunRecordId('run-1', first))).toBe(
+      getRunRecordId('run-1', latest),
+    );
   });
 
   it('terminates forward connector paths at node boundaries', () => {

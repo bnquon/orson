@@ -1,6 +1,11 @@
 import { CheckCircle, WarningCircle, ZoomIn, ZoomOut } from 'iconoir-react';
 import { LoadingDots } from '../../../components/LoadingDots';
-import type { FlowNode, FlowStatus, FlowViewModel } from '../flowModel';
+import {
+  nextRecordIdForNode,
+  type FlowNode,
+  type FlowStatus,
+  type FlowViewModel,
+} from '../flowModel';
 import { formatStatusLabel } from '../runStatus';
 import { useFlowViewport } from '../useFlowViewport';
 import '../styles/flow.css';
@@ -9,6 +14,7 @@ interface FlowPanelProps {
   model: FlowViewModel;
   selectedRecordId: string | null;
   onSelectRecord: (recordId: string) => void;
+  ariaLabel?: string;
 }
 
 function StatusMark({ status }: { status: FlowStatus }) {
@@ -36,7 +42,12 @@ function NodeContent({ node }: { node: FlowNode }) {
   );
 }
 
-export function FlowPanel({ model, selectedRecordId, onSelectRecord }: FlowPanelProps) {
+export function FlowPanel({
+  model,
+  selectedRecordId,
+  onSelectRecord,
+  ariaLabel = 'Live event flow',
+}: FlowPanelProps) {
   const {
     viewportRef,
     surfaceStyle,
@@ -50,7 +61,7 @@ export function FlowPanel({ model, selectedRecordId, onSelectRecord }: FlowPanel
   } = useFlowViewport({ graphWidth: model.width, graphHeight: model.height });
 
   return (
-    <section className="flow-panel" aria-label="Live event flow">
+    <section className="flow-panel" aria-label={ariaLabel}>
       <header className="flow-panel__toolbar">
         <div>
           <strong>Event relationships</strong>
@@ -119,9 +130,12 @@ export function FlowPanel({ model, selectedRecordId, onSelectRecord }: FlowPanel
                   style={style}
                   type="button"
                   key={node.id}
-                  aria-label={`${node.topic}, ${formatStatusLabel(node.status)}. Select observed record.`}
+                  aria-label={`${node.topic}, ${formatStatusLabel(node.status)}. Select observed record${node.recordIds.length > 1 ? ' (click to cycle records)' : ''}.`}
                   aria-pressed={node.recordIds.includes(selectedRecordId ?? '')}
-                  onClick={() => onSelectRecord(node.recordId as string)}
+                  onClick={() => {
+                    const recordId = nextRecordIdForNode(node, selectedRecordId);
+                    if (recordId !== null) onSelectRecord(recordId);
+                  }}
                 >
                   <NodeContent node={node} />
                 </button>

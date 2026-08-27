@@ -36,6 +36,7 @@ order.created
 ## Current features
 
 - Persistent local workspaces with workspace-scoped imported scenarios
+- Workspace-scoped persistent run history with historical run inspection
 - One remembered non-secret Kafka connection configuration per workspace
 - Root event publishing
 - Correlation-header based event tracking
@@ -62,8 +63,9 @@ events belonging to the same run, but do not by themselves prove direct causalit
 Orson is an early MVP.
 
 The current version is focused on local development and demonstration. Kafka connections are
-established explicitly for each app session, non-secret connection settings are remembered per
-workspace, and persistent run history is not implemented yet.
+established explicitly for each app session, non-secret connection settings and captured run
+history are stored locally per workspace, and history payloads are not uploaded to an Orson cloud
+service.
 
 The deeper product and architecture notes live in [PROJECT.md](PROJECT.md).
 
@@ -131,7 +133,6 @@ The demo services use plaintext Kafka and are intended for local development onl
 ## Roadmap
 
 - Multiple saved connection profiles
-- SQLite-backed run history
 - TLS and SASL configuration
 - More flexible correlation strategies
 - Richer graph interaction and layout
