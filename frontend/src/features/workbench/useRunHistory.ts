@@ -170,13 +170,15 @@ export function historyReducer(state: HistoryState, action: HistoryAction): Hist
 export function useRunHistory(scenarioIdentity: string, workspaceId: string): RunHistoryController {
   const [state, dispatch] = useReducer(historyReducer, initialHistoryState);
   const mountedRef = useRef(true);
-  const requestRef = useRef(0);
+  const listRequestRef = useRef(0);
+  const detailRequestRef = useRef(0);
+  const operationRequestRef = useRef(0);
 
   const refresh = useCallback(async () => {
-    const token = ++requestRef.current;
+    const token = ++listRequestRef.current;
     dispatch({ type: 'list_loading' });
     const result = await listRunHistory(workspaceId);
-    if (!mountedRef.current || token !== requestRef.current) return;
+    if (!mountedRef.current || token !== listRequestRef.current) return;
     if (!result.ok) {
       dispatch({ type: 'list_failed', error: result.error });
       return;
@@ -189,17 +191,21 @@ export function useRunHistory(scenarioIdentity: string, workspaceId: string): Ru
 
   useEffect(() => {
     mountedRef.current = true;
-    requestRef.current += 1;
+    listRequestRef.current += 1;
+    detailRequestRef.current += 1;
+    operationRequestRef.current += 1;
     dispatch({ type: 'reset' });
     void refresh();
     return () => {
       mountedRef.current = false;
-      requestRef.current += 1;
+      listRequestRef.current += 1;
+      detailRequestRef.current += 1;
+      operationRequestRef.current += 1;
     };
   }, [refresh, scenarioIdentity, workspaceId]);
 
   const setMode = useCallback((mode: RunContextMode) => {
-    if (mode !== 'historical') requestRef.current += 1;
+    if (mode !== 'historical') detailRequestRef.current += 1;
     dispatch({ type: 'mode', mode });
   }, []);
   const selectRecord = useCallback(
@@ -209,10 +215,10 @@ export function useRunHistory(scenarioIdentity: string, workspaceId: string): Ru
 
   const selectRun = useCallback(
     async (summary: HistorySummary) => {
-      const token = ++requestRef.current;
+      const token = ++detailRequestRef.current;
       dispatch({ type: 'select_loading', summary });
       const result = await getRunHistory(summary.id, workspaceId);
-      if (!mountedRef.current || token !== requestRef.current) return;
+      if (!mountedRef.current || token !== detailRequestRef.current) return;
       if (!result.ok) {
         dispatch({ type: 'detail_failed', error: result.error });
         return;
@@ -224,10 +230,10 @@ export function useRunHistory(scenarioIdentity: string, workspaceId: string): Ru
 
   const deleteRun = useCallback(
     async (id: string) => {
-      const token = ++requestRef.current;
+      const token = ++operationRequestRef.current;
       dispatch({ type: 'operation', operation: 'deleting' });
       const result = await deleteRunHistory(id, workspaceId);
-      if (!mountedRef.current || token !== requestRef.current) return false;
+      if (!mountedRef.current || token !== operationRequestRef.current) return false;
       if (!result.ok) {
         dispatch({ type: 'operation_failed', error: result.error });
         return false;
@@ -239,10 +245,10 @@ export function useRunHistory(scenarioIdentity: string, workspaceId: string): Ru
   );
 
   const clearAll = useCallback(async () => {
-    const token = ++requestRef.current;
+    const token = ++operationRequestRef.current;
     dispatch({ type: 'operation', operation: 'clearing' });
     const result = await clearRunHistory(workspaceId);
-    if (!mountedRef.current || token !== requestRef.current) return false;
+    if (!mountedRef.current || token !== operationRequestRef.current) return false;
     if (!result.ok) {
       dispatch({ type: 'operation_failed', error: result.error });
       return false;

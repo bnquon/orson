@@ -194,6 +194,114 @@ func TestCoordinatorCancellationEmitsOneTerminalEvent(t *testing.T) {
 	}
 }
 
+func TestCoordinatorEmitsBufferedRecordsBeforeCancellation(t *testing.T) {
+	client := newEventKafkaClient()
+	client.recordsAccepted = make(chan struct{})
+	client.records = func(message kafka.Message) []kafka.Record {
+		return []kafka.Record{{
+			Message:   kafka.Message{Topic: "payment.charged", Headers: message.Headers},
+			Partition: 0,
+			Offset:    11,
+		}}
+	}
+	coordinator, err := NewCoordinator(client)
+	if err != nil {
+		t.Fatalf("NewCoordinator() failed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	releaseRoot := make(chan struct{})
+	eventsCh := make(chan []Event, 1)
+	go func() {
+		events := make([]Event, 0)
+		_ = coordinator.Run(ctx, RunRequest{
+			RunID:          RunID("buffered-cancel"),
+			RootMessage:    kafka.Message{Topic: "order.created"},
+			WatchedTopics:  []string{"payment.charged"},
+			CaptureTimeout: time.Second,
+		}, func(event Event) {
+			events = append(events, event)
+			if event.Kind == EventRootPublished {
+				<-releaseRoot
+			}
+		})
+		eventsCh <- events
+	}()
+
+	<-client.recordsAccepted
+	cancel()
+	close(releaseRoot)
+	events := <-eventsCh
+
+	assertBufferedRecordBeforeFinished(t, events, RunStatusCancelled)
+}
+
+func TestCoordinatorEmitsBufferedRecordsBeforeTimeout(t *testing.T) {
+	client := newEventKafkaClient()
+	client.recordsAccepted = make(chan struct{})
+	client.captureStopped = make(chan struct{})
+	client.records = func(message kafka.Message) []kafka.Record {
+		return []kafka.Record{{
+			Message:   kafka.Message{Topic: "payment.charged", Headers: message.Headers},
+			Partition: 0,
+			Offset:    11,
+		}}
+	}
+	coordinator, err := NewCoordinator(client)
+	if err != nil {
+		t.Fatalf("NewCoordinator() failed: %v", err)
+	}
+
+	releaseRoot := make(chan struct{})
+	eventsCh := make(chan []Event, 1)
+	go func() {
+		events := make([]Event, 0)
+		_ = coordinator.Run(context.Background(), RunRequest{
+			RunID:          RunID("buffered-timeout"),
+			RootMessage:    kafka.Message{Topic: "order.created"},
+			WatchedTopics:  []string{"payment.charged"},
+			CaptureTimeout: 20 * time.Millisecond,
+		}, func(event Event) {
+			events = append(events, event)
+			if event.Kind == EventRootPublished {
+				<-releaseRoot
+			}
+		})
+		eventsCh <- events
+	}()
+
+	<-client.recordsAccepted
+	<-client.captureStopped
+	close(releaseRoot)
+	events := <-eventsCh
+
+	assertBufferedRecordBeforeFinished(t, events, RunStatusTimedOut)
+}
+
+func assertBufferedRecordBeforeFinished(t *testing.T, events []Event, wantStatus RunStatus) {
+	t.Helper()
+	messageIndex := -1
+	finishedIndex := -1
+	for index, event := range events {
+		if event.Kind == EventMessage && event.Record != nil && event.Record.Offset == 11 {
+			messageIndex = index
+		}
+		if event.Kind == EventFinished {
+			finishedIndex = index
+			if event.Status != wantStatus {
+				t.Fatalf("finished status = %q, want %q", event.Status, wantStatus)
+			}
+		}
+	}
+	if messageIndex == -1 {
+		t.Fatalf("events = %+v, want buffered message event", events)
+	}
+	if finishedIndex == -1 || messageIndex > finishedIndex {
+		t.Fatalf("events = %+v, want buffered message before finished event", events)
+	}
+}
+
 func TestCoordinatorEmitsPublishFailure(t *testing.T) {
 	client := newEventKafkaClient()
 	client.publishErr = errors.New("publish failed")
@@ -226,20 +334,25 @@ func runCoordinator(t *testing.T, coordinator *Coordinator, request RunRequest) 
 }
 
 type eventKafkaClient struct {
-	ready       chan struct{}
-	holdCapture bool
-	publishErr  error
-	records     func(kafka.Message) []kafka.Record
-	published   chan struct{}
-	message     kafka.Message
-	readyOnce   sync.Once
-	publishOnce sync.Once
+	ready           chan struct{}
+	holdCapture     bool
+	publishErr      error
+	records         func(kafka.Message) []kafka.Record
+	published       chan struct{}
+	message         kafka.Message
+	readyOnce       sync.Once
+	publishOnce     sync.Once
+	recordsAccepted chan struct{}
+	captureStopped  chan struct{}
+	recordsOnce     sync.Once
+	stopOnce        sync.Once
 }
 
 func newEventKafkaClient() *eventKafkaClient {
 	return &eventKafkaClient{
-		ready:     make(chan struct{}),
-		published: make(chan struct{}),
+		ready:          make(chan struct{}),
+		published:      make(chan struct{}),
+		captureStopped: make(chan struct{}),
 	}
 }
 
@@ -290,11 +403,16 @@ func (c *eventKafkaClient) ReadFromOffsets(
 				return err
 			}
 		}
+		if c.recordsAccepted != nil {
+			c.recordsOnce.Do(func() { close(c.recordsAccepted) })
+		}
 		<-ctx.Done()
+		c.stopOnce.Do(func() { close(c.captureStopped) })
 		return ctx.Err()
 	}
 
 	<-ctx.Done()
+	c.stopOnce.Do(func() { close(c.captureStopped) })
 	return ctx.Err()
 }
 

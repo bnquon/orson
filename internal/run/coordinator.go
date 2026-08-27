@@ -94,6 +94,8 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest, sink EventSin
 
 	captureFinished := false
 	var captureErr error
+	var rootRecord kafka.Record
+	rootPublished := false
 	waitForCapture := func() error {
 		if captureFinished {
 			return captureErr
@@ -107,9 +109,19 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest, sink EventSin
 
 	finish := func(status RunStatus, failure *Failure) error {
 		waitForCapture()
-		failure = terminalFailure(status, failure)
-		emitter.emit(Event{Kind: EventFinished, Status: status, Failure: failure})
-		return nil
+		for {
+			select {
+			case record := <-recordsCh:
+				if rootPublished && isSameRecord(record, rootRecord) {
+					continue
+				}
+				emitter.emit(Event{Kind: EventMessage, Status: RunStatusInProgress, Record: &record})
+			default:
+				failure = terminalFailure(status, failure)
+				emitter.emit(Event{Kind: EventFinished, Status: status, Failure: failure})
+				return nil
+			}
+		}
 	}
 
 	select {
@@ -127,7 +139,7 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest, sink EventSin
 		return finish(status, failure)
 	}
 
-	rootRecord, err := c.kafkaClient.PublishMessage(captureCtx, rootMessage)
+	rootRecord, err = c.kafkaClient.PublishMessage(captureCtx, rootMessage)
 	if err != nil {
 		status, failure := publishTerminalStatus(ctx, captureCtx, err)
 		return finish(status, failure)
@@ -137,6 +149,7 @@ func (c *Coordinator) Run(ctx context.Context, request RunRequest, sink EventSin
 		Status: RunStatusInProgress,
 		Record: &rootRecord,
 	})
+	rootPublished = true
 
 	for {
 		select {
