@@ -36,8 +36,60 @@ func TestDatabaseMigrationStartsWithoutWorkspace(t *testing.T) {
 	}
 	defer db.Close()
 	var version int
-	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 1 {
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 2 {
 		t.Fatalf("migration version = %d, err = %v", version, err)
+	}
+}
+
+func TestDatabaseMigrationUpgradesVersionOneWithRunHistory(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orson.db")
+	db, err := openSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	if _, err := db.Exec(`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := applyMigration(db, 1, now, []string{
+		`CREATE TABLE workspaces (id TEXT PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, last_opened_at TEXT NOT NULL)`,
+		`CREATE TABLE workspace_scenarios (workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE, canonical_path TEXT NOT NULL, display_filename TEXT NOT NULL, imported_at TEXT NOT NULL, fingerprint TEXT NOT NULL DEFAULT '', modified_at_ns INTEGER NOT NULL DEFAULT 0, size_bytes INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (workspace_id, canonical_path))`,
+		`CREATE TABLE workspace_connections (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE, name TEXT NOT NULL, brokers_json TEXT NOT NULL, client_id TEXT NOT NULL, dial_timeout_seconds INTEGER NOT NULL, updated_at TEXT NOT NULL)`,
+		`CREATE TABLE workspace_preferences (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE, selected_scenario_source TEXT NOT NULL, selected_scenario_ref TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+		`CREATE TABLE app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+	}); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	createdAt := now.Format(time.RFC3339Nano)
+	if _, err := db.Exec(`INSERT INTO workspaces(id, name, name_key, created_at, updated_at, last_opened_at) VALUES('legacy', 'Legacy', 'legacy', ?, ?, ?); INSERT INTO app_state(key, value) VALUES('active_workspace_id', 'legacy')`, createdAt, createdAt, createdAt); err != nil {
+		db.Close()
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewService(Options{DatabasePath: path})
+	defer service.Close()
+	state := service.Snapshot()
+	if state.Persistence.Mode != "persistent" || state.ActiveWorkspaceID != "legacy" {
+		t.Fatalf("upgraded state = %+v", state)
+	}
+
+	db, err = openSQLite(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version int
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 2 {
+		t.Fatalf("migration version = %d, err = %v", version, err)
+	}
+	var tableName string
+	if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'run_history'`).Scan(&tableName); err != nil || tableName != "run_history" {
+		t.Fatalf("run history table = %q, err = %v", tableName, err)
 	}
 }
 

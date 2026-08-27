@@ -6,12 +6,20 @@ export function BootstrapWorkspace() {
   return window['go']['main']['App']['BootstrapWorkspace']();
 }
 
+export function ClearRunHistory(arg1) {
+  return window['go']['main']['App']['ClearRunHistory'](arg1);
+}
+
 export function Connect(arg1) {
   return window['go']['main']['App']['Connect'](arg1);
 }
 
 export function CreateWorkspace(arg1) {
   return window['go']['main']['App']['CreateWorkspace'](arg1);
+}
+
+export function DeleteRunHistory(arg1, arg2) {
+  return window['go']['main']['App']['DeleteRunHistory'](arg1, arg2);
 }
 
 export function DeleteWorkspace(arg1) {
@@ -26,6 +34,10 @@ export function GetConnectionStatus() {
   return window['go']['main']['App']['GetConnectionStatus']();
 }
 
+export function GetRunHistory(arg1, arg2) {
+  return window['go']['main']['App']['GetRunHistory'](arg1, arg2);
+}
+
 export function ImportLocalScenario() {
   return window['go']['main']['App']['ImportLocalScenario']();
 }
@@ -36,6 +48,10 @@ export function ListBundledScenarios() {
 
 export function ListLocalScenarios() {
   return window['go']['main']['App']['ListLocalScenarios']();
+}
+
+export function ListRunHistory(arg1) {
+  return window['go']['main']['App']['ListRunHistory'](arg1);
 }
 
 export function LoadBundledScenario(arg1) {

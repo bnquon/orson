@@ -306,6 +306,14 @@ func (a *App) StartRun(request api.RunRequest) api.RunStartResponse {
 	if apiErr != nil {
 		return api.RunStartFailure(apiErr)
 	}
+	workspaceID := a.workspaceService().Snapshot().ActiveWorkspaceID
+	a.stateMu.Lock()
+	connectionName := ""
+	if a.activeConnection != nil {
+		connectionName = a.activeConnection.Name
+	}
+	a.stateMu.Unlock()
+	historyRecorder := newRunHistoryRecorder(a, request, workspaceID, connectionName)
 
 	go func() {
 		defer a.endRun(runID)
@@ -321,7 +329,7 @@ func (a *App) StartRun(request api.RunRequest) api.RunStartResponse {
 			},
 			WatchedTopics:  request.WatchedTopics,
 			CaptureTimeout: time.Duration(request.CaptureTimeoutSeconds) * time.Second,
-		}, a.emitRunEvent)
+		}, historyRecorder.sink)
 		if err != nil {
 			log.Printf("run failed before terminal event: %v", err)
 		}

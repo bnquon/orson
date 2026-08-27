@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { startRun as startRunRequest, stopRun as stopRunRequest } from '../../api/run';
 import type { ApiError, RunState } from './types';
@@ -17,14 +17,17 @@ function bridgeError(details?: string): ApiError {
 
 export interface RunController {
   state: RunState;
+  historyError: ApiError | null;
   startRun(request: Parameters<typeof startRunRequest>[0]): Promise<void>;
   stopRun(): Promise<void>;
   resetRun(): void;
   selectRecord(recordId: string | null): void;
+  clearHistoryError(): void;
 }
 
 export function useRun(): RunController {
   const [state, dispatch] = useReducer(runReducer, initialRunState);
+  const [historyError, setHistoryError] = useState<ApiError | null>(null);
   const mountedRef = useRef(true);
   const requestTokenRef = useRef(0);
   const stateRef = useRef<ReducerRunState>(state);
@@ -41,12 +44,17 @@ export function useRun(): RunController {
   useEffect(() => {
     mountedRef.current = true;
     let unsubscribe: (() => void) | undefined;
+    let unsubscribeHistory: (() => void) | undefined;
     try {
       unsubscribe = EventsOn('run:event', (payload: unknown) => {
         const event = parseRunEvent(payload);
         if (!mountedRef.current) return;
         if (event === null) return;
         dispatch({ type: 'event', event });
+      });
+      unsubscribeHistory = EventsOn('run:history-error', (payload: unknown) => {
+        if (!mountedRef.current || !isApiError(payload)) return;
+        setHistoryError(payload);
       });
     } catch (error) {
       dispatch({
@@ -58,6 +66,7 @@ export function useRun(): RunController {
     return () => {
       mountedRef.current = false;
       unsubscribe?.();
+      unsubscribeHistory?.();
     };
   }, []);
 
@@ -118,5 +127,23 @@ export function useRun(): RunController {
     dispatch({ type: 'select', recordId });
   }, []);
 
-  return { state, startRun, stopRun, resetRun, selectRecord };
+  return {
+    state,
+    historyError,
+    startRun,
+    stopRun,
+    resetRun,
+    selectRecord,
+    clearHistoryError: () => setHistoryError(null),
+  };
+}
+
+function isApiError(value: unknown): value is ApiError {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.code === 'string' &&
+    typeof candidate.message === 'string' &&
+    typeof candidate.retryable === 'boolean'
+  );
 }

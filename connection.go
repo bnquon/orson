@@ -28,6 +28,7 @@ type KafkaConnector interface {
 }
 
 type runEventEmitter func(context.Context, string, api.RunEvent)
+type historyEventEmitter func(context.Context, string, *api.APIError)
 
 type activeRunState struct {
 	id       run.RunID
@@ -60,6 +61,7 @@ type App struct {
 	shuttingDown     bool
 	latestAttempt    api.ConnectionAttempt
 	emitEvent        runEventEmitter
+	emitHistoryEvent historyEventEmitter
 	scenarioCatalog  *scenario.Catalog
 	localScenarios   *scenario.LocalRegistry
 	scenarioDialogs  scenarioFileDialogs
@@ -75,6 +77,9 @@ func NewApp() *App {
 		app.workspacePath = ""
 	}
 	app.emitEvent = func(ctx context.Context, name string, event api.RunEvent) {
+		runtime.EventsEmit(ctx, name, event)
+	}
+	app.emitHistoryEvent = func(ctx context.Context, name string, event *api.APIError) {
 		runtime.EventsEmit(ctx, name, event)
 	}
 	return app

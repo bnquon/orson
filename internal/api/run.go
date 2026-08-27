@@ -18,13 +18,34 @@ type Header struct {
 }
 
 type RunRequest struct {
-	RootTopic             string   `json:"rootTopic"`
-	MessageKey            string   `json:"messageKey"`
-	Payload               string   `json:"payload"`
-	Headers               []Header `json:"headers"`
-	CorrelationHeader     string   `json:"correlationHeader"`
-	WatchedTopics         []string `json:"watchedTopics"`
-	CaptureTimeoutSeconds int      `json:"captureTimeoutSeconds"`
+	RootTopic             string               `json:"rootTopic"`
+	MessageKey            string               `json:"messageKey"`
+	Payload               string               `json:"payload"`
+	Headers               []Header             `json:"headers"`
+	CorrelationHeader     string               `json:"correlationHeader"`
+	WatchedTopics         []string             `json:"watchedTopics"`
+	CaptureTimeoutSeconds int                  `json:"captureTimeoutSeconds"`
+	ScenarioSnapshot      *RunScenarioSnapshot `json:"scenarioSnapshot,omitempty"`
+}
+
+// RunScenarioSnapshot carries the exact editable scenario configuration used
+// for a run so durable history does not depend on the current YAML file.
+type RunScenarioSnapshot struct {
+	Version            int                    `json:"version"`
+	Source             ScenarioSource         `json:"source"`
+	ScenarioID         string                 `json:"scenarioId"`
+	SourcePath         string                 `json:"sourcePath"`
+	SourceFilename     string                 `json:"sourceFilename"`
+	DisplayName        string                 `json:"displayName"`
+	RootTopic          string                 `json:"rootTopic"`
+	WatchedTopics      []string               `json:"watchedTopics"`
+	Topology           []ScenarioTopologyEdge `json:"topology"`
+	ConfiguredTopology []ScenarioTopologyEdge `json:"configuredTopology"`
+	MessageKey         string                 `json:"messageKey"`
+	Headers            []Header               `json:"headers"`
+	CorrelationHeader  string                 `json:"correlationHeader"`
+	Payload            string                 `json:"payload"`
+	CaptureTimeoutSec  int                    `json:"captureTimeoutSeconds"`
 }
 
 func (r RunRequest) ResolvedCorrelationHeader() string {

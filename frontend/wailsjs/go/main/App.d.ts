@@ -4,9 +4,13 @@ import {api} from '../models';
 
 export function BootstrapWorkspace():Promise<api.WorkspaceBootstrapResponse>;
 
+export function ClearRunHistory(arg1:string):Promise<api.RunHistoryActionResponse>;
+
 export function Connect(arg1:api.ConnectionRequest):Promise<api.ConnectionResponse>;
 
 export function CreateWorkspace(arg1:string):Promise<api.WorkspaceBootstrapResponse>;
+
+export function DeleteRunHistory(arg1:string,arg2:string):Promise<api.RunHistoryActionResponse>;
 
 export function DeleteWorkspace(arg1:string):Promise<api.WorkspaceBootstrapResponse>;
 
@@ -14,11 +18,15 @@ export function Disconnect():Promise<api.ConnectionStatusResponse>;
 
 export function GetConnectionStatus():Promise<api.ConnectionStatusResponse>;
 
+export function GetRunHistory(arg1:string,arg2:string):Promise<api.RunHistoryResponse>;
+
 export function ImportLocalScenario():Promise<api.ScenarioFileResponse>;
 
 export function ListBundledScenarios():Promise<api.ScenarioListResponse>;
 
 export function ListLocalScenarios():Promise<api.ScenarioListResponse>;
+
+export function ListRunHistory(arg1:string):Promise<api.RunHistoryListResponse>;
 
 export function LoadBundledScenario(arg1:string):Promise<api.ScenarioResponse>;
 
