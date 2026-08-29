@@ -85,6 +85,7 @@ describe('run history mapping', () => {
     const historical = toHistoricalRun(detail);
 
     expect(historical.scenario.rootTopic).toBe('order.created');
+    expect(historical.scenario.name).toBe('Checkout flow');
     expect(historical.scenario.watchedTopics.map(({ name }) => name)).toEqual([
       'payment.charged',
       'inventory.reserved',
@@ -117,5 +118,16 @@ describe('run history mapping', () => {
       code: 'capture',
       message: 'capture failed',
     });
+  });
+
+  it('preserves unsaved scenario sources in history summaries and snapshots', () => {
+    const historical = toHistoricalRun({
+      ...detail,
+      summary: { ...detail.summary, scenarioSource: 'unsaved', scenarioId: undefined },
+      scenario: { ...detail.scenario, source: 'unsaved', displayName: 'Untitled scenario' },
+    });
+
+    expect(historical.summary.scenarioSource).toBe('unsaved');
+    expect(historical.scenario.name).toBe('Untitled scenario');
   });
 });

@@ -21,6 +21,7 @@ import {
   toScenarioDiagnostic,
   type ScenarioDraftData,
 } from './scenarioMapping';
+import { createUnsavedScenario, createUnsavedScenarioId } from './scenarioFactory';
 import { applyScenarioFileResult } from './scenarioFileResult';
 import type {
   LoadedScenario,
@@ -49,6 +50,7 @@ export interface ScenarioController {
   retry(): Promise<void>;
   retrySelectedScenario(): Promise<void>;
   selectScenario(id: string): Promise<void>;
+  createScenario(): void;
   importScenario(): Promise<ScenarioFileOperationOutcome>;
   removeScenario(id: string): Promise<ScenarioFileOperationOutcome>;
   saveScenario(draft: ScenarioDraftData): Promise<ScenarioFileOperationOutcome>;
@@ -149,17 +151,38 @@ export function useScenario({
     return descriptors;
   }, [replaceLocalDescriptors]);
 
-  const activateScenario = useCallback((loaded: LoadedScenario) => {
-    requestIdRef.current += 1;
-    setScenario(loaded);
-    setActiveScenarioId(loaded.id);
-    activeScenarioIdRef.current = loaded.id;
-    setSelectedScenarioId(loaded.id);
-    setSelectedDiagnostics([]);
-    setSelectedLoadStatus('idle');
-    setSelectedLoadError(null);
-    setError(null);
-  }, []);
+  const activateScenario = useCallback(
+    (loaded: LoadedScenario, selectedId: string | null = loaded.id) => {
+      requestIdRef.current += 1;
+      setScenario(loaded);
+      setActiveScenarioId(loaded.id);
+      activeScenarioIdRef.current = loaded.id;
+      setSelectedScenarioId(selectedId);
+      setSelectedDiagnostics([]);
+      setSelectedLoadStatus('idle');
+      setSelectedLoadError(null);
+      setError(null);
+    },
+    [],
+  );
+
+  const createScenario = useCallback(() => {
+    dispatchLocalSession({ type: 'feedback_cleared' });
+    const draft = createUnsavedScenario();
+    const unsaved: LoadedScenario = {
+      id: createUnsavedScenarioId(),
+      relativePath: '',
+      folderPath: '',
+      name: draft.name,
+      sourceFilename: '',
+      source: 'unsaved',
+      sourcePath: '',
+      localStatus: null,
+      draft,
+      warnings: [],
+    };
+    activateScenario(unsaved, null);
+  }, [activateScenario, dispatchLocalSession]);
 
   const loadScenario = useCallback(
     async (id: string, descriptor: ScenarioDescriptor, requestId: number) => {
@@ -184,7 +207,7 @@ export function useScenario({
       }
 
       activateScenario(toLoadedScenario(result.data));
-      void onRememberScenario(descriptor.source, id);
+      if (descriptor.source !== 'unsaved') void onRememberScenario(descriptor.source, id);
     },
     [activateScenario, onRememberScenario, refreshLocalDescriptors],
   );
@@ -209,7 +232,7 @@ export function useScenario({
       if (id === activeScenarioIdRef.current) {
         setSelectedLoadStatus('idle');
         setSelectedDiagnostics([]);
-        void onRememberScenario(descriptor.source, id);
+        if (descriptor.source !== 'unsaved') void onRememberScenario(descriptor.source, id);
         return;
       }
 
@@ -219,7 +242,7 @@ export function useScenario({
         const selectionError = invalidSelectionError(descriptor);
         setSelectedLoadError(selectionError);
         setError(selectionError);
-        void onRememberScenario(descriptor.source, id);
+        if (descriptor.source !== 'unsaved') void onRememberScenario(descriptor.source, id);
         return;
       }
 
@@ -446,6 +469,7 @@ export function useScenario({
     retry,
     retrySelectedScenario,
     selectScenario,
+    createScenario,
     importScenario,
     removeScenario,
     saveScenario,

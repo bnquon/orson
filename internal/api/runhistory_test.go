@@ -31,6 +31,24 @@ func TestRunHistoryDataFromDomainPreservesDetailAndMetadata(t *testing.T) {
 	}
 }
 
+func TestRunHistoryDataFromDomainPreservesUnsavedScenarioSource(t *testing.T) {
+	entry := runhistory.Entry{
+		Summary: runhistory.Summary{
+			RunID: "run-unsaved",
+			Scenario: runhistory.ScenarioSnapshot{
+				Version: 1, Source: string(ScenarioSourceUnsaved), DisplayName: "Untitled scenario",
+			},
+			RootTopic: "orders.created", Status: "cancelled",
+			StartedAt: time.Unix(10, 0), FinishedAt: time.Unix(11, 0), Duration: time.Second,
+		},
+	}
+
+	data := RunHistoryDataFromDomain(entry)
+	if data.Scenario.Source != ScenarioSourceUnsaved || data.Summary.ScenarioSource != string(ScenarioSourceUnsaved) {
+		t.Fatalf("unsaved scenario source = %q / %q, want %q", data.Scenario.Source, data.Summary.ScenarioSource, ScenarioSourceUnsaved)
+	}
+}
+
 func TestRunHistoryResponseHelpers(t *testing.T) {
 	list := RunHistoryListSuccess(RunHistoryListData{Runs: []RunHistorySummary{{RunID: "run-1"}}})
 	if !list.OK || list.Data == nil || list.Error != nil {

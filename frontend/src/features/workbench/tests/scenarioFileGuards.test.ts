@@ -39,11 +39,24 @@ describe('scenario file workflow guards', () => {
   it('opens the native import flow only after the confirmed pending action executes', () => {
     const importScenario = vi.fn();
     const selectScenario = vi.fn();
+    const newScenario = vi.fn();
 
-    executeScenarioAction({ kind: 'import' }, { importScenario, selectScenario });
+    executeScenarioAction({ kind: 'import' }, { importScenario, selectScenario, newScenario });
 
     expect(importScenario).toHaveBeenCalledOnce();
     expect(selectScenario).not.toHaveBeenCalled();
+  });
+
+  it('asks before replacing a dirty draft with a new scenario', () => {
+    expect(
+      decideScenarioAction({
+        kind: 'new',
+        runActive: false,
+        selectionLoading: false,
+        draftDirty: true,
+        currentScenarioId: 'local:current',
+      }),
+    ).toBe('confirm');
   });
 
   it('does not discard a dirty draft merely to display invalid-file diagnostics', () => {

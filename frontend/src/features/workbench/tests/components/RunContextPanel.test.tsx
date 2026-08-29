@@ -87,7 +87,7 @@ describe('RunContextPanel', () => {
             {
               id: 'run-1',
               scenarioName: 'Checkout flow',
-              scenarioSource: 'example',
+              scenarioSource: 'unsaved',
               scenarioId: 'checkout',
               scenarioPath: '',
               rootTopic: 'order.created',
@@ -107,6 +107,7 @@ describe('RunContextPanel', () => {
     );
 
     expect(markup).toContain('Checkout flow');
+    expect(markup).toContain('Unsaved');
     expect(markup).toContain('4 events captured');
     expect(markup).toContain('captured Kafka payloads and headers');
     expect(markup).toContain('history-filter');
@@ -136,6 +137,7 @@ describe('RunContextPanel', () => {
         connectionName: null,
       },
       scenario: {
+        name: 'Checkout flow',
         rootTopic: 'order.created',
         watchedTopics: [],
         topology: [],

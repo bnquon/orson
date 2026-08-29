@@ -32,6 +32,7 @@ describe('ScenarioBrowser', () => {
         localScenarios={[]}
         selectedScenarioId={null}
         activeScenarioId="order-flow.yaml"
+        activeScenarioName="order-flow"
         scenarioLoadingId={null}
         scenarioCatalogLoading
         scenarioSelectionDisabled={false}
@@ -41,6 +42,7 @@ describe('ScenarioBrowser', () => {
         fileErrorOperation={null}
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
         onImportScenario={() => undefined}
         onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
@@ -54,6 +56,7 @@ describe('ScenarioBrowser', () => {
         localScenarios={[]}
         selectedScenarioId={null}
         activeScenarioId="order-flow.yaml"
+        activeScenarioName="order-flow"
         scenarioLoadingId={null}
         scenarioCatalogLoading={false}
         scenarioSelectionDisabled={false}
@@ -63,6 +66,7 @@ describe('ScenarioBrowser', () => {
         fileErrorOperation={null}
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
         onImportScenario={() => undefined}
         onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
@@ -71,6 +75,36 @@ describe('ScenarioBrowser', () => {
     expect(empty).toContain('No matching examples.');
     expect(empty).toContain('No local scenarios yet. Import a YAML file below');
     expect(empty).toContain('scenario-sidebar__footer');
+  });
+
+  it('shows an unsaved active scenario without adding a sidebar file row', () => {
+    const markup = renderToStaticMarkup(
+      <ScenarioBrowser
+        examples={[]}
+        localScenarios={[]}
+        selectedScenarioId={null}
+        activeScenarioId="scenario-unsaved-1"
+        activeScenarioName="Untitled scenario"
+        activeScenarioUnsaved
+        scenarioLoadingId={null}
+        scenarioCatalogLoading={false}
+        scenarioSelectionDisabled={false}
+        activeScenarioDirty
+        fileOperation="idle"
+        fileError={null}
+        fileErrorOperation={null}
+        fileActions={<span>Save as</span>}
+        onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
+        onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
+      />,
+    );
+
+    expect(markup).toContain('Untitled scenario');
+    expect(markup).toContain('Unsaved');
+    expect(markup).toContain('New scenario');
+    expect(markup).not.toContain('scenario-row--local');
   });
 
   it('keeps descendants out of the tab order when a folder is collapsed', () => {
@@ -105,6 +139,7 @@ describe('ScenarioBrowser', () => {
         localScenarios={[]}
         selectedScenarioId={null}
         activeScenarioId="checkout/retries/retry.yaml"
+        activeScenarioName="retry"
         scenarioLoadingId={null}
         scenarioCatalogLoading={false}
         scenarioSelectionDisabled={false}
@@ -114,6 +149,7 @@ describe('ScenarioBrowser', () => {
         fileErrorOperation={null}
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
         onImportScenario={() => undefined}
         onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
@@ -161,6 +197,7 @@ describe('ScenarioBrowser', () => {
         localScenarios={[local]}
         selectedScenarioId={local.id}
         activeScenarioId={local.id}
+        activeScenarioName="Imported order"
         scenarioLoadingId={null}
         scenarioCatalogLoading={false}
         scenarioSelectionDisabled={false}
@@ -170,6 +207,7 @@ describe('ScenarioBrowser', () => {
         fileErrorOperation={null}
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
         onImportScenario={() => undefined}
         onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
@@ -198,6 +236,7 @@ describe('ScenarioBrowser', () => {
         localScenarios={[local]}
         selectedScenarioId={local.id}
         activeScenarioId="order-flow.yaml"
+        activeScenarioName="order-flow"
         scenarioLoadingId={null}
         scenarioCatalogLoading={false}
         scenarioSelectionDisabled={false}
@@ -207,6 +246,7 @@ describe('ScenarioBrowser', () => {
         fileErrorOperation={null}
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
         onImportScenario={() => undefined}
         onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,
@@ -226,6 +266,7 @@ describe('ScenarioBrowser', () => {
         localScenarios={[]}
         selectedScenarioId="order-flow.yaml"
         activeScenarioId="order-flow.yaml"
+        activeScenarioName="order-flow"
         scenarioLoadingId="order-flow.yaml"
         scenarioCatalogLoading={false}
         examplesExpanded
@@ -237,6 +278,7 @@ describe('ScenarioBrowser', () => {
         fileErrorOperation={null}
         fileActions={<span>Save actions</span>}
         onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
         onImportScenario={() => undefined}
         onRemoveScenario={() => Promise.resolve('succeeded' as const)}
       />,

@@ -1,11 +1,11 @@
-import type { EventRecord, RunState, ScenarioDraft } from './types';
+import type { EventRecord, RunState, ScenarioDraft, ScenarioSource } from './types';
 
 export type RunContextMode = 'current' | 'history' | 'historical';
 
 export interface HistorySummary {
   id: string;
   scenarioName: string;
-  scenarioSource: 'example' | 'local';
+  scenarioSource: ScenarioSource;
   scenarioId: string;
   scenarioPath: string;
   rootTopic: string;

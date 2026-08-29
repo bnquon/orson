@@ -8,6 +8,7 @@ import type { LoadedScenario, ScenarioDraft } from '../types';
 
 function draft(payload: string): ScenarioDraft {
   return {
+    name: 'test scenario',
     rootTopic: 'orders',
     watchedTopics: [{ id: 'topic-0', name: 'payments' }],
     topology: [],

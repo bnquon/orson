@@ -34,6 +34,7 @@ const defaultPublishHeader = {
 function toDraft(data: api.ScenarioData): ScenarioDraft {
   const headers = data.headers;
   return {
+    name: data.name,
     rootTopic: data.publishTopic,
     watchedTopics: data.watchedTopics.map((name, index) => ({
       id: `topic-${index}`,
@@ -70,7 +71,8 @@ function toSourceMetadata(data: {
   sourcePath?: string;
   localStatus?: string;
 }): Pick<LoadedScenario, 'source' | 'sourcePath' | 'localStatus'> {
-  const source = data.source === 'local' ? 'local' : 'example';
+  const source =
+    data.source === 'local' ? 'local' : data.source === 'unsaved' ? 'unsaved' : 'example';
   const localStatus =
     data.localStatus === 'changed' ||
     data.localStatus === 'missing' ||
@@ -141,9 +143,9 @@ export function toLoadedScenario(data: api.ScenarioData): LoadedScenario {
   };
 }
 
-export function toScenarioDraftData(name: string, draft: ScenarioDraft): ScenarioDraftData {
+export function toScenarioDraftData(draft: ScenarioDraft): ScenarioDraftData {
   return {
-    name,
+    name: draft.name.trim(),
     publishTopic: draft.rootTopic,
     publishPayload: draft.payload,
     messageKey: draft.messageKey,

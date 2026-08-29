@@ -54,6 +54,10 @@ function validateScenarioFields(
     fieldErrors.connection = 'Connect the active workspace before publishing.';
   }
 
+  if (draft.name.trim().length === 0) {
+    fieldErrors.name = 'Enter a scenario name.';
+  }
+
   const rootTopic = draft.rootTopic.trim();
   if (rootTopic.length === 0) {
     fieldErrors.rootTopic = 'Enter the root topic to publish to.';
@@ -108,6 +112,7 @@ function validateScenarioFields(
 
   const fieldOrder: Array<Readonly<[ValidatableField, string]>> = [
     ['connection', 'compose-connection'],
+    ['name', 'compose-scenario-name'],
     ['rootTopic', 'compose-root-topic'],
     ['captureTimeoutSeconds', 'compose-timeout'],
     ['watchedTopics', 'compose-add-watched-topic'],

@@ -3,6 +3,8 @@ import { FloppyDisk, FloppyDiskArrowIn } from 'iconoir-react';
 import { LoadingDots } from '../../../components/LoadingDots';
 import type { ScenarioFileOperation, ScenarioSource } from '../types';
 
+// TODO: [YAML] Add a read-only YAML preview and copy action.
+
 interface ScenarioFileActionsProps {
   source: ScenarioSource;
   sourceFilename: string;

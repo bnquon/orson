@@ -7,8 +7,9 @@ import type {
   ValidatableField,
   ValidationResult,
 } from '../types';
-import { removeTopologyTopic, renameTopologyTopic } from '../draftEditing';
+import { connectTopologyTopic, removeTopologyTopic, renameTopologyTopic } from '../draftEditing';
 import { focusControl } from './focusControl';
+import { TopologySourcePicker } from './TopologySourcePicker';
 
 interface ComposeConfigSectionProps {
   connection: KafkaConnection;
@@ -128,6 +129,37 @@ export function ComposeConfigSection({
     );
   };
 
+  const connectWatchedTopic = (topicId: string, sourceName: string) => {
+    setDraft((current) => {
+      const topic = current.watchedTopics.find((item) => item.id === topicId);
+      if (topic === undefined) return current;
+      return {
+        ...current,
+        topology: connectTopologyTopic(current.topology, topic.name, sourceName),
+        configuredTopology: connectTopologyTopic(
+          current.configuredTopology,
+          topic.name,
+          sourceName,
+        ),
+      };
+    });
+  };
+
+  const topologySources = (topicId: string) => {
+    const sources = [
+      ...(draft.rootTopic.trim() === ''
+        ? []
+        : [{ value: draft.rootTopic.trim(), label: `${draft.rootTopic.trim()} (root)` }]),
+      ...draft.watchedTopics
+        .filter((item) => item.id !== topicId && item.name.trim() !== '')
+        .map((item) => ({ value: item.name.trim(), label: item.name.trim() })),
+    ];
+    return sources.filter(
+      (source, index) =>
+        sources.findIndex((candidate) => candidate.value === source.value) === index,
+    );
+  };
+
   return (
     <div className="compose-config workbench-scroll-region">
       {connection.status !== 'connected' ? (
@@ -150,6 +182,28 @@ export function ComposeConfigSection({
       ) : null}
 
       <div className="compose-fields">
+        <label className="compose-field compose-field--name">
+          <span className="compose-label">
+            Scenario name <span aria-hidden="true">*</span>
+          </span>
+          <input
+            id="compose-scenario-name"
+            className={
+              showFieldError('name') && validation.fieldErrors.name !== undefined
+                ? 'compose-control--invalid'
+                : ''
+            }
+            value={draft.name}
+            onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+            onBlur={() => onTouchField('name')}
+            aria-invalid={showFieldError('name') && validation.fieldErrors.name !== undefined}
+            aria-describedby="compose-scenario-name-error"
+            autoComplete="off"
+          />
+          <span className="compose-error-slot" id="compose-scenario-name-error">
+            {showFieldError('name') ? validation.fieldErrors.name : null}
+          </span>
+        </label>
         <label className="compose-field compose-field--root">
           <span className="compose-label">
             Root topic <span aria-hidden="true">*</span>
@@ -237,6 +291,9 @@ export function ComposeConfigSection({
             <span className="compose-help">
               Downstream topics only. The root topic is already included.
             </span>
+            <span className="compose-help">
+              Choose an upstream topic below to connect each one.
+            </span>
           </div>
           <button
             className="compose-secondary-button"
@@ -251,9 +308,18 @@ export function ComposeConfigSection({
           {draft.watchedTopics.map((topic) => {
             const showError = touchedWatchedTopicIds.has(topic.id);
             const error = validation.watchedTopicErrors[topic.id];
+            const connectedFrom =
+              draft.configuredTopology.find((edge) => edge.to.trim() === topic.name.trim())?.from ??
+              '';
             return (
               <div className="watched-topic-row" key={topic.id}>
                 <div className="watched-topic-row__control">
+                  <TopologySourcePicker
+                    topicLabel={topic.name || 'watched topic'}
+                    value={connectedFrom}
+                    options={topologySources(topic.id)}
+                    onChange={(sourceName) => connectWatchedTopic(topic.id, sourceName)}
+                  />
                   <input
                     id={`watched-topic-${topic.id}`}
                     className={showError && error !== undefined ? 'compose-control--invalid' : ''}

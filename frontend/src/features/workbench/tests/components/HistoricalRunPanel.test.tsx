@@ -34,6 +34,7 @@ const historicalRun: HistoricalRun = {
     connectionName: 'Local Kafka',
   },
   scenario: {
+    name: 'Checkout flow',
     rootTopic: 'order.created',
     watchedTopics: [],
     topology: [],
@@ -117,5 +118,16 @@ describe('HistoricalRunToolbar', () => {
     expect(markup).toContain('Checkout flow');
     expect(markup).toContain('Read-only');
     expect(markup).toContain('Current workspace');
+  });
+
+  it('identifies runs from unsaved scenarios', () => {
+    const markup = renderToStaticMarkup(
+      <HistoricalRunToolbar
+        summary={{ ...historicalRun.summary, scenarioSource: 'unsaved' }}
+        onReturnToCurrent={vi.fn()}
+      />,
+    );
+
+    expect(markup).toContain('Unsaved scenario');
   });
 });

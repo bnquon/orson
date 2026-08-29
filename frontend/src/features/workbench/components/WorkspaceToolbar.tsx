@@ -83,10 +83,14 @@ export function WorkspaceToolbar({
             <span
               className={`workspace-toolbar__source workspace-toolbar__source--${scenario.source}`}
             >
-              {scenario.source === 'example' ? 'Example' : 'Local file'}
+              {scenario.source === 'example'
+                ? 'Example'
+                : scenario.source === 'local'
+                  ? 'Local file'
+                  : 'Unsaved scenario'}
             </span>
-            <span>{scenario.sourceFilename}</span>
-            <span aria-hidden="true">·</span>
+            {scenario.sourceFilename ? <span>{scenario.sourceFilename}</span> : null}
+            {scenario.sourceFilename ? <span aria-hidden="true">·</span> : null}
             <span>{scenario.rootTopic}</span>
           </small>
         </div>

@@ -87,6 +87,12 @@
   white-space: nowrap;
 }
 
+.historical-toolbar__source {
+  color: var(--color-text-dim);
+  font-size: 8px;
+  line-height: 1.1;
+}
+
 .historical-toolbar__status,
 .historical-toolbar__readonly {
   border: 1px solid var(--color-border-subtle);

@@ -36,4 +36,25 @@ describe('toRunRequest', () => {
       rootTopic: 'order.created',
     });
   });
+
+  it('keeps unsaved snapshots session-only without a persistent scenario identity', () => {
+    const request = toRunRequest(
+      { ...initialScenario, name: 'Untitled scenario' },
+      {
+        source: 'unsaved',
+        scenarioId: 'frontend-only-id',
+        sourcePath: '/tmp/should-not-be-used.yaml',
+        sourceFilename: 'should-not-be-used.yaml',
+        displayName: 'Stale metadata',
+      },
+    );
+
+    expect(request.scenarioSnapshot).toMatchObject({
+      source: 'unsaved',
+      displayName: 'Untitled scenario',
+    });
+    expect(request.scenarioSnapshot?.scenarioId).toBeUndefined();
+    expect(request.scenarioSnapshot?.sourcePath).toBeUndefined();
+    expect(request.scenarioSnapshot?.sourceFilename).toBeUndefined();
+  });
 });

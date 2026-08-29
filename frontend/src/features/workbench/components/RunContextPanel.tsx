@@ -119,6 +119,9 @@ function HistoryCard({
           </span>
         </span>
         <strong className="history-card__scenario">{summary.scenarioName}</strong>
+        {summary.scenarioSource === 'unsaved' ? (
+          <span className="history-card__source">Unsaved</span>
+        ) : null}
         <span className="history-card__topic">{summary.rootTopic || 'Root topic unavailable'}</span>
         <span className="history-card__meta">
           <span>{summary.eventCount} events</span>

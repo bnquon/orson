@@ -139,6 +139,7 @@ export function WorkspaceContent({
       onExamplesDismissedChange={onExamplesDismissedChange}
       fileFeedback={scenario.fileFeedback}
       onSelectScenario={(id) => scenario.selectScenario(id)}
+      onCreateScenario={() => scenario.createScenario()}
       onImportScenario={() => scenario.importScenario()}
       onRemoveScenario={(id) => scenario.removeScenario(id)}
       onSaveScenario={(draft) => scenario.saveScenario(draft)}

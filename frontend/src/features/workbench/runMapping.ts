@@ -1,12 +1,12 @@
 import { api } from '../../../wailsjs/go/models';
-import type { ScenarioDraft } from './types';
+import type { ScenarioDraft, ScenarioSource } from './types';
 
 export interface RunScenarioSnapshotInput {
-  source: 'example' | 'local';
-  scenarioId: string;
-  sourcePath: string;
-  displayName: string;
-  sourceFilename: string;
+  source: ScenarioSource;
+  scenarioId?: string;
+  sourcePath?: string;
+  displayName?: string;
+  sourceFilename?: string;
 }
 
 export function toRunRequest(
@@ -34,10 +34,14 @@ export function toRunRequest(
         : new api.RunScenarioSnapshot({
             version: 1,
             source: scenario.source,
-            scenarioId: scenario.scenarioId,
-            sourcePath: scenario.sourcePath,
-            sourceFilename: scenario.sourceFilename,
-            displayName: scenario.displayName,
+            ...(scenario.source === 'unsaved'
+              ? {}
+              : {
+                  scenarioId: scenario.scenarioId,
+                  sourcePath: scenario.sourcePath,
+                  sourceFilename: scenario.sourceFilename,
+                }),
+            displayName: draft.name.trim() || scenario.displayName,
             rootTopic: draft.rootTopic,
             watchedTopics: draft.watchedTopics.map((topic) => topic.name),
             topology: draft.configuredTopology,
