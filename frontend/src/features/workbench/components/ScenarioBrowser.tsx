@@ -2,6 +2,7 @@ import { useId, useMemo, useState, type ReactNode } from 'react';
 import {
   CheckCircle,
   EmptyPage,
+  InfoCircle,
   MoreHoriz,
   NavArrowDown,
   Plus,
@@ -11,6 +12,8 @@ import {
 } from 'iconoir-react';
 import { LoadingDots } from '../../../components/LoadingDots';
 import { Modal, ModalActions, ModalButton } from '../../../components/Modal';
+import '../styles/scenario.css';
+import { ScenarioGuideModal } from './ScenarioGuideModal';
 import type {
   ApiError,
   ScenarioDescriptor,
@@ -375,6 +378,7 @@ export function ScenarioBrowser({
   const [internalExamplesDismissed, setInternalExamplesDismissed] = useState(false);
   const [localsExpanded, setLocalsExpanded] = useState(true);
   const [pendingRemoval, setPendingRemoval] = useState<ScenarioDescriptor | null>(null);
+  const [scenarioGuideOpen, setScenarioGuideOpen] = useState(false);
   const importDisabledDescriptionId = useId();
   const newDisabledDescriptionId = useId();
   const examplesExpanded = controlledExamplesExpanded ?? internalExamplesExpanded;
@@ -454,7 +458,19 @@ export function ScenarioBrowser({
         <div className="scenario-sidebar__header">
           <div className="scenario-sidebar__title">
             <strong>Scenarios</strong>
-            <MoreHoriz width={16} height={16} aria-hidden="true" />
+            <div className="scenario-sidebar__title-actions">
+              <button
+                className="scenario-guide-button"
+                type="button"
+                aria-label="Scenario format guide"
+                aria-haspopup="dialog"
+                title="Learn the scenario YAML format"
+                onClick={() => setScenarioGuideOpen(true)}
+              >
+                <InfoCircle width={15} height={15} aria-hidden="true" />
+              </button>
+              <MoreHoriz width={16} height={16} aria-hidden="true" />
+            </div>
           </div>
           <label className="scenario-search">
             <Search width={16} height={16} />
@@ -639,6 +655,9 @@ export function ScenarioBrowser({
           You can import the same YAML file again later.
         </p>
       </Modal>
+      {scenarioGuideOpen ? (
+        <ScenarioGuideModal open onClose={() => setScenarioGuideOpen(false)} />
+      ) : null}
     </>
   );
 }

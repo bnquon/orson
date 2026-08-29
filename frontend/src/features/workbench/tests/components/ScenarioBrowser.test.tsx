@@ -1,8 +1,51 @@
+// @vitest-environment jsdom
+
+import { act, type ComponentProps } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ScenarioBrowser, ScenarioRows } from '../../components/ScenarioBrowser';
 import type { ScenarioDescriptor } from '../../types';
 import { buildScenarioTree } from '../../scenarioTree';
+
+const roots: Array<ReturnType<typeof createRoot>> = [];
+
+afterEach(() => {
+  for (const root of roots.splice(0)) act(() => root.unmount());
+  document.body.innerHTML = '';
+});
+
+function renderInteractiveBrowser(overrides: Partial<ComponentProps<typeof ScenarioBrowser>> = {}) {
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  roots.push(root);
+  act(() =>
+    root.render(
+      <ScenarioBrowser
+        examples={[]}
+        localScenarios={[]}
+        selectedScenarioId={null}
+        activeScenarioId="order-flow.yaml"
+        activeScenarioName="order-flow"
+        scenarioLoadingId={null}
+        scenarioCatalogLoading={false}
+        scenarioSelectionDisabled={false}
+        activeScenarioDirty={false}
+        fileOperation="idle"
+        fileError={null}
+        fileErrorOperation={null}
+        fileActions={<span>Save actions</span>}
+        onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
+        onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
+        {...overrides}
+      />,
+    ),
+  );
+  return host;
+}
 
 function descriptor(id: string, folderPath: string): ScenarioDescriptor {
   return {
@@ -25,6 +68,56 @@ function descriptor(id: string, folderPath: string): ScenarioDescriptor {
 }
 
 describe('ScenarioBrowser', () => {
+  it('opens the scenario format guide with structure, topology, and a valid example', () => {
+    const host = renderInteractiveBrowser();
+    const guideButton = host.querySelector<HTMLButtonElement>(
+      '[aria-label="Scenario format guide"]',
+    );
+
+    expect(guideButton).not.toBeNull();
+    act(() => guideButton?.click());
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain('Scenario YAML guide');
+    expect(dialog?.textContent).toContain('Topology edges are optional');
+    expect(dialog?.textContent).toContain('For a connected flow graph');
+    expect(dialog?.textContent).toContain('name: order-flow');
+    expect(dialog?.textContent).not.toContain('Open example');
+  });
+
+  it('copies the read-only example from the guide', async () => {
+    const originalClipboard = navigator.clipboard;
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+
+    try {
+      const host = renderInteractiveBrowser();
+      act(() =>
+        host.querySelector<HTMLButtonElement>('[aria-label="Scenario format guide"]')?.click(),
+      );
+      const copyButton = document.body.querySelector<HTMLButtonElement>(
+        'button[aria-label="Copy scenario example"]',
+      );
+
+      expect(copyButton).not.toBeNull();
+      await act(async () => {
+        copyButton?.click();
+        await Promise.resolve();
+      });
+
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining('name: order-flow'));
+      expect(copyButton?.textContent).toBe('Copied');
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: originalClipboard,
+      });
+    }
+  });
+
   it('renders catalog loading and filtered empty states', () => {
     const loading = renderToStaticMarkup(
       <ScenarioBrowser
