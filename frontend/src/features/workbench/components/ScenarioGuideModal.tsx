@@ -92,8 +92,9 @@ export function ScenarioGuideModal({ open, onClose }: ScenarioGuideModalProps) {
         <section>
           <h3>Topology</h3>
           <p>
-            Add one edge for each watched topic. Every watched topic must be reachable from the
-            publish topic through the configured <code>from</code> and <code>to</code> edges.
+            Topology edges are optional. Each edge must reference the publish topic or a watched
+            topic. Orson warns when a watched topic has no valid edge. For a connected flow graph,
+            connect watched topics directly or through a chain starting at the publish topic.
           </p>
         </section>
         <section>

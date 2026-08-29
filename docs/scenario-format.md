@@ -69,10 +69,12 @@ conflict with the generated correlation ID.
 are represented in the flow graph. Every topology edge must connect the
 publish topic or a watched topic, and valid edges must not form a cycle.
 
-For a clean scenario, connect every watched topic to the root or to another
-watched topic. A watched topic without a valid edge is still retained for
-capture, but Orson reports a warning that it is disconnected and it will not
-have a valid graph connection.
+Topology edges are optional. Each edge must reference the publish topic or a
+watched topic, and valid edges must not form a cycle. Orson warns when a
+watched topic has no valid edge, but it still retains that topic for capture.
+For a connected flow graph, connect watched topics directly or through a chain
+starting at the publish topic. A disconnected watched-to-watched component can
+still be captured, but it will not be connected to the root in the graph.
 
 The topology is not automatic causal inference. A shared correlation header
 shows that records belong to the same run; it does not prove that one record

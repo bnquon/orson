@@ -9,7 +9,7 @@ on making that debugging loop clearer, safer, and easier to reproduce.
 Orson currently requires:
 
 - Go 1.25+
-- Node.js and npm
+- Node.js 20.19+ or 22.12+
 - Docker
 - Wails CLI v2.15.0
 

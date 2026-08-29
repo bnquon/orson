@@ -79,7 +79,8 @@ describe('ScenarioBrowser', () => {
 
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog?.textContent).toContain('Scenario YAML guide');
-    expect(dialog?.textContent).toContain('Every watched topic must be reachable');
+    expect(dialog?.textContent).toContain('Topology edges are optional');
+    expect(dialog?.textContent).toContain('For a connected flow graph');
     expect(dialog?.textContent).toContain('name: order-flow');
     expect(dialog?.textContent).not.toContain('Open example');
   });
