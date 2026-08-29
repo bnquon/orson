@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a reproducible problem in Orson
+title: '[Bug]: '
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please remove credentials and sensitive payload data from logs, screenshots, and examples.
+
+        Reports need enough detail for someone else to reproduce and investigate the problem. Include clear steps, exact error text, and a screenshot or recording when the issue is visual or interaction-related. Reports without enough information may not be addressed immediately and could be deprioritized until the missing context is provided.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you were trying to do.
+      placeholder: Tell us what went wrong.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest reliable sequence of actions that shows the problem.
+      placeholder: |
+        1. Open ...
+        2. Configure ...
+        3. Click ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect Orson to do?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What did Orson do instead? Include the exact error text when possible.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Include the commit or version, operating system, and Kafka/demo setup.
+      placeholder: 'commit abc123, macOS 15, local demo Kafka'
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Scenario or run context
+      description: Share the relevant scenario shape, run outcome, logs, or screenshots. Redact sensitive data.
+    validations:
+      required: false

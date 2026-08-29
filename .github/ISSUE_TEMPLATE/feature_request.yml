@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest an improvement to Orson
+title: '[Feature]: '
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user problem first. Concrete Kafka workflow examples are especially helpful.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Who is affected, and what is difficult or unclear today?
+      placeholder: When I am debugging ..., it is hard to ...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+      description: Describe the behavior or workflow you are proposing.
+      placeholder: Orson could ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds or other approaches have you tried?
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add examples, mockups, links, or relevant scenario details. Do not include secrets.
+    validations:
+      required: false

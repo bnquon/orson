@@ -132,14 +132,17 @@ The demo services use plaintext Kafka and are intended for local development onl
 
 ## Roadmap
 
-- Multiple saved connection profiles
-- TLS and SASL configuration
-- More flexible correlation strategies
-- Richer graph interaction and layout
+See the [directional roadmap](ROADMAP.md) for current priorities. It is not
+strictly followed; priorities can change as Orson is used with real Kafka
+workflows.
 
 ## More documentation
 
 - [Product and architecture notes](PROJECT.md)
+- [Roadmap](ROADMAP.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Scenario format](docs/scenario-format.md)
+- [Scenario examples](scenarios/README.md)
 - [Kafka demo pipeline](demo/README.md)
 - [Demo event contracts](demo/EVENTS.md)
 - [Scenario example](scenarios/order-flow.yaml)
