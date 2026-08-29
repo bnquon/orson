@@ -28,6 +28,9 @@ export function HistoricalRunToolbar({ summary, onReturnToCurrent }: HistoricalR
         <div className="historical-toolbar__identity">
           <span>Historical run</span>
           <strong>{summary.scenarioName}</strong>
+          {summary.scenarioSource === 'unsaved' ? (
+            <small className="historical-toolbar__source">Unsaved scenario</small>
+          ) : null}
         </div>
       </div>
       <div className="workspace-toolbar__historical-right">

@@ -4,7 +4,14 @@ import type {
   RunHistoryScenarioSnapshotModel,
   RunHistorySummaryModel,
 } from '../../api/runHistory';
-import type { ApiError, EventRecord, RunState, ScenarioDraft, TrackedEvent } from './types';
+import type {
+  ApiError,
+  EventRecord,
+  RunState,
+  ScenarioDraft,
+  ScenarioSource,
+  TrackedEvent,
+} from './types';
 import { getRunRecordId } from './flowModel';
 import { initialRunState } from './runReducer';
 import type { HistoricalRun, HistorySummary } from './historyTypes';
@@ -23,8 +30,9 @@ function status(value: string): RunState['status'] {
   return runStatuses.has(value as RunState['status']) ? (value as RunState['status']) : 'failed';
 }
 
-function source(value: string): 'example' | 'local' {
-  return value === 'local' ? 'local' : 'example';
+function source(value: string): ScenarioSource {
+  if (value === 'local' || value === 'unsaved') return value;
+  return 'example';
 }
 
 function numberOrNull(value: number): number | null {
@@ -66,6 +74,7 @@ function toHistoricalScenario(snapshot: RunHistoryScenarioSnapshotModel): Scenar
   }));
   const topology = topologyEdges(snapshot);
   return {
+    name: snapshot.displayName,
     rootTopic: snapshot.rootTopic,
     watchedTopics,
     topology,

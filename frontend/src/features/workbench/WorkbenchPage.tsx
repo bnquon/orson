@@ -67,6 +67,7 @@ interface WorkbenchPageProps {
   onExamplesDismissedChange: (dismissed: boolean) => void;
   fileFeedback: ScenarioFileFeedback;
   onSelectScenario: (id: string) => Promise<void>;
+  onCreateScenario: () => void;
   onImportScenario: () => Promise<ScenarioFileOperationOutcome>;
   onRemoveScenario: (id: string) => Promise<ScenarioFileOperationOutcome>;
   onSaveScenario: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
@@ -98,6 +99,7 @@ export function WorkbenchPage({
   onExamplesDismissedChange,
   fileFeedback,
   onSelectScenario,
+  onCreateScenario,
   onImportScenario,
   onRemoveScenario,
   onSaveScenario,
@@ -148,6 +150,14 @@ export function WorkbenchPage({
   }, [run, scenario.id]);
 
   useEffect(() => {
+    if (scenario.source !== 'unsaved') return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById('compose-scenario-name')?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [scenario.id, scenario.source]);
+
+  useEffect(() => {
     const runId = run.state.runId;
     if (runId === null || !terminalRunStatuses.has(run.state.status)) return;
     const refreshKey = `${runId}:${run.state.status}`;
@@ -194,6 +204,7 @@ export function WorkbenchPage({
     markSaveStarted,
     markSaveFailed,
     onSelectScenario,
+    onCreateScenario,
     onImportScenario,
     onSaveScenario,
     onSaveScenarioAs,
@@ -245,6 +256,7 @@ export function WorkbenchPage({
         headers: true,
         payload: true,
         captureTimeoutSeconds: true,
+        name: true,
       },
       watchedTopicIds: draft.watchedTopics.map((topic) => topic.id),
       headerIds: draft.headers.reduce<string[]>((ids, header) => {
@@ -270,10 +282,10 @@ export function WorkbenchPage({
     void run.startRun(
       toRunRequest(draft, {
         source: scenario.source,
-        scenarioId: scenario.id,
-        sourcePath: scenario.sourcePath,
-        sourceFilename: scenario.sourceFilename,
-        displayName: scenario.name,
+        scenarioId: scenario.source === 'unsaved' ? undefined : scenario.id,
+        sourcePath: scenario.source === 'unsaved' ? undefined : scenario.sourcePath,
+        sourceFilename: scenario.source === 'unsaved' ? undefined : scenario.sourceFilename,
+        displayName: draft.name,
       }),
     );
   };
@@ -356,6 +368,8 @@ export function WorkbenchPage({
       localScenarios={localScenarios}
       selectedScenarioId={selectedScenarioId}
       activeScenarioId={scenario.id}
+      activeScenarioName={draft.name}
+      activeScenarioUnsaved={scenario.source === 'unsaved'}
       scenarioLoadingId={scenarioLoadingId}
       scenarioCatalogLoading={scenarioCatalogLoading}
       readOnly={history.mode === 'historical'}
@@ -370,6 +384,7 @@ export function WorkbenchPage({
       fileErrorOperation={fileFeedback.errorOperation}
       fileActions={fileActions}
       onSelectScenario={fileOperations.requestScenarioSelection}
+      onNewScenario={fileOperations.requestNewScenario}
       onImportScenario={fileOperations.requestImport}
       onRemoveScenario={onRemoveScenario}
     />
@@ -385,7 +400,7 @@ export function WorkbenchPage({
         mode={mode}
         onModeChange={setMode}
         scenario={{
-          name: scenario.name,
+          name: draft.name,
           rootTopic: draft.rootTopic,
           source: scenario.source,
           sourceFilename: scenario.sourceFilename,
@@ -502,7 +517,9 @@ export function WorkbenchPage({
             ? 'Read-only snapshot · return to the current workspace to edit'
             : scenario.source === 'local'
               ? 'Imported files are remembered for this session'
-              : 'Examples are read-only'
+              : scenario.source === 'unsaved'
+                ? 'Unsaved scenario · save as YAML to keep it'
+                : 'Examples are read-only'
         }
       />
       {fileFeedback.successMessage ? (
@@ -525,7 +542,9 @@ export function WorkbenchPage({
         description={
           fileOperations.pendingScenarioAction?.kind === 'import'
             ? 'Importing another file will replace the current editable draft if it succeeds.'
-            : 'Switching scenarios will replace the current editable draft.'
+            : fileOperations.pendingScenarioAction?.kind === 'new'
+              ? 'Creating a new scenario will replace the current editable draft.'
+              : 'Switching scenarios will replace the current editable draft.'
         }
         onClose={fileOperations.cancelPendingScenarioAction}
         footer={
@@ -544,11 +563,13 @@ export function WorkbenchPage({
         }
       >
         <p className="scenario-switch-copy">
-          Any unsaved edits to <strong>{scenario.name}</strong> will be lost after the next scenario
+          Any unsaved edits to <strong>{draft.name}</strong> will be lost after the next scenario
           loads successfully.{' '}
-          {scenario.source === 'example'
-            ? 'The example file remains unchanged.'
-            : 'The file on disk remains unchanged.'}
+          {fileOperations.pendingScenarioAction?.kind === 'new'
+            ? 'This scenario has not been saved to disk.'
+            : scenario.source === 'example'
+              ? 'The example file remains unchanged.'
+              : 'The file on disk remains unchanged.'}
         </p>
       </Modal>
     </>

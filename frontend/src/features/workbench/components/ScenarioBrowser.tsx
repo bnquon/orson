@@ -28,6 +28,8 @@ interface ScenarioBrowserProps {
   localScenarios: ScenarioDescriptor[];
   selectedScenarioId: string | null;
   activeScenarioId: string;
+  activeScenarioName: string;
+  activeScenarioUnsaved?: boolean;
   scenarioLoadingId: string | null;
   scenarioCatalogLoading: boolean;
   readOnly?: boolean;
@@ -42,6 +44,7 @@ interface ScenarioBrowserProps {
   fileErrorOperation: Exclude<ScenarioFileOperation, 'idle'> | null;
   fileActions: ReactNode;
   onSelectScenario: (id: string) => void;
+  onNewScenario: () => void;
   onImportScenario: () => void;
   onRemoveScenario: (id: string) => Promise<ScenarioFileOperationOutcome>;
 }
@@ -347,6 +350,8 @@ export function ScenarioBrowser({
   localScenarios,
   selectedScenarioId,
   activeScenarioId,
+  activeScenarioName,
+  activeScenarioUnsaved = false,
   scenarioLoadingId,
   scenarioCatalogLoading,
   readOnly = false,
@@ -361,6 +366,7 @@ export function ScenarioBrowser({
   fileErrorOperation,
   fileActions,
   onSelectScenario,
+  onNewScenario,
   onImportScenario,
   onRemoveScenario,
 }: ScenarioBrowserProps) {
@@ -370,6 +376,7 @@ export function ScenarioBrowser({
   const [localsExpanded, setLocalsExpanded] = useState(true);
   const [pendingRemoval, setPendingRemoval] = useState<ScenarioDescriptor | null>(null);
   const importDisabledDescriptionId = useId();
+  const newDisabledDescriptionId = useId();
   const examplesExpanded = controlledExamplesExpanded ?? internalExamplesExpanded;
   const examplesDismissed = controlledExamplesDismissed ?? internalExamplesDismissed;
   const setExamplesExpanded = (expanded: boolean) => {
@@ -400,15 +407,19 @@ export function ScenarioBrowser({
   const fileBusy = fileOperation !== 'idle';
   const interactionDisabled = scenarioSelectionDisabled || readOnly;
   const importDisabled = interactionDisabled || fileBusy || scenarioLoadingId !== null;
-  const importDisabledReason = readOnly
+  const replacementDisabledReason = readOnly
     ? 'Return to the current workspace to edit scenarios'
     : scenarioSelectionDisabled
-      ? 'Finish the active run before importing another scenario'
+      ? 'Finish the active run before replacing the current scenario'
       : fileBusy
         ? 'Wait for the current scenario file operation to finish'
         : scenarioLoadingId !== null
           ? 'Wait for the selected scenario to finish loading'
           : '';
+  const importDisabledReason = replacementDisabledReason.replace(
+    'replacing the current scenario',
+    'importing another scenario',
+  );
 
   const requestRemove = (descriptor: ScenarioDescriptor) => {
     if (
@@ -457,6 +468,13 @@ export function ScenarioBrowser({
           </label>
           {readOnly ? (
             <span className="scenario-sidebar__readonly">Historical view · editing disabled</span>
+          ) : null}
+          {activeScenarioUnsaved ? (
+            <div className="scenario-sidebar__unsaved" role="status">
+              <EmptyPage width={14} height={14} aria-hidden="true" />
+              <span>{activeScenarioName}</span>
+              <small>Unsaved</small>
+            </div>
           ) : null}
         </div>
 
@@ -546,6 +564,28 @@ export function ScenarioBrowser({
 
         <div className="scenario-sidebar__footer">
           <div className="scenario-sidebar__file-actions">{fileActions}</div>
+          <span
+            className="scenario-disabled-action"
+            tabIndex={importDisabled ? 0 : undefined}
+            aria-label={importDisabled ? replacementDisabledReason : undefined}
+            title={importDisabled ? replacementDisabledReason : undefined}
+          >
+            <button
+              className="scenario-import-button"
+              type="button"
+              disabled={importDisabled}
+              aria-describedby={importDisabled ? newDisabledDescriptionId : undefined}
+              title={importDisabled ? undefined : 'Start a new unsaved scenario'}
+              onClick={onNewScenario}
+            >
+              <EmptyPage width={15} height={15} /> New scenario
+            </button>
+            {importDisabled ? (
+              <span className="sr-only" id={newDisabledDescriptionId}>
+                {replacementDisabledReason}
+              </span>
+            ) : null}
+          </span>
           <span
             className="scenario-disabled-action"
             tabIndex={importDisabled ? 0 : undefined}

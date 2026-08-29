@@ -126,6 +126,29 @@ func TestImportLocalScenarioRequiresWorkspaceBeforeRegistering(t *testing.T) {
 	}
 }
 
+func TestSaveScenarioAsRequiresWorkspaceBeforeOpeningPickerOrWriting(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "requires-workspace.yaml")
+	dialogs := &fakeScenarioDialogs{savePaths: []string{target}}
+	app := &App{scenarioDialogs: dialogs, localScenarios: scenario.NewLocalRegistry(nil)}
+	app.startup(context.Background())
+	defer app.shutdown(context.Background())
+
+	response := app.SaveScenarioAs(localAPITestDraft())
+	if response.OK || response.Error == nil || response.Error.Code != "workspace_required" {
+		t.Fatalf("SaveScenarioAs() without workspace = %+v, want workspace_required", response)
+	}
+	if len(dialogs.defaultFilenames) != 0 {
+		t.Fatalf("SaveScenarioAs() opened native picker without workspace: %+v", dialogs)
+	}
+	if _, err := os.Stat(target); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("SaveScenarioAs() wrote target without workspace: stat error = %v", err)
+	}
+	if listed := app.ListLocalScenarios(); listed.Data == nil || len(listed.Data.Scenarios) != 0 {
+		t.Fatalf("SaveScenarioAs() registered scenario without workspace: %+v", listed)
+	}
+}
+
 func TestImportLocalScenarioReportsNativeDialogFailure(t *testing.T) {
 	app := &App{scenarioDialogs: &fakeScenarioDialogs{openErr: errors.New("native unavailable")}}
 	response := app.ImportLocalScenario()
@@ -203,6 +226,7 @@ func TestSaveScenarioAsReplacesExistingSelectedFile(t *testing.T) {
 func TestSaveScenarioAsCancelAndInvalidDraftDoNotWriteOrOpenPicker(t *testing.T) {
 	dialogs := &fakeScenarioDialogs{savePaths: []string{""}}
 	app := &App{scenarioDialogs: dialogs, localScenarios: scenario.NewLocalRegistry(nil)}
+	startWorkspaceScenarioTestApp(t, app)
 	cancelled := app.SaveScenarioAs(localAPITestDraft())
 	if !cancelled.OK || cancelled.Data == nil || !cancelled.Data.Cancelled {
 		t.Fatalf("cancelled Save as = %+v", cancelled)
@@ -216,6 +240,22 @@ func TestSaveScenarioAsCancelAndInvalidDraftDoNotWriteOrOpenPicker(t *testing.T)
 	}
 	if len(dialogs.defaultFilenames) != 1 {
 		t.Fatalf("invalid Save as opened native picker %d times, want no additional call", len(dialogs.defaultFilenames))
+	}
+}
+
+func TestSaveScenarioAsUsesUntitledFallbackForUnusableName(t *testing.T) {
+	dialogs := &fakeScenarioDialogs{savePaths: []string{""}}
+	app := &App{scenarioDialogs: dialogs, localScenarios: scenario.NewLocalRegistry(nil)}
+	startWorkspaceScenarioTestApp(t, app)
+	draft := localAPITestDraft()
+	draft.Name = "..."
+
+	response := app.SaveScenarioAs(draft)
+	if !response.OK || response.Data == nil || !response.Data.Cancelled {
+		t.Fatalf("SaveScenarioAs() = %+v, want cancelled save", response)
+	}
+	if len(dialogs.defaultFilenames) != 1 || dialogs.defaultFilenames[0] != "untitled-scenario.yaml" {
+		t.Fatalf("default filename = %+v, want untitled-scenario.yaml", dialogs.defaultFilenames)
 	}
 }
 
@@ -233,6 +273,7 @@ func TestSaveScenarioAsReportsNativeDialogFailure(t *testing.T) {
 		scenarioDialogs: &fakeScenarioDialogs{saveErr: errors.New("save panel unavailable")},
 		localScenarios:  scenario.NewLocalRegistry(nil),
 	}
+	startWorkspaceScenarioTestApp(t, app)
 	response := app.SaveScenarioAs(localAPITestDraft())
 	if response.OK || response.Error == nil || response.Error.Code != "scenario_save_dialog_failed" {
 		t.Fatalf("save dialog failure = %+v", response)

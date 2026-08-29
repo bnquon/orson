@@ -31,6 +31,14 @@ describe('ScenarioFileActions', () => {
     expect(markup).toContain('Save as');
   });
 
+  it('keeps Save as available for an unsaved draft without exposing Save', () => {
+    const markup = renderToStaticMarkup(<ScenarioFileActions {...commonProps} source="unsaved" />);
+
+    expect(markup).toContain('scenario-file-actions--unsaved');
+    expect(markup).toContain('Save as');
+    expect(markup).not.toContain('title="Save order.yaml"');
+  });
+
   it('disables file actions for invalid drafts or active runs', () => {
     const markup = renderToStaticMarkup(
       <ScenarioFileActions

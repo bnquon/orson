@@ -15,6 +15,7 @@ const (
 const (
 	ScenarioSourceExample ScenarioSource = "example"
 	ScenarioSourceLocal   ScenarioSource = "local"
+	ScenarioSourceUnsaved ScenarioSource = "unsaved"
 )
 
 const (

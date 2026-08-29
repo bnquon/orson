@@ -11,6 +11,13 @@ const connection = {
 };
 
 describe('validateScenario headers', () => {
+  it('requires a scenario name', () => {
+    const result = validateScenarioDraft({ ...initialScenario, name: '   ' });
+
+    expect(result.fieldErrors.name).toBe('Enter a scenario name.');
+    expect(result.firstInvalidControlId).toBe('compose-scenario-name');
+  });
+
   it('rejects a custom header matching the managed header after trimming and case folding', () => {
     const result = validateScenario(
       {

@@ -30,3 +30,17 @@ export function removeTopologyTopic(
 
   return topology.filter((edge) => edge.from.trim() !== topic && edge.to.trim() !== topic);
 }
+
+export function connectTopologyTopic(
+  topology: ScenarioTopologyEdge[],
+  topicName: string,
+  sourceName: string,
+): ScenarioTopologyEdge[] {
+  const topic = topicName.trim();
+  const source = sourceName.trim();
+  const withoutIncoming = topology.filter((edge) => edge.to.trim() !== topic);
+
+  if (topic === '' || source === '' || topic === source) return withoutIncoming;
+
+  return [...withoutIncoming, { id: `edge:${source}->${topic}`, from: source, to: topic }];
+}

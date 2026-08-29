@@ -1,6 +1,7 @@
 import type { ScenarioDraft } from './types';
 
 export const initialScenario: ScenarioDraft = {
+  name: 'order-flow',
   rootTopic: 'order.created',
   watchedTopics: [
     { id: 'topic-payment-charged', name: 'payment.charged' },

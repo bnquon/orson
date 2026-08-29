@@ -25,6 +25,7 @@ describe('toLoadedScenario', () => {
 
     expect(scenario.name).toBe('order-flow');
     expect(scenario.draft).toMatchObject({
+      name: 'order-flow',
       rootTopic: 'order.created',
       messageKey: '',
       correlationHeader: 'x-correlation-id',
@@ -76,7 +77,7 @@ describe('toLoadedScenario', () => {
     );
 
     const scenario = toLoadedScenario(data);
-    const serialized = toScenarioDraftData(scenario.name, scenario.draft);
+    const serialized = toScenarioDraftData(scenario.draft);
 
     expect(scenario.source).toBe('local');
     expect(scenario.sourcePath).toBe('/Users/me/scenarios/ordered.yaml');
@@ -89,6 +90,28 @@ describe('toLoadedScenario', () => {
       'configured-1',
       'configured-2',
     ]);
+    expect(serialized.name).toBe('ordered-flow');
+  });
+
+  it('serializes the editable draft name instead of stale scenario metadata', () => {
+    const scenario = toLoadedScenario(
+      new api.ScenarioData({
+        name: 'original-name',
+        publishTopic: 'root',
+        publishPayload: '{}',
+        watchedTopics: ['watched'],
+        correlationHeader: 'x-correlation-id',
+        captureTimeoutSeconds: 10,
+        topology: [],
+      }),
+    );
+
+    const serialized = toScenarioDraftData({
+      ...scenario.draft,
+      name: 'edited-name',
+    });
+
+    expect(serialized.name).toBe('edited-name');
   });
 
   it('keeps an explicit empty header list empty', () => {
@@ -106,6 +129,28 @@ describe('toLoadedScenario', () => {
     );
 
     expect(toLoadedScenario(data).draft.headers).toEqual([]);
+  });
+
+  it('preserves an unsaved source without assigning local-file metadata', () => {
+    const scenario = toLoadedScenario(
+      Object.assign(
+        new api.ScenarioData({
+          name: 'Untitled scenario',
+          source: 'unsaved',
+          sourceFilename: '',
+          publishTopic: 'root',
+          publishPayload: '{}',
+          watchedTopics: ['watched'],
+          correlationHeader: 'x-correlation-id',
+          captureTimeoutSeconds: 10,
+          topology: [],
+        }),
+        { sourcePath: '/should/not/exist.yaml', localStatus: 'available' },
+      ),
+    );
+
+    expect(scenario.source).toBe('unsaved');
+    expect(scenario.localStatus).toBeNull();
   });
 
   it('preserves warning diagnostics and uses the source filename fallback', () => {

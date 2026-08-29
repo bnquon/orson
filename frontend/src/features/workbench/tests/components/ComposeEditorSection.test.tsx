@@ -4,6 +4,7 @@ import { ComposeEditorSection } from '../../components/ComposeEditorSection';
 import type { ScenarioDraft, TouchedState, ValidationResult } from '../../types';
 
 const draft: ScenarioDraft = {
+  name: 'order-flow',
   rootTopic: 'order.created',
   watchedTopics: [],
   topology: [],

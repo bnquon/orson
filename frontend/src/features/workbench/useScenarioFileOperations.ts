@@ -33,6 +33,7 @@ interface UseScenarioFileOperationsInput {
   markSaveStarted: (draft: ScenarioDraft) => void;
   markSaveFailed: () => void;
   onSelectScenario: (id: string) => Promise<void>;
+  onCreateScenario: () => void;
   onImportScenario: () => Promise<ScenarioFileOperationOutcome>;
   onSaveScenario: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
   onSaveScenarioAs: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
@@ -54,6 +55,7 @@ export function useScenarioFileOperations({
   markSaveStarted,
   markSaveFailed,
   onSelectScenario,
+  onCreateScenario,
   onImportScenario,
   onSaveScenario,
   onSaveScenarioAs,
@@ -64,7 +66,7 @@ export function useScenarioFileOperations({
   );
   const scenarios = useMemo(() => [...examples, ...localScenarios], [examples, localScenarios]);
   const saveValidation = useMemo(() => validateScenarioDraft(draft, jsonError), [draft, jsonError]);
-  const draftIsDirty = !areScenarioDraftsEqual(draft, savedDraft);
+  const draftIsDirty = scenario.source === 'unsaved' || !areScenarioDraftsEqual(draft, savedDraft);
   const fileBusy = fileFeedback.operation !== 'idle';
   const fileBlocker = getScenarioFileBlocker({
     runActive,
@@ -127,6 +129,23 @@ export function useScenarioFileOperations({
     void onImportScenario();
   }, [draftIsDirty, onImportScenario, runActive, scenario.id, scenarioSelectionLoading]);
 
+  const requestNewScenario = useCallback(() => {
+    if (runActive || fileBusy || scenarioSelectionLoading) return;
+    const decision = decideScenarioAction({
+      kind: 'new',
+      runActive,
+      selectionLoading: scenarioSelectionLoading,
+      draftDirty: draftIsDirty,
+      currentScenarioId: scenario.id,
+    });
+    if (decision === 'blocked') return;
+    if (decision === 'confirm') {
+      setPendingScenarioAction({ kind: 'new' });
+      return;
+    }
+    onCreateScenario();
+  }, [draftIsDirty, fileBusy, onCreateScenario, runActive, scenario.id, scenarioSelectionLoading]);
+
   const cancelPendingScenarioAction = useCallback(() => setPendingScenarioAction(null), []);
 
   const confirmPendingScenarioAction = useCallback(() => {
@@ -135,8 +154,9 @@ export function useScenarioFileOperations({
     executeScenarioAction(pendingScenarioAction, {
       importScenario: () => void onImportScenario(),
       selectScenario: (id) => void onSelectScenario(id),
+      newScenario: onCreateScenario,
     });
-  }, [onImportScenario, onSelectScenario, pendingScenarioAction]);
+  }, [onCreateScenario, onImportScenario, onSelectScenario, pendingScenarioAction]);
 
   const saveDraft = useCallback(async () => {
     if (saveDisabled || !draftIsDirty || scenario.source !== 'local') return;
@@ -144,7 +164,7 @@ export function useScenarioFileOperations({
     await runScenarioDraftSave({
       submittedDraft,
       markSaveStarted,
-      save: () => onSaveScenario(toScenarioDraftData(scenario.name, submittedDraft)),
+      save: () => onSaveScenario(toScenarioDraftData(submittedDraft)),
       markSaveFailed,
     });
   }, [
@@ -154,7 +174,6 @@ export function useScenarioFileOperations({
     markSaveStarted,
     onSaveScenario,
     saveDisabled,
-    scenario.name,
     scenario.source,
   ]);
 
@@ -164,10 +183,10 @@ export function useScenarioFileOperations({
     await runScenarioDraftSave({
       submittedDraft,
       markSaveStarted,
-      save: () => onSaveScenarioAs(toScenarioDraftData(scenario.name, submittedDraft)),
+      save: () => onSaveScenarioAs(toScenarioDraftData(submittedDraft)),
       markSaveFailed,
     });
-  }, [draft, markSaveFailed, markSaveStarted, onSaveScenarioAs, saveDisabled, scenario.name]);
+  }, [draft, markSaveFailed, markSaveStarted, onSaveScenarioAs, saveDisabled]);
 
   const saveDisabledReason = getScenarioFileDisabledReason(fileBlocker, 'save');
   const saveAsDisabledReason = getScenarioFileDisabledReason(fileBlocker, 'save_as');
@@ -182,6 +201,7 @@ export function useScenarioFileOperations({
     saveAsDisabledReason,
     requestScenarioSelection,
     requestImport,
+    requestNewScenario,
     cancelPendingScenarioAction,
     confirmPendingScenarioAction,
     saveDraft,

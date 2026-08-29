@@ -29,6 +29,7 @@ interface KafkaHeader {
 }
 
 export interface ScenarioDraft {
+  name: string;
   rootTopic: string;
   watchedTopics: WatchedTopic[];
   topology: ScenarioTopologyEdge[];
@@ -40,7 +41,7 @@ export interface ScenarioDraft {
   captureTimeoutSeconds: string;
 }
 
-export type ScenarioSource = 'example' | 'local';
+export type ScenarioSource = 'example' | 'local' | 'unsaved';
 
 type LocalScenarioStatus = 'available' | 'changed' | 'missing' | 'unreadable';
 
@@ -105,7 +106,13 @@ export interface ScenarioFileFeedback {
 }
 
 export type ValidatableField =
-  'connection' | 'rootTopic' | 'watchedTopics' | 'headers' | 'payload' | 'captureTimeoutSeconds';
+  | 'connection'
+  | 'name'
+  | 'rootTopic'
+  | 'watchedTopics'
+  | 'headers'
+  | 'payload'
+  | 'captureTimeoutSeconds';
 
 export interface TouchedState {
   fields: Partial<Record<ValidatableField, boolean>>;

@@ -246,6 +246,34 @@
   margin-top: 7px;
 }
 
+.scenario-sidebar__unsaved {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: 10px;
+  gap: 6px;
+  margin-top: 9px;
+  min-width: 0;
+}
+
+.scenario-sidebar__unsaved svg {
+  color: var(--color-accent);
+  flex: 0 0 auto;
+}
+
+.scenario-sidebar__unsaved span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scenario-sidebar__unsaved small {
+  color: var(--color-accent);
+  font-size: 8px;
+  margin-left: auto;
+  text-transform: uppercase;
+}
+
 .scenario-search input {
   background: transparent;
   border: 0;
@@ -727,6 +755,11 @@
   color: var(--color-success);
 }
 
+.workspace-toolbar__source--unsaved {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+  color: var(--color-accent);
+}
+
 .scenario-file-actions {
   display: grid;
   gap: 6px;
@@ -735,6 +768,10 @@
 }
 
 .scenario-file-actions--example .scenario-disabled-action {
+  grid-column: 1 / -1;
+}
+
+.scenario-file-actions--unsaved .scenario-disabled-action {
   grid-column: 1 / -1;
 }
 

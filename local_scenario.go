@@ -178,6 +178,9 @@ func (a *App) SaveScenarioAs(draft api.ScenarioDraft) api.ScenarioFileResponse {
 	if apiErr := a.scenarioFileRunGuard(); apiErr != nil {
 		return api.ScenarioFileFailure(apiErr, nil)
 	}
+	if a.workspaceService().Snapshot().ActiveWorkspaceID == "" {
+		return api.ScenarioFileFailure(workspaceRequiredError(), nil)
+	}
 	normalizedDraft := toScenarioDraft(draft)
 	defaultFilename := defaultScenarioFilename(draft.Name)
 	if _, err := scenario.NormalizeDraft(defaultFilename, normalizedDraft); err != nil {
@@ -406,7 +409,7 @@ func defaultScenarioFilename(name string) string {
 	}
 	base := strings.Trim(builder.String(), "-_")
 	if base == "" || base == "." || base == ".." {
-		base = "scenario"
+		base = "untitled-scenario"
 	}
 	return filepath.Base(base) + ".yaml"
 }
