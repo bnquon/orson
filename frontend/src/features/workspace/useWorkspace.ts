@@ -108,7 +108,7 @@ export interface WorkspaceGuardState {
 }
 
 export interface WorkspaceController extends WorkspaceState {
-  bootstrap(): Promise<void>;
+  bootstrap(): Promise<boolean>;
   create(name: string): Promise<boolean>;
   rename(id: string, name: string): Promise<boolean>;
   requestSwitch(id: string, guards: WorkspaceGuardState): 'blocked' | 'confirm' | 'started';
@@ -154,10 +154,7 @@ export function useWorkspace(): WorkspaceController {
     [],
   );
 
-  const bootstrap = useCallback(
-    async () => void (await applyRequest('idle', bootstrapWorkspace)),
-    [applyRequest],
-  );
+  const bootstrap = useCallback(() => applyRequest('idle', bootstrapWorkspace), [applyRequest]);
 
   useEffect(() => {
     mountedRef.current = true;

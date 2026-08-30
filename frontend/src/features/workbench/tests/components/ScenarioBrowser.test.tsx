@@ -200,6 +200,78 @@ describe('ScenarioBrowser', () => {
     expect(markup).not.toContain('scenario-row--local');
   });
 
+  it('hides local scenario removal in historical read-only mode', () => {
+    const local = {
+      ...descriptor('local:historical', ''),
+      source: 'local' as const,
+      sourceFilename: 'historical.yaml',
+      sourcePath: '/Users/me/historical.yaml',
+      localStatus: 'available' as const,
+    };
+    const markup = renderToStaticMarkup(
+      <ScenarioBrowser
+        examples={[]}
+        localScenarios={[local]}
+        selectedScenarioId={local.id}
+        activeScenarioId={local.id}
+        activeScenarioName="Historical"
+        scenarioLoadingId={null}
+        scenarioCatalogLoading={false}
+        readOnly
+        scenarioSelectionDisabled={false}
+        activeScenarioDirty={false}
+        fileOperation="idle"
+        fileError={null}
+        fileErrorOperation={null}
+        fileActions={<span>Save actions</span>}
+        onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
+        onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
+      />,
+    );
+
+    expect(markup).toContain('historical.yaml');
+    expect(markup).not.toContain('scenario-row__remove');
+  });
+
+  it('disables local scenario removal while an unsaved scenario is open', () => {
+    const local = {
+      ...descriptor('local:protected', ''),
+      source: 'local' as const,
+      sourceFilename: 'protected.yaml',
+      sourcePath: '/Users/me/protected.yaml',
+      localStatus: 'available' as const,
+    };
+    const markup = renderToStaticMarkup(
+      <ScenarioBrowser
+        examples={[]}
+        localScenarios={[local]}
+        selectedScenarioId={null}
+        activeScenarioId="scenario-unsaved-1"
+        activeScenarioName="Untitled scenario"
+        activeScenarioUnsaved
+        scenarioLoadingId={null}
+        scenarioCatalogLoading={false}
+        scenarioSelectionDisabled={false}
+        scenarioRemovalDisabled
+        activeScenarioDirty
+        fileOperation="idle"
+        fileError={null}
+        fileErrorOperation={null}
+        fileActions={<span>Save actions</span>}
+        onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
+        onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
+      />,
+    );
+
+    expect(markup).toContain('Remove protected.yaml from this workspace');
+    expect(markup).toContain('disabled=""');
+    expect(markup).toContain('Save or exit the unsaved scenario');
+  });
+
   it('keeps descendants out of the tab order when a folder is collapsed', () => {
     const scenarios = [
       descriptor('checkout/success.yaml', 'checkout'),
@@ -385,5 +457,81 @@ describe('ScenarioBrowser', () => {
     expect(markup).toContain('tabindex="0"');
     expect(markup).toContain('aria-describedby=');
     expect(markup).toContain('Finish the active run before importing another scenario');
+  });
+
+  it('disables hiding examples while scenario replacement is blocked', () => {
+    const markup = renderToStaticMarkup(
+      <ScenarioBrowser
+        examples={[descriptor('order-flow.yaml', '')]}
+        localScenarios={[]}
+        selectedScenarioId="order-flow.yaml"
+        activeScenarioId="order-flow.yaml"
+        activeScenarioName="order-flow"
+        scenarioLoadingId={null}
+        scenarioCatalogLoading={false}
+        scenarioSelectionDisabled
+        activeScenarioDirty={false}
+        fileOperation="idle"
+        fileError={null}
+        fileErrorOperation={null}
+        fileActions={<span>Save actions</span>}
+        onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
+        onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
+      />,
+    );
+
+    expect(markup).toContain('class="scenario-section-dismiss"');
+    expect(markup).toContain('aria-label="Hide Examples"');
+    expect(markup).toContain('disabled=""');
+  });
+
+  it('disables hiding examples during a file operation and catalog loading', () => {
+    const fileOperationMarkup = renderToStaticMarkup(
+      <ScenarioBrowser
+        examples={[descriptor('order-flow.yaml', '')]}
+        localScenarios={[]}
+        selectedScenarioId="order-flow.yaml"
+        activeScenarioId="order-flow.yaml"
+        activeScenarioName="order-flow"
+        scenarioLoadingId={null}
+        scenarioCatalogLoading={false}
+        scenarioSelectionDisabled={false}
+        activeScenarioDirty={false}
+        fileOperation="importing"
+        fileError={null}
+        fileErrorOperation={null}
+        fileActions={<span>Save actions</span>}
+        onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
+        onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
+      />,
+    );
+    const loadingMarkup = renderToStaticMarkup(
+      <ScenarioBrowser
+        examples={[descriptor('order-flow.yaml', '')]}
+        localScenarios={[]}
+        selectedScenarioId="order-flow.yaml"
+        activeScenarioId="order-flow.yaml"
+        activeScenarioName="order-flow"
+        scenarioLoadingId={null}
+        scenarioCatalogLoading
+        scenarioSelectionDisabled={false}
+        activeScenarioDirty={false}
+        fileOperation="idle"
+        fileError={null}
+        fileErrorOperation={null}
+        fileActions={<span>Save actions</span>}
+        onSelectScenario={() => undefined}
+        onNewScenario={() => undefined}
+        onImportScenario={() => undefined}
+        onRemoveScenario={() => Promise.resolve('succeeded' as const)}
+      />,
+    );
+
+    expect(fileOperationMarkup).toContain('Wait for the current scenario file operation to finish');
+    expect(loadingMarkup).toContain('Wait for examples to finish loading');
   });
 });

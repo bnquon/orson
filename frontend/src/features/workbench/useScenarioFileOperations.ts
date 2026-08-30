@@ -194,6 +194,8 @@ export function useScenarioFileOperations({
   return {
     draftIsDirty,
     fileBusy,
+    saveBlocker: fileBlocker,
+    saveValidation,
     pendingScenarioAction,
     scenarioSelectionDisabled: runActive || pendingScenarioAction !== null,
     saveDisabled,

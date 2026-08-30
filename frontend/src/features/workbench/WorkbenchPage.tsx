@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type SubmitEvent } from 'react';
 import type { WorkspaceGuardState } from '../workspace/useWorkspace';
-import { CheckCircle, DotArrowRight, WarningCircle } from 'iconoir-react';
+import {
+  CheckCircle,
+  DotArrowRight,
+  FloppyDiskArrowIn,
+  InfoCircle,
+  WarningCircle,
+  Xmark,
+} from 'iconoir-react';
 import { LoadingDots } from '../../components/LoadingDots';
 import { Modal, ModalActions, ModalButton } from '../../components/Modal';
 import { Toast } from '../../components/Toast';
+import { Tooltip } from '../../components/Tooltip';
 import { ComposePanel } from './components/ComposePanel';
 import { FlowPanel } from './components/FlowPanel';
 import { HistoricalRunPanel } from './components/HistoricalRunPanel';
@@ -53,6 +61,7 @@ interface WorkbenchPageProps {
   workspaceId: string;
   connection: KafkaConnection;
   scenario: LoadedScenario;
+  emptyWorkbench?: boolean;
   examples: ScenarioDescriptor[];
   localScenarios: ScenarioDescriptor[];
   selectedScenarioId: string | null;
@@ -68,6 +77,7 @@ interface WorkbenchPageProps {
   fileFeedback: ScenarioFileFeedback;
   onSelectScenario: (id: string) => Promise<void>;
   onCreateScenario: () => void;
+  onExitUnsavedScenario: () => void;
   onImportScenario: () => Promise<ScenarioFileOperationOutcome>;
   onRemoveScenario: (id: string) => Promise<ScenarioFileOperationOutcome>;
   onSaveScenario: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
@@ -85,6 +95,7 @@ export function WorkbenchPage({
   workspaceId,
   connection,
   scenario,
+  emptyWorkbench = false,
   examples,
   localScenarios,
   selectedScenarioId,
@@ -100,6 +111,7 @@ export function WorkbenchPage({
   fileFeedback,
   onSelectScenario,
   onCreateScenario,
+  onExitUnsavedScenario,
   onImportScenario,
   onRemoveScenario,
   onSaveScenario,
@@ -212,8 +224,39 @@ export function WorkbenchPage({
   });
 
   useEffect(() => {
-    onWorkspaceGuardChange({ runActive: isRunActive, draftDirty: fileOperations.draftIsDirty });
-  }, [fileOperations.draftIsDirty, isRunActive, onWorkspaceGuardChange]);
+    onWorkspaceGuardChange({
+      runActive: isRunActive,
+      draftDirty: emptyWorkbench ? false : fileOperations.draftIsDirty,
+    });
+  }, [emptyWorkbench, fileOperations.draftIsDirty, isRunActive, onWorkspaceGuardChange]);
+
+  const showEmptyWorkbench = emptyWorkbench && !isRunActive && history.mode !== 'historical';
+
+  const saveAsMissingItems = new Set<string>();
+  const saveValidationLabels: Partial<Record<ValidatableField, string>> = {
+    name: 'scenario name',
+    rootTopic: 'root topic',
+    watchedTopics: 'valid watched topics',
+    headers: 'valid custom headers',
+    payload: 'valid JSON payload',
+    captureTimeoutSeconds: 'valid capture timeout',
+  };
+  for (const field of Object.keys(
+    fileOperations.saveValidation.fieldErrors,
+  ) as ValidatableField[]) {
+    const item = saveValidationLabels[field];
+    if (item !== undefined) saveAsMissingItems.add(item);
+  }
+  if (Object.keys(fileOperations.saveValidation.watchedTopicErrors).length > 0) {
+    saveAsMissingItems.add('valid watched topics');
+  }
+  if (Object.keys(fileOperations.saveValidation.headerErrors).length > 0) {
+    saveAsMissingItems.add('valid custom headers');
+  }
+  const saveAsHint =
+    fileOperations.saveBlocker === 'invalid'
+      ? `Missing or fix:\n${[...saveAsMissingItems].map((item) => `• ${item}`).join('\n')}`
+      : fileOperations.saveAsDisabledReason;
 
   const touchField = (field: ValidatableField) => {
     setTouched((current) => ({
@@ -295,7 +338,29 @@ export function WorkbenchPage({
     publishRun();
   };
 
-  const fileActions = (
+  const fileActions = showEmptyWorkbench ? (
+    <span />
+  ) : scenario.source === 'unsaved' ? (
+    <div className="scenario-file-actions scenario-file-actions--unsaved">
+      <button
+        className="scenario-file-button"
+        type="button"
+        onClick={onExitUnsavedScenario}
+        disabled={isRunActive || fileOperations.fileBusy || history.mode === 'historical'}
+        title={
+          isRunActive
+            ? 'Stop the active run before exiting'
+            : fileOperations.fileBusy
+              ? 'Wait for the current scenario file operation to finish'
+              : history.mode === 'historical'
+                ? 'Return to the current workspace to edit scenarios'
+                : 'Exit without saving this scenario'
+        }
+      >
+        <Xmark width={15} height={15} /> Exit without saving
+      </button>
+    </div>
+  ) : (
     <ScenarioFileActions
       source={scenario.source}
       sourceFilename={scenario.sourceFilename}
@@ -316,51 +381,73 @@ export function WorkbenchPage({
   } else if (scenarioSelectionLoading) {
     publishTitle = 'Wait for the selected scenario to finish loading';
   }
-  const publishAction =
-    history.mode === 'historical' ? (
-      <span className="publish-summary" aria-label="Historical run is read-only">
-        Read-only run
-      </span>
-    ) : isRunActive ? (
+  const publishAction = showEmptyWorkbench ? (
+    <span />
+  ) : history.mode === 'historical' ? (
+    <span className="publish-summary" aria-label="Historical run is read-only">
+      Read-only run
+    </span>
+  ) : isRunActive ? (
+    <button
+      className="publish-button publish-button--stop"
+      type="button"
+      onClick={() => void run.stopRun()}
+      title="Stop the active run"
+    >
+      <LoadingDots size="inline" /> Stop
+    </button>
+  ) : scenario.source === 'unsaved' ? (
+    <span className="workspace-toolbar__save-action">
+      {fileOperations.saveDisabled ? (
+        <Tooltip label="Why Save as is unavailable" content={saveAsHint} interactive multiline>
+          <InfoCircle width={16} height={16} aria-hidden="true" />
+        </Tooltip>
+      ) : null}
       <button
-        className="publish-button publish-button--stop"
+        className="publish-button"
         type="button"
-        onClick={() => void run.stopRun()}
-        title="Stop the active run"
+        onClick={() => void fileOperations.saveDraftAs()}
+        disabled={fileOperations.saveDisabled}
+        title={
+          fileOperations.saveDisabled
+            ? fileOperations.saveAsDisabledReason
+            : 'Save scenario as YAML'
+        }
       >
-        <LoadingDots size="inline" /> Stop
+        <FloppyDiskArrowIn width={18} height={18} /> Save as
       </button>
-    ) : (
-      <>
-        <span
-          className={`publish-summary ${publishAttempted && validation.issueCount > 0 ? 'publish-summary--invalid' : ''}`}
-          aria-live="polite"
-        >
-          {publishAttempted ? (
-            validation.issueCount > 0 ? (
-              <>
-                <WarningCircle width={16} height={16} /> {validation.issueCount}{' '}
-                {validation.issueCount === 1 ? 'issue' : 'issues'}
-              </>
-            ) : (
-              <>
-                <CheckCircle width={16} height={16} /> Ready
-              </>
-            )
-          ) : null}
-        </span>
-        <button
-          className="publish-button"
-          type={mode === 'compose' ? 'submit' : 'button'}
-          form={mode === 'compose' ? 'compose-form' : undefined}
-          onClick={mode === 'flow' ? publishRun : undefined}
-          disabled={fileOperations.fileBusy || scenarioSelectionLoading}
-          title={publishTitle}
-        >
-          Publish <DotArrowRight width={20} height={20} strokeWidth={1.5} />
-        </button>
-      </>
-    );
+    </span>
+  ) : (
+    <>
+      <span
+        className={`publish-summary ${publishAttempted && validation.issueCount > 0 ? 'publish-summary--invalid' : ''}`}
+        aria-live="polite"
+      >
+        {publishAttempted ? (
+          validation.issueCount > 0 ? (
+            <>
+              <WarningCircle width={16} height={16} /> {validation.issueCount}{' '}
+              {validation.issueCount === 1 ? 'issue' : 'issues'}
+            </>
+          ) : (
+            <>
+              <CheckCircle width={16} height={16} /> Ready
+            </>
+          )
+        ) : null}
+      </span>
+      <button
+        className="publish-button"
+        type={mode === 'compose' ? 'submit' : 'button'}
+        form={mode === 'compose' ? 'compose-form' : undefined}
+        onClick={mode === 'flow' ? publishRun : undefined}
+        disabled={fileOperations.fileBusy || scenarioSelectionLoading}
+        title={publishTitle}
+      >
+        Publish <DotArrowRight width={20} height={20} strokeWidth={1.5} />
+      </button>
+    </>
+  );
 
   const scenarioSidebar = (
     <ScenarioBrowser
@@ -368,8 +455,8 @@ export function WorkbenchPage({
       localScenarios={localScenarios}
       selectedScenarioId={selectedScenarioId}
       activeScenarioId={scenario.id}
-      activeScenarioName={draft.name}
-      activeScenarioUnsaved={scenario.source === 'unsaved'}
+      activeScenarioName={showEmptyWorkbench ? '' : draft.name}
+      activeScenarioUnsaved={scenario.source === 'unsaved' && !emptyWorkbench}
       scenarioLoadingId={scenarioLoadingId}
       scenarioCatalogLoading={scenarioCatalogLoading}
       readOnly={history.mode === 'historical'}
@@ -378,43 +465,45 @@ export function WorkbenchPage({
       onExamplesExpandedChange={onExamplesExpandedChange}
       onExamplesDismissedChange={onExamplesDismissedChange}
       scenarioSelectionDisabled={fileOperations.scenarioSelectionDisabled}
-      activeScenarioDirty={fileOperations.draftIsDirty}
+      scenarioRemovalDisabled={scenario.source === 'unsaved'}
+      activeScenarioDirty={showEmptyWorkbench ? false : fileOperations.draftIsDirty}
       fileOperation={fileFeedback.operation}
       fileError={fileFeedback.error}
       fileErrorOperation={fileFeedback.errorOperation}
       fileActions={fileActions}
       onSelectScenario={fileOperations.requestScenarioSelection}
-      onNewScenario={fileOperations.requestNewScenario}
-      onImportScenario={fileOperations.requestImport}
+      onNewScenario={showEmptyWorkbench ? onCreateScenario : fileOperations.requestNewScenario}
+      onImportScenario={showEmptyWorkbench ? onImportScenario : fileOperations.requestImport}
       onRemoveScenario={onRemoveScenario}
     />
   );
-  const workspaceToolbar =
-    history.mode === 'historical' && history.selectedSummary !== null ? (
-      <HistoricalRunToolbar
-        summary={history.selectedSummary}
-        onReturnToCurrent={() => history.setMode('current')}
-      />
-    ) : (
-      <WorkspaceToolbar
-        mode={mode}
-        onModeChange={setMode}
-        scenario={{
-          name: draft.name,
-          rootTopic: draft.rootTopic,
-          source: scenario.source,
-          sourceFilename: scenario.sourceFilename,
-          sourcePath: scenario.sourcePath,
-          dirty: fileOperations.draftIsDirty,
-        }}
-        warnings={{
-          count: scenario.warnings.length,
-          dismissed: scenarioWarningsDismissed,
-          onRestore: restoreScenarioWarnings,
-        }}
-        action={publishAction}
-      />
-    );
+  const workspaceToolbar = showEmptyWorkbench ? (
+    <div />
+  ) : history.mode === 'historical' && history.selectedSummary !== null ? (
+    <HistoricalRunToolbar
+      summary={history.selectedSummary}
+      onReturnToCurrent={() => history.setMode('current')}
+    />
+  ) : (
+    <WorkspaceToolbar
+      mode={mode}
+      onModeChange={setMode}
+      scenario={{
+        name: draft.name,
+        rootTopic: draft.rootTopic,
+        source: scenario.source,
+        sourceFilename: scenario.sourceFilename,
+        sourcePath: scenario.sourcePath,
+        dirty: fileOperations.draftIsDirty,
+      }}
+      warnings={{
+        count: scenario.warnings.length,
+        dismissed: scenarioWarningsDismissed,
+        onRestore: restoreScenarioWarnings,
+      }}
+      action={publishAction}
+    />
+  );
 
   const scenarioDiagnostics = (
     <>
@@ -453,12 +542,29 @@ export function WorkbenchPage({
         sidebar={scenarioSidebar}
         toolbar={workspaceToolbar}
         workspaceMode={mode}
-        workspaceAriaLabel={history.mode === 'historical' ? 'Historical run detail' : undefined}
+        workspaceAriaLabel={
+          showEmptyWorkbench
+            ? 'No scenario selected'
+            : history.mode === 'historical'
+              ? 'Historical run detail'
+              : undefined
+        }
         workspaceInert={
           fileFeedback.operation === 'importing' || fileFeedback.operation === 'removing'
         }
         workspace={
-          history.mode === 'historical' ? (
+          showEmptyWorkbench ? (
+            <>
+              {scenarioDiagnostics}
+              <div className="workspace-empty-state" role="status">
+                <strong>No scenario selected</strong>
+                <span>Restore the examples or import a YAML file from the sidebar to begin.</span>
+                <button type="button" onClick={() => onExamplesDismissedChange(false)}>
+                  Restore bundled examples
+                </button>
+              </div>
+            </>
+          ) : history.mode === 'historical' ? (
             <HistoricalRunPanel
               run={history.selectedRun}
               detailStatus={history.detailStatus}
@@ -513,13 +619,15 @@ export function WorkbenchPage({
         runStatus={formatStatusLabel(run.state.status)}
         runStatusLabel={history.mode === 'historical' ? 'Viewing historical run' : undefined}
         statusDetail={
-          history.mode === 'historical'
-            ? 'Read-only snapshot · return to the current workspace to edit'
-            : scenario.source === 'local'
-              ? 'Imported files are remembered for this session'
-              : scenario.source === 'unsaved'
-                ? 'Unsaved scenario · save as YAML to keep it'
-                : 'Examples are read-only'
+          showEmptyWorkbench
+            ? 'Select a scenario to begin'
+            : history.mode === 'historical'
+              ? 'Read-only snapshot · return to the current workspace to edit'
+              : scenario.source === 'local'
+                ? 'Imported files are remembered for this session'
+                : scenario.source === 'unsaved'
+                  ? 'Unsaved scenario · save as YAML to keep it'
+                  : 'Examples are read-only'
         }
       />
       {fileFeedback.successMessage ? (
