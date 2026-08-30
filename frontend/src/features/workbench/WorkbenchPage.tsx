@@ -200,7 +200,7 @@ export function WorkbenchPage({
   const selectedEvent =
     liveRun.events.find((event) => event.id === run.state.selectedRecordId) ?? null;
   const isRunActive = isActiveRunStatus(run.state.status);
-  const scenarioSelectionLoading = scenarioLoadingId !== null;
+  const scenarioSelectionLoading = scenarioLoadingId !== null || scenarioCatalogLoading;
   const fileOperations = useScenarioFileOperations({
     scenario,
     examples,
@@ -346,15 +346,22 @@ export function WorkbenchPage({
         className="scenario-file-button"
         type="button"
         onClick={onExitUnsavedScenario}
-        disabled={isRunActive || fileOperations.fileBusy || history.mode === 'historical'}
+        disabled={
+          isRunActive ||
+          fileOperations.fileBusy ||
+          scenarioCatalogLoading ||
+          history.mode === 'historical'
+        }
         title={
           isRunActive
             ? 'Stop the active run before exiting'
             : fileOperations.fileBusy
               ? 'Wait for the current scenario file operation to finish'
-              : history.mode === 'historical'
-                ? 'Return to the current workspace to edit scenarios'
-                : 'Exit without saving this scenario'
+              : scenarioCatalogLoading
+                ? 'Wait for the scenario refresh to finish'
+                : history.mode === 'historical'
+                  ? 'Return to the current workspace to edit scenarios'
+                  : 'Exit without saving this scenario'
         }
       >
         <Xmark width={15} height={15} /> Exit without saving
@@ -378,6 +385,8 @@ export function WorkbenchPage({
   let publishTitle = `Publish to ${connection.name} · ${connection.brokers.join(', ')}`;
   if (fileOperations.fileBusy) {
     publishTitle = 'Wait for the scenario file operation to finish';
+  } else if (scenarioCatalogLoading) {
+    publishTitle = 'Wait for the scenario refresh to finish';
   } else if (scenarioSelectionLoading) {
     publishTitle = 'Wait for the selected scenario to finish loading';
   }

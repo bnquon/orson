@@ -23,6 +23,7 @@ import {
 } from './scenarioMapping';
 import { createUnsavedScenario, createUnsavedScenarioId } from './scenarioFactory';
 import { applyScenarioFileResult } from './scenarioFileResult';
+import type { WorkspaceRequestOutcome } from '../workspace/useWorkspace';
 import type {
   LoadedScenario,
   ScenarioDescriptor,
@@ -86,7 +87,7 @@ function protocolError(message: string): ApiError {
 interface UseScenarioOptions {
   bootstrap: api.WorkspaceBootstrapData | null;
   bootstrapError: ApiError | null;
-  onRetryBootstrap: () => Promise<boolean>;
+  onRetryBootstrap: () => Promise<WorkspaceRequestOutcome>;
   onRememberScenario: (source: 'example' | 'local', scenarioId: string) => Promise<void>;
   onPersistence: (status: api.WorkspacePersistenceStatus | undefined) => void;
 }
@@ -122,6 +123,7 @@ export function useScenario({
   const exampleDescriptorsRef = useRef<ScenarioDescriptor[]>([]);
   const activeScenarioIdRef = useRef<string | null>(null);
   const scenarioBeforeUnsavedRef = useRef<LoadedScenario | null>(null);
+  const exitInFlightRef = useRef(false);
   const bootstrapIdentityRef = useRef('');
   const bootstrapIdentity =
     bootstrap === null
@@ -189,6 +191,7 @@ export function useScenario({
 
   const exitScenario = useCallback(() => {
     if (scenario?.source !== 'unsaved') return;
+    if (exitInFlightRef.current) return;
 
     const previousScenario = scenarioBeforeUnsavedRef.current;
     scenarioBeforeUnsavedRef.current = null;
@@ -202,7 +205,9 @@ export function useScenario({
     setSelectedLoadError(null);
     dispatchLocalSession({ type: 'feedback_cleared' });
     bootstrapIdentityRef.current = '';
+    exitInFlightRef.current = true;
     const reportRefreshFailure = () => {
+      exitInFlightRef.current = false;
       if (!mountedRef.current) return;
       const refreshError = protocolError(
         'Scenario exited, but the workspace could not be refreshed.',
@@ -211,8 +216,9 @@ export function useScenario({
       setError(refreshError);
       dispatchLocalSession({ type: 'operation_failed', error: refreshError });
     };
-    void onRetryBootstrap().then((refreshed) => {
-      if (!refreshed) reportRefreshFailure();
+    void onRetryBootstrap().then((outcome) => {
+      exitInFlightRef.current = false;
+      if (outcome === 'failed') reportRefreshFailure();
     }, reportRefreshFailure);
   }, [activateScenario, dispatchLocalSession, onRetryBootstrap, scenario]);
 
@@ -299,7 +305,7 @@ export function useScenario({
     setSelectedLoadError(null);
     bootstrapIdentityRef.current = '';
     const refreshed = await onRetryBootstrap();
-    if (refreshed) return;
+    if (refreshed !== 'failed') return;
 
     setCatalogStatus('failed');
     setError(bootstrapError ?? protocolError('The workspace could not be refreshed.'));
@@ -419,12 +425,16 @@ export function useScenario({
       bootstrapIdentityRef.current = '';
       const refreshed = await onRetryBootstrap();
       if (!mountedRef.current) return 'cancelled';
-      if (!refreshed) {
+      if (refreshed === 'failed') {
         dispatchLocalSession({
           type: 'operation_failed',
           error: protocolError('Scenario removed, but the workspace could not be refreshed.'),
         });
         return 'failed';
+      }
+      if (refreshed === 'superseded') {
+        dispatchLocalSession({ type: 'operation_cancelled' });
+        return 'cancelled';
       }
       dispatchLocalSession({ type: 'operation_succeeded', message: 'Scenario import removed' });
       return 'succeeded';
