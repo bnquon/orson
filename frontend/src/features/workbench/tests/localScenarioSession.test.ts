@@ -60,6 +60,27 @@ describe('localScenarioSessionReducer', () => {
     expect(refreshed.descriptors).toEqual([warning]);
   });
 
+  it('removes an imported descriptor immediately after backend removal succeeds', () => {
+    const first = localDescriptor('local:opaque-1', 'first.yaml');
+    const second = localDescriptor('local:opaque-2', 'second.yaml');
+    const listed = localScenarioSessionReducer(initialLocalScenarioSessionState, {
+      type: 'listed',
+      descriptors: [first, second],
+    });
+    const removing = localScenarioSessionReducer(listed, {
+      type: 'operation_started',
+      operation: 'removing',
+    });
+
+    const removed = localScenarioSessionReducer(removing, {
+      type: 'removed',
+      id: first.id,
+    });
+
+    expect(removed.descriptors).toEqual([second]);
+    expect(removed.operation).toBe('removing');
+  });
+
   it('keeps the mirrored registry unchanged when an operation fails', () => {
     const descriptor = localDescriptor('local:opaque-1', 'order.yaml');
     const listed = localScenarioSessionReducer(initialLocalScenarioSessionState, {

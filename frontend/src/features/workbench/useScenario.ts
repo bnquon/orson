@@ -23,6 +23,7 @@ import {
 } from './scenarioMapping';
 import { createUnsavedScenario, createUnsavedScenarioId } from './scenarioFactory';
 import { applyScenarioFileResult } from './scenarioFileResult';
+import type { WorkspaceRequestOutcome } from '../workspace/useWorkspace';
 import type {
   LoadedScenario,
   ScenarioDescriptor,
@@ -51,6 +52,7 @@ export interface ScenarioController {
   retrySelectedScenario(): Promise<void>;
   selectScenario(id: string): Promise<void>;
   createScenario(): void;
+  exitScenario(): void;
   importScenario(): Promise<ScenarioFileOperationOutcome>;
   removeScenario(id: string): Promise<ScenarioFileOperationOutcome>;
   saveScenario(draft: ScenarioDraftData): Promise<ScenarioFileOperationOutcome>;
@@ -85,7 +87,7 @@ function protocolError(message: string): ApiError {
 interface UseScenarioOptions {
   bootstrap: api.WorkspaceBootstrapData | null;
   bootstrapError: ApiError | null;
-  onRetryBootstrap: () => Promise<void>;
+  onRetryBootstrap: () => Promise<WorkspaceRequestOutcome>;
   onRememberScenario: (source: 'example' | 'local', scenarioId: string) => Promise<void>;
   onPersistence: (status: api.WorkspacePersistenceStatus | undefined) => void;
 }
@@ -120,6 +122,8 @@ export function useScenario({
   const mountedRef = useRef(true);
   const exampleDescriptorsRef = useRef<ScenarioDescriptor[]>([]);
   const activeScenarioIdRef = useRef<string | null>(null);
+  const scenarioBeforeUnsavedRef = useRef<LoadedScenario | null>(null);
+  const exitInFlightRef = useRef(false);
   const bootstrapIdentityRef = useRef('');
   const bootstrapIdentity =
     bootstrap === null
@@ -167,6 +171,7 @@ export function useScenario({
   );
 
   const createScenario = useCallback(() => {
+    if (scenario?.source !== 'unsaved') scenarioBeforeUnsavedRef.current = scenario;
     dispatchLocalSession({ type: 'feedback_cleared' });
     const draft = createUnsavedScenario();
     const unsaved: LoadedScenario = {
@@ -182,7 +187,40 @@ export function useScenario({
       warnings: [],
     };
     activateScenario(unsaved, null);
-  }, [activateScenario, dispatchLocalSession]);
+  }, [activateScenario, dispatchLocalSession, scenario]);
+
+  const exitScenario = useCallback(() => {
+    if (scenario?.source !== 'unsaved') return;
+    if (exitInFlightRef.current) return;
+
+    const previousScenario = scenarioBeforeUnsavedRef.current;
+    scenarioBeforeUnsavedRef.current = null;
+    if (previousScenario !== null) {
+      activateScenario(previousScenario);
+      return;
+    }
+
+    setCatalogStatus('loading');
+    setError(null);
+    setSelectedLoadError(null);
+    dispatchLocalSession({ type: 'feedback_cleared' });
+    bootstrapIdentityRef.current = '';
+    exitInFlightRef.current = true;
+    const reportRefreshFailure = () => {
+      exitInFlightRef.current = false;
+      if (!mountedRef.current) return;
+      const refreshError = protocolError(
+        'Scenario exited, but the workspace could not be refreshed.',
+      );
+      setCatalogStatus('failed');
+      setError(refreshError);
+      dispatchLocalSession({ type: 'operation_failed', error: refreshError });
+    };
+    void onRetryBootstrap().then((outcome) => {
+      exitInFlightRef.current = false;
+      if (outcome === 'failed') reportRefreshFailure();
+    }, reportRefreshFailure);
+  }, [activateScenario, dispatchLocalSession, onRetryBootstrap, scenario]);
 
   const loadScenario = useCallback(
     async (id: string, descriptor: ScenarioDescriptor, requestId: number) => {
@@ -265,8 +303,13 @@ export function useScenario({
     setCatalogStatus('loading');
     setError(null);
     setSelectedLoadError(null);
-    await onRetryBootstrap();
-  }, [onRetryBootstrap]);
+    bootstrapIdentityRef.current = '';
+    const refreshed = await onRetryBootstrap();
+    if (refreshed !== 'failed') return;
+
+    setCatalogStatus('failed');
+    setError(bootstrapError ?? protocolError('The workspace could not be refreshed.'));
+  }, [bootstrapError, onRetryBootstrap]);
 
   const handleFileResult = useCallback(
     (
@@ -342,6 +385,15 @@ export function useScenario({
 
   const removeScenario = useCallback(
     async (id: string): Promise<ScenarioFileOperationOutcome> => {
+      if (scenario?.source === 'unsaved') {
+        dispatchLocalSession({
+          type: 'operation_failed',
+          error: protocolError(
+            'Save or exit the unsaved scenario before removing another scenario.',
+          ),
+        });
+        return 'failed';
+      }
       dispatchLocalSession({ type: 'operation_started', operation: 'removing' });
       const result = await removeLocalScenario(id);
       if (!mountedRef.current) return 'cancelled';
@@ -356,11 +408,44 @@ export function useScenario({
         return 'failed';
       }
       onPersistence(result.data.persistence);
+      if (scenarioBeforeUnsavedRef.current?.id === id) {
+        scenarioBeforeUnsavedRef.current = null;
+      }
+      dispatchLocalSession({ type: 'removed', id });
+      if (activeScenarioIdRef.current === id) {
+        requestIdRef.current += 1;
+        setScenario(null);
+        setActiveScenarioId(null);
+        activeScenarioIdRef.current = null;
+        setSelectedScenarioId(null);
+        setSelectedDiagnostics([]);
+        setSelectedLoadStatus('idle');
+        setSelectedLoadError(null);
+      }
+      bootstrapIdentityRef.current = '';
+      const refreshed = await onRetryBootstrap();
+      if (!mountedRef.current) return 'cancelled';
+      if (refreshed === 'failed') {
+        dispatchLocalSession({
+          type: 'operation_failed',
+          error: protocolError('Scenario removed, but the workspace could not be refreshed.'),
+        });
+        return 'failed';
+      }
+      if (refreshed === 'superseded') {
+        dispatchLocalSession({ type: 'operation_cancelled' });
+        return 'cancelled';
+      }
       dispatchLocalSession({ type: 'operation_succeeded', message: 'Scenario import removed' });
-      await onRetryBootstrap();
       return 'succeeded';
     },
-    [dispatchLocalSession, onPersistence, onRetryBootstrap, scenario?.sourceFilename],
+    [
+      dispatchLocalSession,
+      onPersistence,
+      onRetryBootstrap,
+      scenario?.source,
+      scenario?.sourceFilename,
+    ],
   );
 
   const clearFileFeedback = useCallback(() => {
@@ -470,6 +555,7 @@ export function useScenario({
     retrySelectedScenario,
     selectScenario,
     createScenario,
+    exitScenario,
     importScenario,
     removeScenario,
     saveScenario,

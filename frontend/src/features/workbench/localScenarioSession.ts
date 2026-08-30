@@ -27,6 +27,7 @@ export const initialLocalScenarioSessionState: LocalScenarioSessionState = {
 
 export type LocalScenarioSessionAction =
   | { type: 'listed'; descriptors: ScenarioDescriptor[] }
+  | { type: 'removed'; id: string }
   | { type: 'operation_started'; operation: Exclude<ScenarioFileOperation, 'idle'> }
   | { type: 'operation_cancelled' }
   | {
@@ -60,6 +61,11 @@ export function localScenarioSessionReducer(
       return {
         ...state,
         descriptors: action.descriptors,
+      };
+    case 'removed':
+      return {
+        ...state,
+        descriptors: state.descriptors.filter((descriptor) => descriptor.id !== action.id),
       };
     case 'operation_started':
       return {

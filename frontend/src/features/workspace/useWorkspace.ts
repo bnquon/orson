@@ -107,8 +107,10 @@ export interface WorkspaceGuardState {
   draftDirty: boolean;
 }
 
+export type WorkspaceRequestOutcome = 'succeeded' | 'failed' | 'superseded';
+
 export interface WorkspaceController extends WorkspaceState {
-  bootstrap(): Promise<void>;
+  bootstrap(): Promise<WorkspaceRequestOutcome>;
   create(name: string): Promise<boolean>;
   rename(id: string, name: string): Promise<boolean>;
   requestSwitch(id: string, guards: WorkspaceGuardState): 'blocked' | 'confirm' | 'started';
@@ -138,26 +140,23 @@ export function useWorkspace(): WorkspaceController {
     async (
       operation: WorkspaceOperation,
       request: () => ReturnType<typeof bootstrapWorkspace>,
-    ): Promise<boolean> => {
+    ): Promise<WorkspaceRequestOutcome> => {
       const token = ++requestRef.current;
       selectionRequestRef.current += 1;
       dispatch({ type: 'loading', operation });
       const result = await request();
-      if (!mountedRef.current || token !== requestRef.current) return false;
+      if (!mountedRef.current || token !== requestRef.current) return 'superseded';
       if (!result.ok) {
         dispatch({ type: 'failed', error: result.error });
-        return false;
+        return 'failed';
       }
       dispatch({ type: 'loaded', data: result.data });
-      return true;
+      return 'succeeded';
     },
     [],
   );
 
-  const bootstrap = useCallback(
-    async () => void (await applyRequest('idle', bootstrapWorkspace)),
-    [applyRequest],
-  );
+  const bootstrap = useCallback(() => applyRequest('idle', bootstrapWorkspace), [applyRequest]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -169,21 +168,25 @@ export function useWorkspace(): WorkspaceController {
   }, [bootstrap]);
 
   const create = useCallback(
-    (name: string) => applyRequest('creating', () => createWorkspace(name)),
+    async (name: string) =>
+      (await applyRequest('creating', () => createWorkspace(name))) === 'succeeded',
     [applyRequest],
   );
   const rename = useCallback(
-    (id: string, name: string) => applyRequest('renaming', () => renameWorkspace(id, name)),
+    async (id: string, name: string) =>
+      (await applyRequest('renaming', () => renameWorkspace(id, name))) === 'succeeded',
     [applyRequest],
   );
 
   const executePending = useCallback(
     async (pending: PendingAction) => {
       if (pending.kind === 'home') return true;
-      return applyRequest(pending.kind === 'switch' ? 'switching' : 'deleting', () =>
-        pending.kind === 'switch'
-          ? setActiveWorkspace(pending.workspaceId)
-          : deleteWorkspace(pending.workspaceId),
+      return (
+        (await applyRequest(pending.kind === 'switch' ? 'switching' : 'deleting', () =>
+          pending.kind === 'switch'
+            ? setActiveWorkspace(pending.workspaceId)
+            : deleteWorkspace(pending.workspaceId),
+        )) === 'succeeded'
       );
     },
     [applyRequest],

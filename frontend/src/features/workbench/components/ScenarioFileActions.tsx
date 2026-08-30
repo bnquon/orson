@@ -6,7 +6,7 @@ import type { ScenarioFileOperation, ScenarioSource } from '../types';
 // TODO: [YAML] Add a read-only YAML preview and copy action.
 
 interface ScenarioFileActionsProps {
-  source: ScenarioSource;
+  source: Exclude<ScenarioSource, 'unsaved'>;
   sourceFilename: string;
   readOnly?: boolean;
   dirty: boolean;

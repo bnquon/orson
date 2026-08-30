@@ -1,10 +1,27 @@
 import type { ReactNode } from 'react';
-import { ScenarioLoadState } from '../workbench/components/ScenarioLoadState';
+import {
+  ScenarioFileOperationError,
+  ScenarioLoadState,
+} from '../workbench/components/ScenarioLoadState';
 import { WorkbenchPage } from '../workbench/WorkbenchPage';
-import type { KafkaConnection } from '../workbench/types';
+import { createUnsavedScenario } from '../workbench/scenarioFactory';
+import type { KafkaConnection, LoadedScenario } from '../workbench/types';
 import type { ScenarioController } from '../workbench/useScenario';
 import { WorkbenchShell } from '../workbench/components/WorkbenchShell';
 import type { WorkspaceController, WorkspaceGuardState } from './useWorkspace';
+
+const emptyWorkbenchScenario: LoadedScenario = {
+  id: 'empty-workbench',
+  relativePath: '',
+  folderPath: '',
+  name: 'No scenario selected',
+  sourceFilename: '',
+  source: 'unsaved',
+  sourcePath: '',
+  localStatus: null,
+  draft: createUnsavedScenario(),
+  warnings: [],
+};
 
 interface WorkspaceContentProps {
   workspace: WorkspaceController;
@@ -88,31 +105,58 @@ export function WorkspaceContent({
     onNavigateHome,
   };
 
+  const emptyWorkbench =
+    examplesDismissed &&
+    scenario.localScenarios.length === 0 &&
+    scenario.catalogStatus !== 'loading' &&
+    scenario.catalogStatus !== 'failed' &&
+    scenario.selectedLoadStatus !== 'loading' &&
+    (scenario.scenario === null || scenario.scenario.source !== 'unsaved');
+
+  const handleExamplesDismissedChange = (dismissed: boolean) => {
+    onExamplesDismissedChange(dismissed);
+    if (!dismissed && scenario.scenario === null) void scenario.retry();
+  };
+  const scenarioFileError = scenario.fileFeedback.error ? (
+    <ScenarioFileOperationError
+      error={scenario.fileFeedback.error}
+      diagnostics={scenario.fileFeedback.diagnostics}
+      onDismiss={() => scenario.clearFileFeedback()}
+    />
+  ) : null;
+
   if (
+    !emptyWorkbench &&
     scenario.scenario === null &&
     (scenario.catalogStatus === 'loading' || scenario.selectedLoadStatus === 'loading')
   ) {
     return (
       <WorkspaceStateShell {...shellProps}>
-        <ScenarioLoadState status="loading" />
+        <>
+          {scenarioFileError}
+          <ScenarioLoadState status="loading" />
+        </>
       </WorkspaceStateShell>
     );
   }
 
-  if (scenario.scenario === null) {
+  if (!emptyWorkbench && scenario.scenario === null) {
     return (
       <WorkspaceStateShell {...shellProps}>
-        <ScenarioLoadState
-          status={
-            scenario.catalogStatus === 'failed' ||
-            (scenario.selectedLoadStatus === 'failed' && hasValidScenario)
-              ? 'failed'
-              : 'empty'
-          }
-          error={scenario.error}
-          descriptors={scenario.descriptors}
-          onRetry={() => void scenario.retry()}
-        />
+        <>
+          {scenarioFileError}
+          <ScenarioLoadState
+            status={
+              scenario.catalogStatus === 'failed' ||
+              (scenario.selectedLoadStatus === 'failed' && hasValidScenario)
+                ? 'failed'
+                : 'empty'
+            }
+            error={scenario.error}
+            descriptors={scenario.descriptors}
+            onRetry={() => void scenario.retry()}
+          />
+        </>
       </WorkspaceStateShell>
     );
   }
@@ -122,7 +166,8 @@ export function WorkspaceContent({
       key={data.activeWorkspace.id}
       workspaceId={data.activeWorkspace.id}
       connection={connection}
-      scenario={scenario.scenario}
+      scenario={scenario.scenario ?? emptyWorkbenchScenario}
+      emptyWorkbench={emptyWorkbench}
       examples={scenario.examples}
       localScenarios={scenario.localScenarios}
       selectedScenarioId={scenario.selectedScenarioId}
@@ -136,10 +181,11 @@ export function WorkspaceContent({
       examplesExpanded={examplesExpanded}
       examplesDismissed={examplesDismissed}
       onExamplesExpandedChange={onExamplesExpandedChange}
-      onExamplesDismissedChange={onExamplesDismissedChange}
+      onExamplesDismissedChange={handleExamplesDismissedChange}
       fileFeedback={scenario.fileFeedback}
       onSelectScenario={(id) => scenario.selectScenario(id)}
       onCreateScenario={() => scenario.createScenario()}
+      onExitUnsavedScenario={() => scenario.exitScenario()}
       onImportScenario={() => scenario.importScenario()}
       onRemoveScenario={(id) => scenario.removeScenario(id)}
       onSaveScenario={(draft) => scenario.saveScenario(draft)}

@@ -41,6 +41,8 @@ interface ScenarioBrowserProps {
   onExamplesExpandedChange?: (expanded: boolean) => void;
   onExamplesDismissedChange?: (dismissed: boolean) => void;
   scenarioSelectionDisabled: boolean;
+  scenarioRemovalDisabled?: boolean;
+  scenarioRemovalDisabledReason?: string;
   activeScenarioDirty: boolean;
   fileOperation: ScenarioFileOperation;
   fileError: ApiError | null;
@@ -242,9 +244,19 @@ interface SectionLabelProps {
   expanded: boolean;
   onToggle: () => void;
   onDismiss?: () => void;
+  dismissDisabled?: boolean;
+  dismissDisabledReason?: string;
 }
 
-function SectionLabel({ label, count, expanded, onToggle, onDismiss }: SectionLabelProps) {
+function SectionLabel({
+  label,
+  count,
+  expanded,
+  onToggle,
+  onDismiss,
+  dismissDisabled = false,
+  dismissDisabledReason,
+}: SectionLabelProps) {
   return (
     <div className="scenario-sidebar__label">
       <button type="button" className="scenario-section-toggle" onClick={onToggle}>
@@ -261,7 +273,8 @@ function SectionLabel({ label, count, expanded, onToggle, onDismiss }: SectionLa
           type="button"
           className="scenario-section-dismiss"
           aria-label={`Hide ${label}`}
-          title={`Hide ${label} for this session`}
+          disabled={dismissDisabled}
+          title={dismissDisabled ? dismissDisabledReason : `Hide ${label} for this session`}
           onClick={onDismiss}
         >
           <Xmark width={13} height={13} />
@@ -277,8 +290,11 @@ function LocalScenarioRow({
   activeScenarioId,
   scenarioLoadingId,
   selectionDisabled,
+  scenarioRemovalDisabled,
+  scenarioRemovalDisabledReason,
   activeScenarioDirty,
   hasSaveError,
+  readOnly,
   onSelectScenario,
   onRemoveScenarioRequest,
 }: {
@@ -287,8 +303,11 @@ function LocalScenarioRow({
   activeScenarioId: string;
   scenarioLoadingId: string | null;
   selectionDisabled: boolean;
+  scenarioRemovalDisabled?: boolean;
+  scenarioRemovalDisabledReason?: string;
   activeScenarioDirty: boolean;
   hasSaveError: boolean;
+  readOnly: boolean;
   onSelectScenario: (id: string) => void;
   onRemoveScenarioRequest: (descriptor: ScenarioDescriptor) => void;
 }) {
@@ -300,9 +319,11 @@ function LocalScenarioRow({
       ? 'Unsaved changes'
       : statusLabel(descriptor);
   const disabled = selectionDisabled || scenarioLoadingId !== null;
-  const removeDisabled = disabled || (isActive && activeScenarioDirty);
+  const removeDisabled = disabled || scenarioRemovalDisabled || (isActive && activeScenarioDirty);
   return (
-    <div className="scenario-row__local-wrapper">
+    <div
+      className={`scenario-row__local-wrapper${readOnly ? ' scenario-row__local-wrapper--read-only' : ''}`}
+    >
       <button
         className={`scenario-row scenario-row--scenario scenario-row--local ${isActive ? 'scenario-row--active' : ''} ${isSelected && !isActive ? 'scenario-row--selected' : ''} ${descriptor.status === 'invalid' && isSelected ? 'scenario-row--invalid-selected' : ''} ${hasSaveError ? 'scenario-row--save-error' : ''}`}
         type="button"
@@ -330,20 +351,24 @@ function LocalScenarioRow({
           )}
         </span>
       </button>
-      <button
-        className="scenario-row__remove"
-        type="button"
-        aria-label={`Remove ${descriptor.sourceFilename} from this workspace`}
-        title={
-          isActive && activeScenarioDirty
-            ? 'Save or discard changes before removing'
-            : 'Remove from workspace'
-        }
-        disabled={removeDisabled}
-        onClick={() => onRemoveScenarioRequest(descriptor)}
-      >
-        <Xmark width={14} height={14} strokeWidth={2} />
-      </button>
+      {!readOnly ? (
+        <button
+          className="scenario-row__remove"
+          type="button"
+          aria-label={`Remove ${descriptor.sourceFilename} from this workspace`}
+          title={
+            scenarioRemovalDisabled
+              ? scenarioRemovalDisabledReason
+              : isActive && activeScenarioDirty
+                ? 'Save or discard changes before removing'
+                : 'Remove from workspace'
+          }
+          disabled={removeDisabled}
+          onClick={() => onRemoveScenarioRequest(descriptor)}
+        >
+          <Xmark width={14} height={14} strokeWidth={2} />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -363,6 +388,8 @@ export function ScenarioBrowser({
   onExamplesExpandedChange,
   onExamplesDismissedChange,
   scenarioSelectionDisabled,
+  scenarioRemovalDisabled = false,
+  scenarioRemovalDisabledReason = 'Save or exit the unsaved scenario before removing another scenario',
   activeScenarioDirty,
   fileOperation,
   fileError,
@@ -410,16 +437,52 @@ export function ScenarioBrowser({
   }, [collapsedFolders, searchActive, tree]);
   const fileBusy = fileOperation !== 'idle';
   const interactionDisabled = scenarioSelectionDisabled || readOnly;
-  const importDisabled = interactionDisabled || fileBusy || scenarioLoadingId !== null;
+  const hideExamplesDisabled =
+    readOnly ||
+    scenarioSelectionDisabled ||
+    fileBusy ||
+    scenarioCatalogLoading ||
+    scenarioLoadingId !== null ||
+    activeScenarioDirty;
+  const hideExamplesDisabledReason = readOnly
+    ? 'Return to the current workspace to edit scenarios'
+    : scenarioSelectionDisabled
+      ? 'Finish the active run before hiding examples'
+      : fileBusy
+        ? 'Wait for the current scenario file operation to finish'
+        : scenarioCatalogLoading
+          ? 'Wait for examples to finish loading'
+          : scenarioLoadingId !== null
+            ? 'Wait for the selected scenario to finish loading'
+            : 'Save or discard changes before hiding examples';
+  const restoreExamplesDisabled =
+    readOnly ||
+    scenarioSelectionDisabled ||
+    fileBusy ||
+    scenarioCatalogLoading ||
+    scenarioLoadingId !== null;
+  const restoreExamplesDisabledReason = readOnly
+    ? 'Return to the current workspace to edit scenarios'
+    : scenarioSelectionDisabled
+      ? 'Finish the active run before restoring examples'
+      : fileBusy
+        ? 'Wait for the current scenario file operation to finish'
+        : scenarioCatalogLoading
+          ? 'Wait for examples to finish loading'
+          : 'Wait for the selected scenario to finish loading';
+  const importDisabled =
+    interactionDisabled || fileBusy || scenarioCatalogLoading || scenarioLoadingId !== null;
   const replacementDisabledReason = readOnly
     ? 'Return to the current workspace to edit scenarios'
     : scenarioSelectionDisabled
       ? 'Finish the active run before replacing the current scenario'
       : fileBusy
         ? 'Wait for the current scenario file operation to finish'
-        : scenarioLoadingId !== null
-          ? 'Wait for the selected scenario to finish loading'
-          : '';
+        : scenarioCatalogLoading
+          ? 'Wait for scenarios to finish loading'
+          : scenarioLoadingId !== null
+            ? 'Wait for the selected scenario to finish loading'
+            : '';
   const importDisabledReason = replacementDisabledReason.replace(
     'replacing the current scenario',
     'importing another scenario',
@@ -429,6 +492,7 @@ export function ScenarioBrowser({
     if (
       interactionDisabled ||
       fileBusy ||
+      scenarioRemovalDisabled ||
       (descriptor.id === activeScenarioId && activeScenarioDirty)
     ) {
       return;
@@ -499,6 +563,8 @@ export function ScenarioBrowser({
             <button
               className="scenario-examples-restore"
               type="button"
+              disabled={restoreExamplesDisabled}
+              title={restoreExamplesDisabled ? restoreExamplesDisabledReason : undefined}
               onClick={() => setExamplesDismissed(false)}
             >
               Examples hidden <span>Restore</span>
@@ -511,6 +577,8 @@ export function ScenarioBrowser({
                 expanded={examplesExpanded}
                 onToggle={() => setExamplesExpanded(!examplesExpanded)}
                 onDismiss={() => setExamplesDismissed(true)}
+                dismissDisabled={hideExamplesDisabled}
+                dismissDisabledReason={hideExamplesDisabledReason}
               />
               {examplesExpanded ? (
                 scenarioCatalogLoading ? (
@@ -527,7 +595,7 @@ export function ScenarioBrowser({
                     selectedScenarioId={selectedScenarioId}
                     activeScenarioId={activeScenarioId}
                     scenarioLoadingId={scenarioLoadingId}
-                    selectionDisabled={interactionDisabled || fileBusy}
+                    selectionDisabled={interactionDisabled || fileBusy || scenarioCatalogLoading}
                     onToggleFolder={toggleFolder}
                     onSelectScenario={onSelectScenario}
                     folderToggleDisabled={searchActive}
@@ -553,8 +621,11 @@ export function ScenarioBrowser({
                     selectedScenarioId={selectedScenarioId}
                     activeScenarioId={activeScenarioId}
                     scenarioLoadingId={scenarioLoadingId}
-                    selectionDisabled={interactionDisabled || fileBusy}
+                    selectionDisabled={interactionDisabled || fileBusy || scenarioCatalogLoading}
                     activeScenarioDirty={activeScenarioDirty}
+                    scenarioRemovalDisabled={scenarioRemovalDisabled}
+                    scenarioRemovalDisabledReason={scenarioRemovalDisabledReason}
+                    readOnly={readOnly}
                     hasSaveError={
                       descriptor.id === activeScenarioId &&
                       fileError !== null &&

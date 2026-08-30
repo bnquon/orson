@@ -5,10 +5,14 @@
 
 .tooltip__trigger {
   align-items: center;
+  background: transparent;
+  border: 0;
   color: var(--color-text-dim);
   cursor: help;
   display: inline-flex;
+  font: inherit;
   outline: 0;
+  padding: 0;
 }
 
 .tooltip__trigger:focus-visible {
@@ -44,6 +48,10 @@
   white-space: normal;
   width: max-content;
   z-index: 5;
+}
+
+.tooltip__content--multiline {
+  white-space: pre-line;
 }
 
 .tooltip:hover .tooltip__content,
