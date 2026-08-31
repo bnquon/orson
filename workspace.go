@@ -174,6 +174,82 @@ func (a *App) RetryWorkspacePersistence(confirmSessionWrite bool) api.WorkspaceB
 	}, workspaceTransitionOptions{effects: workspaceTransitionEffects{disconnect: true, reloadRegistry: true}})
 }
 
+func (a *App) CreateScenarioFolder(name, parentID string) api.ScenarioFolderResponse {
+	return a.mutateScenarioFolder(func(service *workspacepkg.Service, workspaceID string) (workspacepkg.State, workspacepkg.FolderDeletionReport, error) {
+		state, err := service.CreateFolder(workspaceID, parentID, name)
+		return state, workspacepkg.FolderDeletionReport{}, err
+	})
+}
+
+func (a *App) RenameScenarioFolder(folderID, name string) api.ScenarioFolderResponse {
+	return a.mutateScenarioFolder(func(service *workspacepkg.Service, workspaceID string) (workspacepkg.State, workspacepkg.FolderDeletionReport, error) {
+		state, err := service.RenameFolder(workspaceID, folderID, name)
+		return state, workspacepkg.FolderDeletionReport{}, err
+	})
+}
+
+func (a *App) MoveScenarioFolder(request api.MoveScenarioFolderRequest) api.ScenarioFolderResponse {
+	return a.mutateScenarioFolder(func(service *workspacepkg.Service, workspaceID string) (workspacepkg.State, workspacepkg.FolderDeletionReport, error) {
+		state, err := service.MoveFolder(workspaceID, request.FolderID, request.ParentID)
+		return state, workspacepkg.FolderDeletionReport{}, err
+	})
+}
+
+func (a *App) ReorderScenarioFolder(request api.ReorderScenarioFolderRequest) api.ScenarioFolderResponse {
+	return a.mutateScenarioFolder(func(service *workspacepkg.Service, workspaceID string) (workspacepkg.State, workspacepkg.FolderDeletionReport, error) {
+		state, err := service.ReorderFolder(workspaceID, request.FolderID, request.SiblingIndex)
+		return state, workspacepkg.FolderDeletionReport{}, err
+	})
+}
+
+func (a *App) MoveLocalScenario(request api.MoveLocalScenarioRequest) api.ScenarioFolderResponse {
+	return a.mutateScenarioFolder(func(service *workspacepkg.Service, workspaceID string) (workspacepkg.State, workspacepkg.FolderDeletionReport, error) {
+		reference, err := a.getLocalScenarioRegistry().Reference(request.ScenarioID)
+		if err != nil {
+			return workspacepkg.State{}, workspacepkg.FolderDeletionReport{}, err
+		}
+		state, err := service.MoveScenario(workspaceID, reference.CanonicalPath, request.FolderID)
+		if err != nil {
+			return state, workspacepkg.FolderDeletionReport{}, err
+		}
+		state, err = service.ReorderScenario(workspaceID, reference.CanonicalPath, request.SiblingIndex)
+		return state, workspacepkg.FolderDeletionReport{}, err
+	})
+}
+
+func (a *App) DeleteScenarioFolder(folderID string) api.ScenarioFolderResponse {
+	return a.mutateScenarioFolder(func(service *workspacepkg.Service, workspaceID string) (workspacepkg.State, workspacepkg.FolderDeletionReport, error) {
+		state, report, err := service.DeleteFolder(workspaceID, folderID, a.getLocalScenarioRegistry().DeletePath)
+		for _, path := range report.RemovedPaths {
+			_ = a.getLocalScenarioRegistry().RemovePath(path)
+		}
+		return state, report, err
+	})
+}
+
+func (a *App) mutateScenarioFolder(mutate func(*workspacepkg.Service, string) (workspacepkg.State, workspacepkg.FolderDeletionReport, error)) api.ScenarioFolderResponse {
+	a.scenarioOpMu.Lock()
+	defer a.scenarioOpMu.Unlock()
+
+	if apiErr := a.scenarioFileRunGuard(); apiErr != nil {
+		return api.ScenarioFolderFailure(apiErr, nil)
+	}
+	service := a.workspaceService()
+	before := service.Snapshot()
+	if before.ActiveWorkspaceID == "" {
+		return api.ScenarioFolderFailure(workspaceRequiredError(), nil)
+	}
+	state, report, err := mutate(service, before.ActiveWorkspaceID)
+	if state.ActiveWorkspaceID == "" {
+		state = service.Snapshot()
+	}
+	data := a.scenarioFolderData(state, report)
+	if err != nil {
+		return api.ScenarioFolderFailure(workspaceAPIError(err), &data)
+	}
+	return api.ScenarioFolderSuccess(data)
+}
+
 func (a *App) workspaceBootstrapResponse(state workspacepkg.State) api.WorkspaceBootstrapResponse {
 	active, ok := state.ActiveWorkspace()
 
@@ -191,10 +267,8 @@ func (a *App) workspaceBootstrapResponse(state workspacepkg.State) api.Workspace
 	}
 	registry := a.getLocalScenarioRegistry()
 	localDescriptors := registry.List()
-	locals := make([]api.ScenarioDescriptor, 0, len(localDescriptors))
-	for _, descriptor := range localDescriptors {
-		locals = append(locals, toAPIScenarioDescriptor(descriptor))
-	}
+	localFolderData := a.scenarioFolderData(state, workspacepkg.FolderDeletionReport{})
+	locals := localFolderData.Scenarios
 
 	selectedID := ""
 	var selectedScenario *api.ScenarioData
@@ -217,6 +291,7 @@ func (a *App) workspaceBootstrapResponse(state workspacepkg.State) api.Workspace
 		ActiveWorkspace:      toAPIWorkspace(active, state),
 		BundledScenarios:     bundled,
 		LocalScenarios:       locals,
+		LocalFolders:         localFolderData.Folders,
 		SelectedScenarioID:   selectedID,
 		SelectedScenario:     selectedScenario,
 		RememberedConnection: remembered,
@@ -301,6 +376,24 @@ func toAPIPersistence(status workspacepkg.PersistenceStatus) api.WorkspacePersis
 
 func workspaceAPIError(err error) *api.APIError {
 	switch {
+	case errors.Is(err, workspacepkg.ErrFolderNameRequired):
+		return api.NewError("folder_name_required", "Folder name is required.", err.Error(), false)
+	case errors.Is(err, workspacepkg.ErrFolderNameDuplicate):
+		return api.NewError("folder_name_duplicate", "A folder with that name already exists here.", err.Error(), false)
+	case errors.Is(err, workspacepkg.ErrFolderNameInvalid):
+		return api.NewError("folder_name_invalid", "That folder name is not valid.", "Folder names cannot contain path separators.", false)
+	case errors.Is(err, workspacepkg.ErrFolderNotFound):
+		return api.NewError("folder_not_found", "That folder is no longer available.", err.Error(), true)
+	case errors.Is(err, workspacepkg.ErrFolderParentNotFound):
+		return api.NewError("folder_parent_not_found", "The destination folder is no longer available.", err.Error(), true)
+	case errors.Is(err, workspacepkg.ErrFolderMoveCycle):
+		return api.NewError("folder_move_cycle", "A folder cannot be moved into itself or one of its descendants.", err.Error(), false)
+	case errors.Is(err, workspacepkg.ErrScenarioNotFound):
+		return api.NewError("scenario_not_found", "That local scenario is no longer available.", err.Error(), true)
+	case errors.Is(err, workspacepkg.ErrInvalidSiblingOrder):
+		return api.NewError("invalid_sibling_order", "That scenario position is no longer available.", err.Error(), true)
+	case errors.Is(err, workspacepkg.ErrFolderDeletionPartial):
+		return api.NewError("folder_deletion_partial", "The folder was only partially deleted.", err.Error(), true)
 	case errors.Is(err, workspacepkg.ErrWorkspaceNameRequired):
 		return api.NewError("workspace_name_required", "Workspace name is required.", err.Error(), false)
 	case errors.Is(err, workspacepkg.ErrWorkspaceNameDuplicate):

@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ScenarioBrowser, ScenarioRows } from '../../components/ScenarioBrowser';
+import { getScenarioDropIndex } from '../../components/ScenarioBrowserTree';
 import type { ScenarioDescriptor } from '../../types';
 import { buildScenarioTree } from '../../scenarioTree';
 
@@ -68,6 +69,13 @@ function descriptor(id: string, folderPath: string): ScenarioDescriptor {
 }
 
 describe('ScenarioBrowser', () => {
+  it('adjusts scenario drop indexes after removing the source row', () => {
+    expect(getScenarioDropIndex(0, 1, 'after')).toBe(1);
+    expect(getScenarioDropIndex(0, 2, 'before')).toBe(1);
+    expect(getScenarioDropIndex(2, 0, 'after')).toBe(1);
+    expect(getScenarioDropIndex(-1, 1, 'after')).toBe(2);
+  });
+
   it('opens the scenario format guide with structure, topology, and a valid example', () => {
     const host = renderInteractiveBrowser();
     const guideButton = host.querySelector<HTMLButtonElement>(
@@ -267,9 +275,7 @@ describe('ScenarioBrowser', () => {
       />,
     );
 
-    expect(markup).toContain('Remove protected.yaml from this workspace');
     expect(markup).toContain('disabled=""');
-    expect(markup).toContain('Save or exit the unsaved scenario');
   });
 
   it('keeps descendants out of the tab order when a folder is collapsed', () => {
@@ -420,7 +426,6 @@ describe('ScenarioBrowser', () => {
     expect(markup).toContain('File changed outside Orson');
     expect(markup).toContain('scenario-row__status--warning');
     expect(markup).toContain('scenario-row__status-icon--error');
-    expect(markup).toContain('Remove changed.yaml from this workspace');
     expect(markup).not.toContain('scenario-row__status--valid"');
   });
 

@@ -118,6 +118,8 @@ export function toScenarioDescriptor(data: api.ScenarioDescriptor): ScenarioDesc
     displayName: data.displayName || data.relativePath,
     relativePath: data.relativePath,
     folderPath: data.folderPath ?? '',
+    folderId: data.folderId ?? '',
+    siblingOrder: data.siblingOrder ?? 0,
     sourceFilename,
     ...toSourceMetadata(data),
     status: data.status as ScenarioDescriptor['status'],

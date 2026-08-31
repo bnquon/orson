@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -24,6 +25,15 @@ var (
 	ErrWorkspaceNotFound            = errors.New("workspace not found")
 	ErrWorkspaceNameRequired        = errors.New("workspace name is required")
 	ErrWorkspaceNameDuplicate       = errors.New("workspace name already exists")
+	ErrFolderNotFound               = errors.New("folder not found")
+	ErrFolderNameRequired           = errors.New("folder name is required")
+	ErrFolderNameDuplicate          = errors.New("folder name already exists")
+	ErrFolderNameInvalid            = errors.New("folder name is invalid")
+	ErrFolderParentNotFound         = errors.New("folder parent not found")
+	ErrFolderMoveCycle              = errors.New("folder cannot be moved into itself or a descendant")
+	ErrScenarioNotFound             = errors.New("scenario not found")
+	ErrInvalidSiblingOrder          = errors.New("invalid sibling order")
+	ErrFolderDeletionPartial        = errors.New("folder deletion partially failed")
 	ErrRecoveryConfirmationRequired = errors.New("persistence recovery confirmation is required")
 )
 
@@ -126,6 +136,7 @@ func (s *Service) initialize() {
 func (s *Service) emptyState() State {
 	return State{
 		Scenarios:   make(map[string][]ScenarioReference),
+		Folders:     make(map[string][]Folder),
 		Connections: make(map[string]*ConnectionConfig),
 		Selections:  make(map[string]*Selection),
 	}
@@ -211,6 +222,7 @@ func (s *Service) Delete(id string) (State, error) {
 	}
 	next.Workspaces = append(next.Workspaces[:index], next.Workspaces[index+1:]...)
 	delete(next.Scenarios, id)
+	delete(next.Folders, id)
 	delete(next.Connections, id)
 	delete(next.Selections, id)
 	if next.ActiveWorkspaceID == id && len(next.Workspaces) > 0 {
@@ -234,17 +246,24 @@ func (s *Service) UpsertScenario(reference ScenarioReference) error {
 		return ErrWorkspaceNotFound
 	}
 	next := cloneState(s.state)
+	reference.FolderID = strings.TrimSpace(reference.FolderID)
+	if reference.FolderID != "" && folderIndex(next.Folders[reference.WorkspaceID], reference.FolderID) < 0 {
+		return ErrFolderNotFound
+	}
 	items := next.Scenarios[reference.WorkspaceID]
 	updated := false
 	for index := range items {
 		if items[index].CanonicalPath == reference.CanonicalPath {
 			reference.ImportedAt = items[index].ImportedAt
+			reference.FolderID = items[index].FolderID
+			reference.SiblingOrder = items[index].SiblingOrder
 			items[index] = reference
 			updated = true
 			break
 		}
 	}
 	if !updated {
+		reference.SiblingOrder = nextScenarioOrder(next.Scenarios[reference.WorkspaceID], reference.FolderID)
 		items = append(items, reference)
 	}
 	next.Scenarios[reference.WorkspaceID] = items
@@ -290,6 +309,282 @@ func (s *Service) RemoveScenario(workspaceID, canonicalPath string) error {
 	}
 	s.commit(next, "remove scenario association")
 	return nil
+}
+
+func (s *Service) CreateFolder(workspaceID, parentID, name string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := cloneState(s.state)
+	workspaceID = strings.TrimSpace(workspaceID)
+	if workspaceIndex(next, workspaceID) < 0 {
+		return State{}, ErrWorkspaceNotFound
+	}
+	parentID = strings.TrimSpace(parentID)
+	if parentID != "" && folderIndex(next.Folders[workspaceID], parentID) < 0 {
+		return State{}, ErrFolderParentNotFound
+	}
+	name, err := validateFolderName(next.Folders[workspaceID], parentID, "", name)
+	if err != nil {
+		return State{}, err
+	}
+	now := s.now()
+	folder := Folder{ID: s.newID(), WorkspaceID: workspaceID, Name: name, ParentID: parentID, SiblingOrder: nextFolderOrder(next.Folders[workspaceID], parentID), CreatedAt: now, UpdatedAt: now}
+	next.Folders[workspaceID] = append(next.Folders[workspaceID], folder)
+	s.commit(next, "create scenario folder")
+	return cloneState(s.state), nil
+}
+
+func (s *Service) RenameFolder(workspaceID, folderID, name string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := cloneState(s.state)
+	workspaceID = strings.TrimSpace(workspaceID)
+	folderID = strings.TrimSpace(folderID)
+	index := folderIndex(next.Folders[workspaceID], folderID)
+	if workspaceIndex(next, workspaceID) < 0 {
+		return State{}, ErrWorkspaceNotFound
+	}
+	if index < 0 {
+		return State{}, ErrFolderNotFound
+	}
+	name, err := validateFolderName(next.Folders[workspaceID], next.Folders[workspaceID][index].ParentID, folderID, name)
+	if err != nil {
+		return State{}, err
+	}
+	next.Folders[workspaceID][index].Name = name
+	next.Folders[workspaceID][index].UpdatedAt = s.now()
+	s.commit(next, "rename scenario folder")
+	return cloneState(s.state), nil
+}
+
+func (s *Service) MoveFolder(workspaceID, folderID, parentID string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := cloneState(s.state)
+	workspaceID = strings.TrimSpace(workspaceID)
+	folderID = strings.TrimSpace(folderID)
+	parentID = strings.TrimSpace(parentID)
+	if workspaceIndex(next, workspaceID) < 0 {
+		return State{}, ErrWorkspaceNotFound
+	}
+	folders := next.Folders[workspaceID]
+	index := folderIndex(folders, folderID)
+	if index < 0 {
+		return State{}, ErrFolderNotFound
+	}
+	if parentID != "" && folderIndex(folders, parentID) < 0 {
+		return State{}, ErrFolderParentNotFound
+	}
+	if parentID == folderID || isFolderDescendant(folders, folderID, parentID) {
+		return State{}, ErrFolderMoveCycle
+	}
+	if folders[index].ParentID == parentID {
+		return cloneState(s.state), nil
+	}
+	folders[index].ParentID = parentID
+	folders[index].SiblingOrder = nextFolderOrder(folders, parentID)
+	folders[index].UpdatedAt = s.now()
+	normalizeFolderOrders(folders)
+	next.Folders[workspaceID] = folders
+	s.commit(next, "move scenario folder")
+	return cloneState(s.state), nil
+}
+
+func (s *Service) ReorderFolder(workspaceID, folderID string, siblingIndex int) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := cloneState(s.state)
+	workspaceID = strings.TrimSpace(workspaceID)
+	folderID = strings.TrimSpace(folderID)
+	if workspaceIndex(next, workspaceID) < 0 {
+		return State{}, ErrWorkspaceNotFound
+	}
+	folders := next.Folders[workspaceID]
+	index := folderIndex(folders, folderID)
+	if index < 0 {
+		return State{}, ErrFolderNotFound
+	}
+	if siblingIndex < 0 {
+		return State{}, ErrInvalidSiblingOrder
+	}
+	parentID := folders[index].ParentID
+	ordered := orderedFolders(folders, parentID)
+	if siblingIndex >= len(ordered) {
+		siblingIndex = len(ordered) - 1
+	}
+	if len(ordered) == 0 {
+		return State{}, ErrFolderNotFound
+	}
+	var moving Folder
+	remaining := make([]Folder, 0, len(ordered)-1)
+	for _, item := range ordered {
+		if item.ID == folderID {
+			moving = item
+			continue
+		}
+		remaining = append(remaining, item)
+	}
+	if siblingIndex > len(remaining) {
+		siblingIndex = len(remaining)
+	}
+	remaining = append(remaining, Folder{})
+	copy(remaining[siblingIndex+1:], remaining[siblingIndex:])
+	remaining[siblingIndex] = moving
+	for order, item := range remaining {
+		for index := range folders {
+			if folders[index].ID == item.ID {
+				folders[index].SiblingOrder = order
+				break
+			}
+		}
+	}
+	next.Folders[workspaceID] = folders
+	s.commit(next, "reorder scenario folder")
+	return cloneState(s.state), nil
+}
+
+func (s *Service) MoveScenario(workspaceID, canonicalPath, folderID string) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := cloneState(s.state)
+	workspaceID = strings.TrimSpace(workspaceID)
+	canonicalPath = strings.TrimSpace(canonicalPath)
+	folderID = strings.TrimSpace(folderID)
+	if workspaceIndex(next, workspaceID) < 0 {
+		return State{}, ErrWorkspaceNotFound
+	}
+	if folderID != "" && folderIndex(next.Folders[workspaceID], folderID) < 0 {
+		return State{}, ErrFolderNotFound
+	}
+	items := next.Scenarios[workspaceID]
+	index := scenarioIndex(items, canonicalPath)
+	if index < 0 {
+		return State{}, ErrScenarioNotFound
+	}
+	if items[index].FolderID == folderID {
+		return cloneState(s.state), nil
+	}
+	items[index].FolderID = folderID
+	items[index].SiblingOrder = nextScenarioOrder(items, folderID)
+	normalizeScenarioOrders(items)
+	next.Scenarios[workspaceID] = items
+	s.commit(next, "move local scenario")
+	return cloneState(s.state), nil
+}
+
+func (s *Service) ReorderScenario(workspaceID, canonicalPath string, siblingIndex int) (State, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := cloneState(s.state)
+	workspaceID = strings.TrimSpace(workspaceID)
+	canonicalPath = strings.TrimSpace(canonicalPath)
+	if workspaceIndex(next, workspaceID) < 0 {
+		return State{}, ErrWorkspaceNotFound
+	}
+	items := next.Scenarios[workspaceID]
+	index := scenarioIndex(items, canonicalPath)
+	if index < 0 {
+		return State{}, ErrScenarioNotFound
+	}
+	if siblingIndex < 0 {
+		return State{}, ErrInvalidSiblingOrder
+	}
+	folderID := items[index].FolderID
+	ordered := orderedScenarios(items, folderID)
+	if siblingIndex >= len(ordered) {
+		siblingIndex = len(ordered) - 1
+	}
+	var moving ScenarioReference
+	remaining := make([]ScenarioReference, 0, len(ordered)-1)
+	for _, item := range ordered {
+		if item.CanonicalPath == canonicalPath {
+			moving = item
+			continue
+		}
+		remaining = append(remaining, item)
+	}
+	if siblingIndex > len(remaining) {
+		siblingIndex = len(remaining)
+	}
+	remaining = append(remaining, ScenarioReference{})
+	copy(remaining[siblingIndex+1:], remaining[siblingIndex:])
+	remaining[siblingIndex] = moving
+	for order, item := range remaining {
+		for index := range items {
+			if items[index].CanonicalPath == item.CanonicalPath {
+				items[index].SiblingOrder = order
+				break
+			}
+		}
+	}
+	next.Scenarios[workspaceID] = items
+	s.commit(next, "reorder local scenario")
+	return cloneState(s.state), nil
+}
+
+// DeleteFolder removes a virtual folder tree and its local references. The
+// removeFile callback is deliberately supplied by the local-file adapter.
+func (s *Service) DeleteFolder(workspaceID, folderID string, removeFile func(string) error) (State, FolderDeletionReport, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	next := cloneState(s.state)
+	workspaceID = strings.TrimSpace(workspaceID)
+	folderID = strings.TrimSpace(folderID)
+	var report FolderDeletionReport
+	if workspaceIndex(next, workspaceID) < 0 {
+		return State{}, report, ErrWorkspaceNotFound
+	}
+	folders := next.Folders[workspaceID]
+	if folderIndex(folders, folderID) < 0 {
+		return State{}, report, ErrFolderNotFound
+	}
+	tree := folderTreeIDs(folders, folderID)
+	items := next.Scenarios[workspaceID]
+	remaining := make([]ScenarioReference, 0, len(items))
+	for _, reference := range items {
+		if _, inTree := tree[reference.FolderID]; !inTree {
+			remaining = append(remaining, reference)
+			continue
+		}
+		shared := scenarioReferencedElsewhere(next, workspaceID, reference.CanonicalPath)
+		if shared {
+			report.SharedPaths = append(report.SharedPaths, reference.CanonicalPath)
+			report.RemovedPaths = append(report.RemovedPaths, reference.CanonicalPath)
+			continue
+		}
+		if removeFile == nil {
+			report.FailedPaths = append(report.FailedPaths, reference.CanonicalPath)
+			remaining = append(remaining, reference)
+			continue
+		}
+		if err := removeFile(reference.CanonicalPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			report.FailedPaths = append(report.FailedPaths, reference.CanonicalPath)
+			remaining = append(remaining, reference)
+			continue
+		}
+		report.RemovedPaths = append(report.RemovedPaths, reference.CanonicalPath)
+	}
+	if len(remaining) == 0 {
+		delete(next.Scenarios, workspaceID)
+	} else {
+		normalizeScenarioOrders(remaining)
+		next.Scenarios[workspaceID] = remaining
+	}
+	if selection := next.Selections[workspaceID]; selection != nil && selection.Source == "local" && containsString(report.RemovedPaths, selection.Reference) {
+		delete(next.Selections, workspaceID)
+	}
+	remainingFolders := pruneDeletedFolders(folders, tree, remaining)
+	if len(remainingFolders) == 0 {
+		delete(next.Folders, workspaceID)
+	} else {
+		normalizeFolderOrders(remainingFolders)
+		next.Folders[workspaceID] = remainingFolders
+	}
+	s.commit(next, "delete scenario folder")
+	if len(report.FailedPaths) > 0 {
+		return cloneState(s.state), report, fmt.Errorf("%w: %s", ErrFolderDeletionPartial, strings.Join(report.FailedPaths, ", "))
+	}
+	return cloneState(s.state), report, nil
 }
 
 func (s *Service) SaveConnection(config ConnectionConfig) error {
@@ -413,6 +708,216 @@ func validateName(state State, currentID, raw string) (string, error) {
 	return name, nil
 }
 
+func validateFolderName(folders []Folder, parentID, currentID, raw string) (string, error) {
+	name := strings.TrimSpace(raw)
+	if name == "" {
+		return "", ErrFolderNameRequired
+	}
+	if strings.ContainsAny(name, `/\\`) {
+		return "", ErrFolderNameInvalid
+	}
+	key := strings.ToLower(name)
+	for _, folder := range folders {
+		if folder.ID != currentID && folder.ParentID == parentID && strings.ToLower(strings.TrimSpace(folder.Name)) == key {
+			return "", ErrFolderNameDuplicate
+		}
+	}
+	return name, nil
+}
+
+func folderIndex(folders []Folder, id string) int {
+	for index := range folders {
+		if folders[index].ID == strings.TrimSpace(id) {
+			return index
+		}
+	}
+	return -1
+}
+
+func scenarioIndex(items []ScenarioReference, canonicalPath string) int {
+	for index := range items {
+		if items[index].CanonicalPath == canonicalPath {
+			return index
+		}
+	}
+	return -1
+}
+
+func nextFolderOrder(folders []Folder, parentID string) int {
+	max := -1
+	for _, folder := range folders {
+		if folder.ParentID == parentID && folder.SiblingOrder > max {
+			max = folder.SiblingOrder
+		}
+	}
+	return max + 1
+}
+
+func nextScenarioOrder(items []ScenarioReference, folderID string) int {
+	max := -1
+	for _, item := range items {
+		if item.FolderID == folderID && item.SiblingOrder > max {
+			max = item.SiblingOrder
+		}
+	}
+	return max + 1
+}
+
+func orderedFolders(folders []Folder, parentID string) []Folder {
+	result := make([]Folder, 0)
+	for _, folder := range folders {
+		if folder.ParentID == parentID {
+			result = append(result, folder)
+		}
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].SiblingOrder != result[j].SiblingOrder {
+			return result[i].SiblingOrder < result[j].SiblingOrder
+		}
+		return result[i].ID < result[j].ID
+	})
+	return result
+}
+
+func orderedScenarios(items []ScenarioReference, folderID string) []ScenarioReference {
+	result := make([]ScenarioReference, 0)
+	for _, item := range items {
+		if item.FolderID == folderID {
+			result = append(result, item)
+		}
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].SiblingOrder != result[j].SiblingOrder {
+			return result[i].SiblingOrder < result[j].SiblingOrder
+		}
+		return result[i].CanonicalPath < result[j].CanonicalPath
+	})
+	return result
+}
+
+func normalizeFolderOrders(folders []Folder) {
+	parents := make(map[string]struct{})
+	for _, folder := range folders {
+		parents[folder.ParentID] = struct{}{}
+	}
+	for parentID := range parents {
+		for order, item := range orderedFolders(folders, parentID) {
+			for index := range folders {
+				if folders[index].ID == item.ID {
+					folders[index].SiblingOrder = order
+					break
+				}
+			}
+		}
+	}
+}
+
+func normalizeScenarioOrders(items []ScenarioReference) {
+	folders := make(map[string]struct{})
+	for _, item := range items {
+		folders[item.FolderID] = struct{}{}
+	}
+	for folderID := range folders {
+		for order, item := range orderedScenarios(items, folderID) {
+			for index := range items {
+				if items[index].CanonicalPath == item.CanonicalPath {
+					items[index].SiblingOrder = order
+					break
+				}
+			}
+		}
+	}
+}
+
+func isFolderDescendant(folders []Folder, ancestorID, candidateID string) bool {
+	for current := candidateID; current != ""; {
+		index := folderIndex(folders, current)
+		if index < 0 {
+			return false
+		}
+		current = folders[index].ParentID
+		if current == ancestorID {
+			return true
+		}
+	}
+	return false
+}
+
+func folderTreeIDs(folders []Folder, rootID string) map[string]struct{} {
+	tree := map[string]struct{}{rootID: {}}
+	changed := true
+	for changed {
+		changed = false
+		for _, folder := range folders {
+			if _, included := tree[folder.ParentID]; included {
+				if _, exists := tree[folder.ID]; !exists {
+					tree[folder.ID] = struct{}{}
+					changed = true
+				}
+			}
+		}
+	}
+	return tree
+}
+
+func scenarioReferencedElsewhere(state State, workspaceID, canonicalPath string) bool {
+	for otherWorkspaceID, items := range state.Scenarios {
+		if otherWorkspaceID == workspaceID {
+			continue
+		}
+		for _, item := range items {
+			if item.CanonicalPath == canonicalPath {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func pruneDeletedFolders(folders []Folder, tree map[string]struct{}, remaining []ScenarioReference) []Folder {
+	kept := append([]Folder(nil), folders...)
+	for {
+		removed := false
+		for index := len(kept) - 1; index >= 0; index-- {
+			folder := kept[index]
+			if _, inTree := tree[folder.ID]; !inTree {
+				continue
+			}
+			hasScenario := false
+			for _, item := range remaining {
+				if item.FolderID == folder.ID {
+					hasScenario = true
+					break
+				}
+			}
+			hasChild := false
+			for _, child := range kept {
+				if child.ParentID == folder.ID {
+					hasChild = true
+					break
+				}
+			}
+			if !hasScenario && !hasChild {
+				kept = append(kept[:index], kept[index+1:]...)
+				removed = true
+			}
+		}
+		if !removed {
+			break
+		}
+	}
+	return kept
+}
+
+func containsString(items []string, wanted string) bool {
+	for _, item := range items {
+		if item == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 func workspaceIndex(state State, id string) int {
 	for index := range state.Workspaces {
 		if state.Workspaces[index].ID == strings.TrimSpace(id) {
@@ -440,6 +945,10 @@ func cloneState(source State) State {
 	clone.Scenarios = make(map[string][]ScenarioReference, len(source.Scenarios))
 	for id, items := range source.Scenarios {
 		clone.Scenarios[id] = append([]ScenarioReference(nil), items...)
+	}
+	clone.Folders = make(map[string][]Folder, len(source.Folders))
+	for id, items := range source.Folders {
+		clone.Folders[id] = append([]Folder(nil), items...)
 	}
 	clone.Connections = make(map[string]*ConnectionConfig, len(source.Connections))
 	for id, config := range source.Connections {
@@ -485,6 +994,7 @@ func mergeRecovered(durable, session State, deleted map[string]struct{}, now tim
 			usedNames[strings.ToLower(item.Name)] = struct{}{}
 		}
 		merged.Scenarios[item.ID] = append([]ScenarioReference(nil), session.Scenarios[item.ID]...)
+		merged.Folders[item.ID] = append([]Folder(nil), session.Folders[item.ID]...)
 		if connection := session.Connections[item.ID]; connection != nil {
 			copyConfig := *connection
 			copyConfig.Brokers = append([]string(nil), connection.Brokers...)
@@ -504,6 +1014,7 @@ func mergeRecovered(durable, session State, deleted map[string]struct{}, now tim
 		if index >= 0 {
 			merged.Workspaces = append(merged.Workspaces[:index], merged.Workspaces[index+1:]...)
 			delete(merged.Scenarios, id)
+			delete(merged.Folders, id)
 			delete(merged.Connections, id)
 			delete(merged.Selections, id)
 		}
@@ -537,8 +1048,8 @@ func migrate(db *sql.DB, now time.Time) error {
 	if err := db.QueryRow(`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&latest); err != nil {
 		return err
 	}
-	if latest > 2 {
-		return fmt.Errorf("workspace database version %d is newer than supported version 2", latest)
+	if latest > 3 {
+		return fmt.Errorf("workspace database version %d is newer than supported version 3", latest)
 	}
 	if latest == 0 {
 		if err := applyMigration(db, 1, now, []string{
@@ -553,7 +1064,7 @@ func migrate(db *sql.DB, now time.Time) error {
 		latest = 1
 	}
 	if latest == 1 {
-		return applyMigration(db, 2, now, []string{
+		if err := applyMigration(db, 2, now, []string{
 			`CREATE TABLE run_history (
 				id TEXT PRIMARY KEY,
 				workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -588,9 +1099,72 @@ func migrate(db *sql.DB, now time.Time) error {
 				PRIMARY KEY (run_id, sequence)
 			)`,
 			`CREATE INDEX run_history_records_order_idx ON run_history_records(run_id, sequence ASC)`,
-		})
+		}); err != nil {
+			return err
+		}
+		latest = 2
+	}
+	if latest == 2 {
+		return applyFolderMigration(db, now)
 	}
 	return nil
+}
+
+func applyFolderMigration(db *sql.DB, now time.Time) error {
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, statement := range []string{
+		`CREATE TABLE workspace_folders (
+			id TEXT PRIMARY KEY,
+			workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+			name TEXT NOT NULL,
+			name_key TEXT NOT NULL,
+			parent_id TEXT REFERENCES workspace_folders(id) ON DELETE CASCADE,
+			sibling_order INTEGER NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)`,
+		`CREATE UNIQUE INDEX workspace_folders_sibling_name_idx ON workspace_folders(workspace_id, COALESCE(parent_id, ''), name_key)`,
+		`ALTER TABLE workspace_scenarios ADD COLUMN folder_id TEXT REFERENCES workspace_folders(id) ON DELETE SET NULL`,
+		`ALTER TABLE workspace_scenarios ADD COLUMN sibling_order INTEGER NOT NULL DEFAULT 0`,
+		`CREATE INDEX workspace_folders_workspace_parent_order_idx ON workspace_folders(workspace_id, parent_id, sibling_order, id)`,
+		`CREATE INDEX workspace_scenarios_workspace_folder_order_idx ON workspace_scenarios(workspace_id, folder_id, sibling_order, canonical_path)`,
+	} {
+		if _, err := tx.Exec(statement); err != nil {
+			return err
+		}
+	}
+	rows, err := tx.Query(`SELECT workspace_id, canonical_path FROM workspace_scenarios ORDER BY workspace_id ASC, LOWER(display_filename) ASC, LOWER(canonical_path) ASC, canonical_path ASC`)
+	if err != nil {
+		return err
+	}
+	orders := make(map[string]int)
+	for rows.Next() {
+		var workspaceID, canonicalPath string
+		if err := rows.Scan(&workspaceID, &canonicalPath); err != nil {
+			rows.Close()
+			return err
+		}
+		order := orders[workspaceID]
+		if _, err := tx.Exec(`UPDATE workspace_scenarios SET folder_id = NULL, sibling_order = ? WHERE workspace_id = ? AND canonical_path = ?`, order, workspaceID, canonicalPath); err != nil {
+			rows.Close()
+			return err
+		}
+		orders[workspaceID] = order + 1
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO schema_migrations(version, applied_at) VALUES(3, ?)`, now.Format(time.RFC3339Nano)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func applyMigration(db *sql.DB, version int, now time.Time, statements []string) error {
@@ -611,7 +1185,7 @@ func applyMigration(db *sql.DB, version int, now time.Time, statements []string)
 }
 
 func loadState(db *sql.DB) (State, error) {
-	state := State{Scenarios: make(map[string][]ScenarioReference), Connections: make(map[string]*ConnectionConfig), Selections: make(map[string]*Selection)}
+	state := State{Scenarios: make(map[string][]ScenarioReference), Folders: make(map[string][]Folder), Connections: make(map[string]*ConnectionConfig), Selections: make(map[string]*Selection)}
 	rows, err := db.Query(`SELECT id, name, created_at, updated_at, last_opened_at FROM workspaces ORDER BY last_opened_at DESC, created_at ASC, id ASC`)
 	if err != nil {
 		return State{}, err
@@ -649,14 +1223,14 @@ func loadState(db *sql.DB) (State, error) {
 	if len(state.Workspaces) == 0 {
 		state.ActiveWorkspaceID = ""
 	}
-	rows, err = db.Query(`SELECT workspace_id, canonical_path, display_filename, imported_at, fingerprint, modified_at_ns, size_bytes FROM workspace_scenarios ORDER BY imported_at ASC, canonical_path ASC`)
+	rows, err = db.Query(`SELECT workspace_id, canonical_path, display_filename, imported_at, fingerprint, modified_at_ns, size_bytes, COALESCE(folder_id, ''), sibling_order FROM workspace_scenarios ORDER BY workspace_id ASC, folder_id ASC, sibling_order ASC, canonical_path ASC`)
 	if err != nil {
 		return State{}, err
 	}
 	for rows.Next() {
 		var ref ScenarioReference
 		var imported string
-		if err := rows.Scan(&ref.WorkspaceID, &ref.CanonicalPath, &ref.DisplayFilename, &imported, &ref.Fingerprint, &ref.ModifiedAtNS, &ref.SizeBytes); err != nil {
+		if err := rows.Scan(&ref.WorkspaceID, &ref.CanonicalPath, &ref.DisplayFilename, &imported, &ref.Fingerprint, &ref.ModifiedAtNS, &ref.SizeBytes, &ref.FolderID, &ref.SiblingOrder); err != nil {
 			rows.Close()
 			return State{}, err
 		}
@@ -668,6 +1242,33 @@ func loadState(db *sql.DB) (State, error) {
 		state.Scenarios[ref.WorkspaceID] = append(state.Scenarios[ref.WorkspaceID], ref)
 	}
 	if err := rows.Close(); err != nil {
+		return State{}, err
+	}
+	rows, err = db.Query(`SELECT id, workspace_id, name, COALESCE(parent_id, ''), sibling_order, created_at, updated_at FROM workspace_folders ORDER BY workspace_id ASC, parent_id ASC, sibling_order ASC, id ASC`)
+	if err != nil {
+		return State{}, err
+	}
+	for rows.Next() {
+		var folder Folder
+		var created, updated string
+		if err := rows.Scan(&folder.ID, &folder.WorkspaceID, &folder.Name, &folder.ParentID, &folder.SiblingOrder, &created, &updated); err != nil {
+			rows.Close()
+			return State{}, err
+		}
+		folder.CreatedAt, err = time.Parse(time.RFC3339Nano, created)
+		if err == nil {
+			folder.UpdatedAt, err = time.Parse(time.RFC3339Nano, updated)
+		}
+		if err != nil {
+			rows.Close()
+			return State{}, err
+		}
+		state.Folders[folder.WorkspaceID] = append(state.Folders[folder.WorkspaceID], folder)
+	}
+	if err := rows.Close(); err != nil {
+		return State{}, err
+	}
+	if err := rows.Err(); err != nil {
 		return State{}, err
 	}
 	rows, err = db.Query(`SELECT workspace_id, name, brokers_json, client_id, dial_timeout_seconds, updated_at FROM workspace_connections`)
@@ -725,7 +1326,7 @@ func replaceState(db *sql.DB, state State) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"workspace_preferences", "workspace_connections", "workspace_scenarios", "app_state"} {
+	for _, table := range []string{"workspace_preferences", "workspace_connections", "workspace_scenarios", "workspace_folders", "app_state"} {
 		if _, err := tx.Exec(`DELETE FROM ` + table); err != nil {
 			return err
 		}
@@ -778,9 +1379,16 @@ func replaceState(db *sql.DB, state State) error {
 	if _, err := tx.Exec(`INSERT INTO app_state(key, value) VALUES('active_workspace_id', ?)`, state.ActiveWorkspaceID); err != nil {
 		return err
 	}
+	for _, items := range state.Folders {
+		for _, folder := range items {
+			if _, err := tx.Exec(`INSERT INTO workspace_folders(id, workspace_id, name, name_key, parent_id, sibling_order, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, folder.ID, folder.WorkspaceID, folder.Name, strings.ToLower(strings.TrimSpace(folder.Name)), nullString(folder.ParentID), folder.SiblingOrder, folder.CreatedAt.Format(time.RFC3339Nano), folder.UpdatedAt.Format(time.RFC3339Nano)); err != nil {
+				return err
+			}
+		}
+	}
 	for _, items := range state.Scenarios {
 		for _, ref := range items {
-			if _, err := tx.Exec(`INSERT INTO workspace_scenarios(workspace_id, canonical_path, display_filename, imported_at, fingerprint, modified_at_ns, size_bytes) VALUES(?, ?, ?, ?, ?, ?, ?)`, ref.WorkspaceID, ref.CanonicalPath, ref.DisplayFilename, ref.ImportedAt.Format(time.RFC3339Nano), ref.Fingerprint, ref.ModifiedAtNS, ref.SizeBytes); err != nil {
+			if _, err := tx.Exec(`INSERT INTO workspace_scenarios(workspace_id, canonical_path, display_filename, imported_at, fingerprint, modified_at_ns, size_bytes, folder_id, sibling_order) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`, ref.WorkspaceID, ref.CanonicalPath, ref.DisplayFilename, ref.ImportedAt.Format(time.RFC3339Nano), ref.Fingerprint, ref.ModifiedAtNS, ref.SizeBytes, nullString(ref.FolderID), ref.SiblingOrder); err != nil {
 				return err
 			}
 		}
@@ -800,4 +1408,11 @@ func replaceState(db *sql.DB, state State) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func nullString(value string) any {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	return value
 }

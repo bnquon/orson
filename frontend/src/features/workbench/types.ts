@@ -71,6 +71,8 @@ export interface ScenarioDescriptor {
   displayName: string;
   relativePath: string;
   folderPath: string;
+  folderId?: string;
+  siblingOrder?: number;
   sourceFilename: string;
   source: ScenarioSource;
   sourcePath: string;
@@ -78,6 +80,25 @@ export interface ScenarioDescriptor {
   status: ScenarioDescriptorStatus;
   warnings: ScenarioWarning[];
   diagnostics: ScenarioDiagnostic[];
+}
+
+export interface ScenarioFolder {
+  id: string;
+  name: string;
+  parentId: string;
+  siblingOrder: number;
+}
+
+export interface ScenarioFolderDeletionSummary {
+  removedScenarioCount: number;
+  removedFileCount: number;
+  sharedFileCount: number;
+  failedFiles: string[];
+}
+
+export interface ScenarioFolderFeedback {
+  successMessage: string | null;
+  deletionSummary: ScenarioFolderDeletionSummary | null;
 }
 
 export interface LoadedScenario {

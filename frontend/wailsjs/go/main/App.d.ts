@@ -8,9 +8,13 @@ export function ClearRunHistory(arg1:string):Promise<api.RunHistoryActionRespons
 
 export function Connect(arg1:api.ConnectionRequest):Promise<api.ConnectionResponse>;
 
+export function CreateScenarioFolder(arg1:string,arg2:string):Promise<api.ScenarioFolderResponse>;
+
 export function CreateWorkspace(arg1:string):Promise<api.WorkspaceBootstrapResponse>;
 
 export function DeleteRunHistory(arg1:string,arg2:string):Promise<api.RunHistoryActionResponse>;
+
+export function DeleteScenarioFolder(arg1:string):Promise<api.ScenarioFolderResponse>;
 
 export function DeleteWorkspace(arg1:string):Promise<api.WorkspaceBootstrapResponse>;
 
@@ -32,9 +36,17 @@ export function LoadBundledScenario(arg1:string):Promise<api.ScenarioResponse>;
 
 export function LoadLocalScenario(arg1:string):Promise<api.ScenarioResponse>;
 
+export function MoveLocalScenario(arg1:api.MoveLocalScenarioRequest):Promise<api.ScenarioFolderResponse>;
+
+export function MoveScenarioFolder(arg1:api.MoveScenarioFolderRequest):Promise<api.ScenarioFolderResponse>;
+
 export function RemoveLocalScenario(arg1:string):Promise<api.ScenarioFileResponse>;
 
+export function RenameScenarioFolder(arg1:string,arg2:string):Promise<api.ScenarioFolderResponse>;
+
 export function RenameWorkspace(arg1:string,arg2:string):Promise<api.WorkspaceBootstrapResponse>;
+
+export function ReorderScenarioFolder(arg1:api.ReorderScenarioFolderRequest):Promise<api.ScenarioFolderResponse>;
 
 export function RetryWorkspacePersistence(arg1:boolean):Promise<api.WorkspaceBootstrapResponse>;
 

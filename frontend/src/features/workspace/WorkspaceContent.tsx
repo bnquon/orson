@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Toast } from '../../components/Toast';
 import {
   ScenarioFileOperationError,
   ScenarioLoadState,
@@ -106,12 +107,20 @@ export function WorkspaceContent({
   };
 
   const emptyWorkbench =
-    examplesDismissed &&
-    scenario.localScenarios.length === 0 &&
-    scenario.catalogStatus !== 'loading' &&
-    scenario.catalogStatus !== 'failed' &&
-    scenario.selectedLoadStatus !== 'loading' &&
-    (scenario.scenario === null || scenario.scenario.source !== 'unsaved');
+    scenario.activeScenarioCleared ||
+    (examplesDismissed &&
+      scenario.localScenarios.length === 0 &&
+      scenario.catalogStatus !== 'loading' &&
+      scenario.catalogStatus !== 'failed' &&
+      scenario.selectedLoadStatus !== 'loading' &&
+      (scenario.scenario === null || scenario.scenario.source !== 'unsaved'));
+  const folderFeedbackToast = scenario.folderFeedback.successMessage ? (
+    <Toast
+      message={scenario.folderFeedback.successMessage}
+      tone="success"
+      onDismiss={() => scenario.clearFolderFeedback()}
+    />
+  ) : null;
 
   const handleExamplesDismissedChange = (dismissed: boolean) => {
     onExamplesDismissedChange(dismissed);
@@ -131,72 +140,93 @@ export function WorkspaceContent({
     (scenario.catalogStatus === 'loading' || scenario.selectedLoadStatus === 'loading')
   ) {
     return (
-      <WorkspaceStateShell {...shellProps}>
-        <>
-          {scenarioFileError}
-          <ScenarioLoadState status="loading" />
-        </>
-      </WorkspaceStateShell>
+      <>
+        <WorkspaceStateShell {...shellProps}>
+          <>
+            {scenarioFileError}
+            <ScenarioLoadState status="loading" />
+          </>
+        </WorkspaceStateShell>
+        {folderFeedbackToast}
+      </>
     );
   }
 
   if (!emptyWorkbench && scenario.scenario === null) {
     return (
-      <WorkspaceStateShell {...shellProps}>
-        <>
-          {scenarioFileError}
-          <ScenarioLoadState
-            status={
-              scenario.catalogStatus === 'failed' ||
-              (scenario.selectedLoadStatus === 'failed' && hasValidScenario)
-                ? 'failed'
-                : 'empty'
-            }
-            error={scenario.error}
-            descriptors={scenario.descriptors}
-            onRetry={() => void scenario.retry()}
-          />
-        </>
-      </WorkspaceStateShell>
+      <>
+        <WorkspaceStateShell {...shellProps}>
+          <>
+            {scenarioFileError}
+            <ScenarioLoadState
+              status={
+                scenario.catalogStatus === 'failed' ||
+                (scenario.selectedLoadStatus === 'failed' && hasValidScenario)
+                  ? 'failed'
+                  : 'empty'
+              }
+              error={scenario.error}
+              descriptors={scenario.descriptors}
+              onRetry={() => void scenario.retry()}
+            />
+          </>
+        </WorkspaceStateShell>
+        {folderFeedbackToast}
+      </>
     );
   }
 
   return (
-    <WorkbenchPage
-      key={data.activeWorkspace.id}
-      workspaceId={data.activeWorkspace.id}
-      connection={connection}
-      scenario={scenario.scenario ?? emptyWorkbenchScenario}
-      emptyWorkbench={emptyWorkbench}
-      examples={scenario.examples}
-      localScenarios={scenario.localScenarios}
-      selectedScenarioId={scenario.selectedScenarioId}
-      selectedDescriptor={scenario.selectedDescriptor}
-      selectedLoadError={scenario.selectedLoadError}
-      selectedDiagnostics={scenario.selectedDiagnostics}
-      scenarioLoadingId={
-        scenario.selectedLoadStatus === 'loading' ? scenario.selectedScenarioId : null
-      }
-      scenarioCatalogLoading={scenario.catalogStatus === 'loading'}
-      examplesExpanded={examplesExpanded}
-      examplesDismissed={examplesDismissed}
-      onExamplesExpandedChange={onExamplesExpandedChange}
-      onExamplesDismissedChange={handleExamplesDismissedChange}
-      fileFeedback={scenario.fileFeedback}
-      onSelectScenario={(id) => scenario.selectScenario(id)}
-      onCreateScenario={() => scenario.createScenario()}
-      onExitUnsavedScenario={() => scenario.exitScenario()}
-      onImportScenario={() => scenario.importScenario()}
-      onRemoveScenario={(id) => scenario.removeScenario(id)}
-      onSaveScenario={(draft) => scenario.saveScenario(draft)}
-      onSaveScenarioAs={(draft) => scenario.saveScenarioAs(draft)}
-      onClearFileFeedback={() => scenario.clearFileFeedback()}
-      onRetrySelectedScenario={() => scenario.retrySelectedScenario()}
-      connectionDialogOpen={connectionDialogOpen}
-      onConnectionToggle={onConnectionToggle}
-      onNavigateHome={onNavigateHome}
-      workspaceSelector={workspaceSelector}
-      onWorkspaceGuardChange={onWorkspaceGuardChange}
-    />
+    <>
+      <WorkbenchPage
+        key={data.activeWorkspace.id}
+        workspaceId={data.activeWorkspace.id}
+        connection={connection}
+        scenario={scenario.scenario ?? emptyWorkbenchScenario}
+        emptyWorkbench={emptyWorkbench}
+        examples={scenario.examples}
+        localScenarios={scenario.localScenarios}
+        selectedScenarioId={scenario.selectedScenarioId}
+        selectedDescriptor={scenario.selectedDescriptor}
+        selectedLoadError={scenario.selectedLoadError}
+        selectedDiagnostics={scenario.selectedDiagnostics}
+        scenarioLoadingId={
+          scenario.selectedLoadStatus === 'loading' ? scenario.selectedScenarioId : null
+        }
+        scenarioCatalogLoading={scenario.catalogStatus === 'loading'}
+        examplesExpanded={examplesExpanded}
+        examplesDismissed={examplesDismissed}
+        onExamplesExpandedChange={onExamplesExpandedChange}
+        onExamplesDismissedChange={handleExamplesDismissedChange}
+        fileFeedback={scenario.fileFeedback}
+        onSelectScenario={(id) => scenario.selectScenario(id)}
+        onCreateScenario={() => scenario.createScenario()}
+        onExitUnsavedScenario={() => scenario.exitScenario()}
+        onImportScenario={() => scenario.importScenario()}
+        localFolders={scenario.localFolders}
+        folderOperation={scenario.folderOperation}
+        folderError={scenario.folderError}
+        onCreateFolder={(name, parentId) => scenario.createFolder(name, parentId)}
+        onRenameFolder={(id, name) => scenario.renameFolder(id, name)}
+        onDeleteFolder={(id) => scenario.deleteFolder(id)}
+        onMoveFolder={(id, parentId) => scenario.moveFolder(id, parentId)}
+        onReorderFolder={(id, siblingIndex) => scenario.reorderFolder(id, siblingIndex)}
+        onMoveScenario={(id, folderId, siblingIndex) =>
+          scenario.moveScenario(id, folderId, siblingIndex)
+        }
+        onClearFolderError={() => scenario.clearFolderError()}
+        onRemoveScenario={(id) => scenario.removeScenario(id)}
+        onSaveScenario={(draft) => scenario.saveScenario(draft)}
+        onSaveScenarioAs={(draft) => scenario.saveScenarioAs(draft)}
+        onClearFileFeedback={() => scenario.clearFileFeedback()}
+        onRetrySelectedScenario={() => scenario.retrySelectedScenario()}
+        connectionDialogOpen={connectionDialogOpen}
+        onConnectionToggle={onConnectionToggle}
+        onNavigateHome={onNavigateHome}
+        workspaceSelector={workspaceSelector}
+        onWorkspaceGuardChange={onWorkspaceGuardChange}
+      />
+      {folderFeedbackToast}
+    </>
   );
 }

@@ -1,13 +1,21 @@
-import { useId, useMemo, useState, type ReactNode } from 'react';
 import {
-  CheckCircle,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type DragEvent,
+  type MouseEvent,
+  type ReactNode,
+} from 'react';
+import {
   EmptyPage,
+  FolderPlus,
   InfoCircle,
   MoreHoriz,
   NavArrowDown,
+  PagePlus,
   Plus,
   Search,
-  WarningCircle,
   Xmark,
 } from 'iconoir-react';
 import { LoadingDots } from '../../../components/LoadingDots';
@@ -19,12 +27,27 @@ import type {
   ScenarioDescriptor,
   ScenarioFileOperation,
   ScenarioFileOperationOutcome,
+  ScenarioFolder,
 } from '../types';
+import type { ScenarioFolderOperation } from '../useScenario';
 import {
   buildScenarioTree,
+  getDescendantFolderIds,
   getScenarioTreeFolderPaths,
-  type ScenarioTreeFolder,
 } from '../scenarioTree';
+import {
+  LocalScenarioTree,
+  readDragData,
+  ScenarioRows,
+  type DropTarget,
+} from './ScenarioBrowserTree';
+import {
+  ScenarioBrowserContextMenu,
+  type ScenarioContextMenuState,
+} from './ScenarioBrowserContextMenu';
+import { ScenarioFolderDialogs } from './ScenarioFolderDialogs';
+
+export { ScenarioRows } from './ScenarioBrowserTree';
 
 interface ScenarioBrowserProps {
   examples: ScenarioDescriptor[];
@@ -42,7 +65,6 @@ interface ScenarioBrowserProps {
   onExamplesDismissedChange?: (dismissed: boolean) => void;
   scenarioSelectionDisabled: boolean;
   scenarioRemovalDisabled?: boolean;
-  scenarioRemovalDisabledReason?: string;
   activeScenarioDirty: boolean;
   fileOperation: ScenarioFileOperation;
   fileError: ApiError | null;
@@ -52,197 +74,23 @@ interface ScenarioBrowserProps {
   onNewScenario: () => void;
   onImportScenario: () => void;
   onRemoveScenario: (id: string) => Promise<ScenarioFileOperationOutcome>;
-}
-
-function ScenarioStatusMark({ descriptor }: { descriptor: ScenarioDescriptor }) {
-  if (
-    descriptor.status === 'invalid' ||
-    descriptor.status === 'valid_with_warnings' ||
-    (descriptor.source === 'local' && descriptor.localStatus !== 'available')
-  ) {
-    return (
-      <WarningCircle
-        className={
-          descriptor.source === 'local' && descriptor.localStatus !== 'available'
-            ? 'scenario-row__status-icon--error'
-            : undefined
-        }
-        width={14}
-        height={14}
-        aria-hidden="true"
-      />
-    );
-  }
-  return <CheckCircle width={14} height={14} aria-hidden="true" />;
-}
-
-function statusLabel(descriptor: ScenarioDescriptor): string {
-  if (descriptor.localStatus === 'changed') return 'File changed outside Orson';
-  if (descriptor.localStatus === 'missing') return 'File is missing';
-  if (descriptor.localStatus === 'unreadable') return 'File cannot be read';
-  if (descriptor.status === 'invalid') return 'Invalid scenario';
-  if (descriptor.status === 'valid_with_warnings') {
-    return `${descriptor.warnings.length} scenario warning${descriptor.warnings.length === 1 ? '' : 's'}`;
-  }
-  return 'Valid scenario';
-}
-
-function statusTone(descriptor: ScenarioDescriptor): 'valid' | 'warning' | 'invalid' {
-  if (descriptor.status === 'invalid') return 'invalid';
-  if (
-    descriptor.status === 'valid_with_warnings' ||
-    (descriptor.source === 'local' && descriptor.localStatus !== 'available')
-  ) {
-    return 'warning';
-  }
-  return 'valid';
-}
-
-function FolderIcon({ open }: { open: boolean }) {
-  return (
-    <svg
-      className="scenario-row__folder-icon"
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 640 640"
-      width="16"
-      height="16"
-      fill="currentColor"
-      aria-hidden="true"
-    >
-      <path
-        d={
-          open
-            ? 'M129.5 464L179.5 304L558.9 304L508.9 464L129.5 464zM320.2 512L509 512C530 512 548.6 498.4 554.8 478.3L604.8 318.3C614.5 287.4 591.4 256 559 256L179.6 256C158.6 256 140 269.6 133.8 289.7L112.2 358.4L112.2 160C112.2 151.2 119.4 144 128.2 144L266.9 144C270.4 144 273.7 145.1 276.5 147.2L314.9 176C328.7 186.4 345.6 192 362.9 192L480.2 192C489 192 496.2 199.2 496.2 208L544.2 208C544.2 172.7 515.5 144 480.2 144L362.9 144C356 144 349.2 141.8 343.7 137.6L305.3 108.8C294.2 100.5 280.8 96 266.9 96L128.2 96C92.9 96 64.2 124.7 64.2 160L64.2 448C64.2 483.3 92.9 512 128.2 512L320.2 512z'
-            : 'M128 464L512 464C520.8 464 528 456.8 528 448L528 208C528 199.2 520.8 192 512 192L362.7 192C345.4 192 328.5 186.4 314.7 176L276.3 147.2C273.5 145.1 270.2 144 266.7 144L128 144C119.2 144 112 151.2 112 160L112 448C112 456.8 119.2 464 128 464zM512 512L128 512C92.7 512 64 483.3 64 448L64 160C64 124.7 92.7 96 128 96L266.7 96C280.5 96 294 100.5 305.1 108.8L343.5 137.6C349 141.8 355.8 144 362.7 144L512 144C547.3 144 576 172.7 576 208L576 448C576 483.3 547.3 512 512 512z'
-        }
-      />
-    </svg>
-  );
-}
-
-interface ScenarioRowsProps {
-  folders: ScenarioTreeFolder[];
-  scenarios: ScenarioDescriptor[];
-  expandedFolders: Set<string>;
-  selectedScenarioId: string | null;
-  activeScenarioId: string;
-  scenarioLoadingId: string | null;
-  selectionDisabled: boolean;
-  onToggleFolder: (path: string) => void;
-  onSelectScenario: (id: string) => void;
-  folderToggleDisabled?: boolean;
-  depth?: number;
-  visible?: boolean;
-}
-
-export function ScenarioRows({
-  folders,
-  scenarios,
-  expandedFolders,
-  selectedScenarioId,
-  activeScenarioId,
-  scenarioLoadingId,
-  selectionDisabled,
-  onToggleFolder,
-  onSelectScenario,
-  folderToggleDisabled = false,
-  depth = 0,
-  visible = true,
-}: ScenarioRowsProps) {
-  return (
-    <>
-      {scenarios.map((descriptor) => {
-        const isActive = descriptor.id === activeScenarioId;
-        const isSelected = descriptor.id === selectedScenarioId;
-        const isSelectedInvalid = isSelected && descriptor.status === 'invalid';
-        const disabled = selectionDisabled || scenarioLoadingId !== null;
-        return (
-          <button
-            className={`scenario-row scenario-row--scenario ${isActive ? 'scenario-row--active' : ''} ${isSelected && !isActive ? 'scenario-row--selected' : ''} ${isSelectedInvalid ? 'scenario-row--invalid-selected' : ''}`}
-            type="button"
-            key={descriptor.id}
-            style={{ paddingLeft: `${26 + depth * 14}px` }}
-            tabIndex={visible ? undefined : -1}
-            aria-current={isActive ? 'page' : undefined}
-            aria-label={`${descriptor.displayName}, read-only example, ${statusLabel(descriptor)}${isActive ? ', active' : ''}`}
-            title={`${descriptor.relativePath} · Read-only example · ${statusLabel(descriptor)}`}
-            disabled={disabled}
-            onClick={() => onSelectScenario(descriptor.id)}
-          >
-            <span className="scenario-row__kind">YAML</span>
-            <span className="scenario-row__name">{descriptor.displayName}</span>
-            <span
-              className={`scenario-row__status scenario-row__status--${statusTone(descriptor)}`}
-              aria-label={statusLabel(descriptor)}
-            >
-              {scenarioLoadingId === descriptor.id ? (
-                <LoadingDots size="inline" />
-              ) : (
-                <ScenarioStatusMark descriptor={descriptor} />
-              )}
-            </span>
-          </button>
-        );
-      })}
-      {folders.map((folder) => {
-        const expanded = expandedFolders.has(folder.path);
-        const folderId = `scenario-folder-${folder.path.replaceAll('/', '-')}`;
-        const descendantsVisible = visible && expanded;
-        return (
-          <div key={folder.path} className="scenario-folder">
-            <button
-              className="scenario-row scenario-row--folder"
-              type="button"
-              disabled={folderToggleDisabled}
-              tabIndex={visible ? undefined : -1}
-              aria-expanded={expanded}
-              aria-controls={folderId}
-              style={{ paddingLeft: `${9 + depth * 14}px` }}
-              onClick={() => onToggleFolder(folder.path)}
-            >
-              <span
-                className={`scenario-row__chevron ${expanded ? 'scenario-row__chevron--expanded' : ''}`}
-                aria-hidden="true"
-              >
-                <NavArrowDown width={16} height={16} />
-              </span>
-              <FolderIcon open={expanded} />
-              <span className="scenario-row__name">{folder.name}</span>
-            </button>
-            <div
-              className={`scenario-folder-content ${expanded ? 'scenario-folder-content--expanded' : ''}`}
-              id={folderId}
-              aria-hidden={!expanded}
-            >
-              <div className="scenario-folder-content__inner">
-                <ScenarioRows
-                  folders={folder.folders}
-                  scenarios={folder.scenarios}
-                  expandedFolders={expandedFolders}
-                  selectedScenarioId={selectedScenarioId}
-                  activeScenarioId={activeScenarioId}
-                  scenarioLoadingId={scenarioLoadingId}
-                  selectionDisabled={selectionDisabled}
-                  onToggleFolder={onToggleFolder}
-                  onSelectScenario={onSelectScenario}
-                  folderToggleDisabled={folderToggleDisabled}
-                  depth={depth + 1}
-                  visible={descendantsVisible}
-                />
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </>
-  );
+  localFolders?: ScenarioFolder[];
+  folderOperation?: ScenarioFolderOperation;
+  folderError?: ApiError | null;
+  onClearFolderError?: () => void;
+  onRequestCreateFolder?: (parentId?: string) => void;
+  onRenameFolder?: (id: string, name: string) => Promise<boolean>;
+  onDeleteFolder?: (id: string) => Promise<boolean>;
+  onMoveFolder?: (id: string, parentId: string) => Promise<boolean>;
+  onReorderFolder?: (id: string, siblingIndex: number) => Promise<boolean>;
+  onMoveScenario?: (id: string, folderId: string, siblingIndex: number) => Promise<boolean>;
 }
 
 interface SectionLabelProps {
   label: string;
-  count: number;
   expanded: boolean;
   onToggle: () => void;
+  actions?: ReactNode;
   onDismiss?: () => void;
   dismissDisabled?: boolean;
   dismissDisabledReason?: string;
@@ -250,9 +98,9 @@ interface SectionLabelProps {
 
 function SectionLabel({
   label,
-  count,
   expanded,
   onToggle,
+  actions,
   onDismiss,
   dismissDisabled = false,
   dismissDisabledReason,
@@ -266,109 +114,22 @@ function SectionLabel({
           height={14}
         />
         <span>{label}</span>
-        <span className="scenario-row__count">{count}</span>
       </button>
-      {onDismiss ? (
-        <button
-          type="button"
-          className="scenario-section-dismiss"
-          aria-label={`Hide ${label}`}
-          disabled={dismissDisabled}
-          title={dismissDisabled ? dismissDisabledReason : `Hide ${label} for this session`}
-          onClick={onDismiss}
-        >
-          <Xmark width={13} height={13} />
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function LocalScenarioRow({
-  descriptor,
-  selectedScenarioId,
-  activeScenarioId,
-  scenarioLoadingId,
-  selectionDisabled,
-  scenarioRemovalDisabled,
-  scenarioRemovalDisabledReason,
-  activeScenarioDirty,
-  hasSaveError,
-  readOnly,
-  onSelectScenario,
-  onRemoveScenarioRequest,
-}: {
-  descriptor: ScenarioDescriptor;
-  selectedScenarioId: string | null;
-  activeScenarioId: string;
-  scenarioLoadingId: string | null;
-  selectionDisabled: boolean;
-  scenarioRemovalDisabled?: boolean;
-  scenarioRemovalDisabledReason?: string;
-  activeScenarioDirty: boolean;
-  hasSaveError: boolean;
-  readOnly: boolean;
-  onSelectScenario: (id: string) => void;
-  onRemoveScenarioRequest: (descriptor: ScenarioDescriptor) => void;
-}) {
-  const isActive = descriptor.id === activeScenarioId;
-  const isSelected = descriptor.id === selectedScenarioId;
-  const rowStatus = hasSaveError
-    ? 'Save failed'
-    : isActive && activeScenarioDirty
-      ? 'Unsaved changes'
-      : statusLabel(descriptor);
-  const disabled = selectionDisabled || scenarioLoadingId !== null;
-  const removeDisabled = disabled || scenarioRemovalDisabled || (isActive && activeScenarioDirty);
-  return (
-    <div
-      className={`scenario-row__local-wrapper${readOnly ? ' scenario-row__local-wrapper--read-only' : ''}`}
-    >
-      <button
-        className={`scenario-row scenario-row--scenario scenario-row--local ${isActive ? 'scenario-row--active' : ''} ${isSelected && !isActive ? 'scenario-row--selected' : ''} ${descriptor.status === 'invalid' && isSelected ? 'scenario-row--invalid-selected' : ''} ${hasSaveError ? 'scenario-row--save-error' : ''}`}
-        type="button"
-        aria-current={isActive ? 'page' : undefined}
-        aria-label={`${descriptor.sourceFilename}, local file, ${rowStatus}${isActive ? ', active' : ''}`}
-        title={`${descriptor.sourcePath || descriptor.sourceFilename} · ${rowStatus}`}
-        disabled={disabled}
-        onClick={() => onSelectScenario(descriptor.id)}
-      >
-        <EmptyPage width={14} height={14} className="scenario-row__file" aria-hidden="true" />
-        <span className="scenario-row__name">{descriptor.sourceFilename}</span>
-        {isActive && activeScenarioDirty ? (
-          <span className="scenario-row__dirty" aria-hidden="true" />
+      <div className="scenario-section-label-actions">
+        {actions}
+        {onDismiss ? (
+          <button
+            type="button"
+            className="scenario-section-dismiss"
+            aria-label={`Hide ${label}`}
+            disabled={dismissDisabled}
+            title={dismissDisabled ? dismissDisabledReason : `Hide ${label} for this session`}
+            onClick={onDismiss}
+          >
+            <Xmark width={13} height={13} />
+          </button>
         ) : null}
-        <span
-          className={`scenario-row__status scenario-row__status--${hasSaveError ? 'invalid' : statusTone(descriptor)}`}
-          aria-label={rowStatus}
-        >
-          {scenarioLoadingId === descriptor.id ? (
-            <LoadingDots size="inline" />
-          ) : hasSaveError ? (
-            <WarningCircle width={14} height={14} aria-hidden="true" />
-          ) : (
-            <ScenarioStatusMark descriptor={descriptor} />
-          )}
-        </span>
-      </button>
-      {!readOnly ? (
-        <button
-          className="scenario-row__remove"
-          type="button"
-          aria-label={`Remove ${descriptor.sourceFilename} from this workspace`}
-          title={
-            scenarioRemovalDisabled
-              ? scenarioRemovalDisabledReason
-              : isActive && activeScenarioDirty
-                ? 'Save or discard changes before removing'
-                : 'Remove from workspace'
-          }
-          disabled={removeDisabled}
-          onClick={() => onRemoveScenarioRequest(descriptor)}
-        >
-          <Xmark width={14} height={14} strokeWidth={2} />
-        </button>
-      ) : null}
+      </div>
     </div>
   );
 }
@@ -389,7 +150,6 @@ export function ScenarioBrowser({
   onExamplesDismissedChange,
   scenarioSelectionDisabled,
   scenarioRemovalDisabled = false,
-  scenarioRemovalDisabledReason = 'Save or exit the unsaved scenario before removing another scenario',
   activeScenarioDirty,
   fileOperation,
   fileError,
@@ -399,6 +159,16 @@ export function ScenarioBrowser({
   onNewScenario,
   onImportScenario,
   onRemoveScenario,
+  localFolders = [],
+  folderOperation = 'idle',
+  folderError = null,
+  onClearFolderError = () => undefined,
+  onRequestCreateFolder = () => undefined,
+  onRenameFolder = () => Promise.resolve(false),
+  onDeleteFolder = () => Promise.resolve(false),
+  onMoveFolder = () => Promise.resolve(false),
+  onReorderFolder = () => Promise.resolve(false),
+  onMoveScenario = () => Promise.resolve(false),
 }: ScenarioBrowserProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [internalExamplesExpanded, setInternalExamplesExpanded] = useState(true);
@@ -406,6 +176,11 @@ export function ScenarioBrowser({
   const [localsExpanded, setLocalsExpanded] = useState(true);
   const [pendingRemoval, setPendingRemoval] = useState<ScenarioDescriptor | null>(null);
   const [scenarioGuideOpen, setScenarioGuideOpen] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ScenarioContextMenuState | null>(null);
+  const [renameFolder, setRenameFolder] = useState<ScenarioFolder | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteFolder, setDeleteFolder] = useState<ScenarioFolder | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const importDisabledDescriptionId = useId();
   const newDisabledDescriptionId = useId();
   const examplesExpanded = controlledExamplesExpanded ?? internalExamplesExpanded;
@@ -419,6 +194,10 @@ export function ScenarioBrowser({
     onExamplesDismissedChange?.(dismissed);
   };
   const tree = useMemo(() => buildScenarioTree(examples, searchQuery), [examples, searchQuery]);
+  const localTree = useMemo(
+    () => buildScenarioTree(localScenarios, searchQuery, localFolders),
+    [localFolders, localScenarios, searchQuery],
+  );
   const matchingLocals = useMemo(() => {
     const query = searchQuery.trim().toLocaleLowerCase();
     if (query === '') return localScenarios;
@@ -427,6 +206,7 @@ export function ScenarioBrowser({
     );
   }, [localScenarios, searchQuery]);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() => new Set());
+  const [collapsedLocalFolders, setCollapsedLocalFolders] = useState<Set<string>>(() => new Set());
   const searchActive = searchQuery.trim() !== '';
   const expandedFolders = useMemo(() => {
     const availableFolders = getScenarioTreeFolderPaths(tree);
@@ -435,6 +215,27 @@ export function ScenarioBrowser({
     for (const folderPath of collapsedFolders) availableFolders.delete(folderPath);
     return availableFolders;
   }, [collapsedFolders, searchActive, tree]);
+  const expandedLocalFolders = useMemo(() => {
+    const availableFolders = getScenarioTreeFolderPaths(localTree);
+    if (searchActive) return availableFolders;
+    for (const folderId of collapsedLocalFolders) availableFolders.delete(folderId);
+    return availableFolders;
+  }, [collapsedLocalFolders, localTree, searchActive]);
+  useEffect(() => {
+    if (contextMenu === null) return;
+    const close = () => setContextMenu(null);
+    const closeOnEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setContextMenu(null);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('scroll', close, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('scroll', close, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [contextMenu]);
   const fileBusy = fileOperation !== 'idle';
   const interactionDisabled = scenarioSelectionDisabled || readOnly;
   const hideExamplesDisabled =
@@ -516,8 +317,127 @@ export function ScenarioBrowser({
     });
   };
 
+  const toggleLocalFolder = (folderId: string) => {
+    setCollapsedLocalFolders((current) => {
+      const next = new Set(current);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
+  };
+
+  const openContextMenu = (
+    event: MouseEvent,
+    item: { kind: 'folder' | 'scenario' | 'root'; id: string },
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setContextMenu({ x: event.clientX, y: event.clientY, ...item });
+  };
+
+  const beginFolderRename = (folder: ScenarioFolder) => {
+    setContextMenu(null);
+    onClearFolderError();
+    setRenameFolder(folder);
+    setRenameValue(folder.name);
+  };
+
+  const confirmFolderRename = async () => {
+    if (renameFolder !== null && (await onRenameFolder(renameFolder.id, renameValue))) {
+      setRenameFolder(null);
+    }
+  };
+
+  const closeRenameFolder = () => {
+    if (folderOperation === 'idle') {
+      onClearFolderError();
+      setRenameFolder(null);
+    }
+  };
+
+  const folderScenarioCount = (folderId: string): number => {
+    const descendants = getDescendantFolderIds(localFolders, folderId);
+    return localScenarios.filter((scenario) => descendants.has(scenario.folderId ?? '')).length;
+  };
+
+  const folderContainsActiveScenario = (folderId: string): boolean => {
+    const descendants = getDescendantFolderIds(localFolders, folderId);
+    const active = localScenarios.find((scenario) => scenario.id === activeScenarioId);
+    return active !== undefined && descendants.has(active.folderId ?? '');
+  };
+
+  const rootDropEnabled =
+    !searchActive &&
+    !readOnly &&
+    !interactionDisabled &&
+    !fileBusy &&
+    !scenarioCatalogLoading &&
+    scenarioLoadingId === null &&
+    folderOperation === 'idle';
+  const handleRootDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!rootDropEnabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const drag = readDragData(event);
+    if (drag?.kind === 'folder') void onMoveFolder(drag.id, '');
+    if (drag?.kind === 'scenario') void onMoveScenario(drag.id, '', localTree.scenarios.length);
+  };
+  const handleRootDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!rootDropEnabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setDropTarget({ kind: 'root', id: '', position: 'inside' });
+  };
+  const handleLocalRootDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!rootDropEnabled) return;
+    setDropTarget(null);
+    handleRootDrop(event);
+  };
+
+  const folderMenuDisabled =
+    readOnly || scenarioSelectionDisabled || fileBusy || folderOperation !== 'idle';
+  const scenarioMenuDisabled = folderMenuDisabled || scenarioRemovalDisabled;
+
+  const confirmDeleteFolder = async () => {
+    if (deleteFolder !== null && (await onDeleteFolder(deleteFolder.id))) setDeleteFolder(null);
+  };
+  const closeDeleteFolder = () => {
+    if (folderOperation === 'idle') {
+      onClearFolderError();
+      setDeleteFolder(null);
+    }
+  };
+
   return (
     <>
+      {contextMenu ? (
+        <ScenarioBrowserContextMenu
+          contextMenu={contextMenu}
+          localFolders={localFolders}
+          localScenarios={localScenarios}
+          activeScenarioId={activeScenarioId}
+          activeScenarioDirty={activeScenarioDirty}
+          folderMenuDisabled={folderMenuDisabled}
+          scenarioMenuDisabled={scenarioMenuDisabled}
+          folderContainsActiveScenario={folderContainsActiveScenario}
+          onClose={() => setContextMenu(null)}
+          onRequestCreateFolder={onRequestCreateFolder}
+          onRenameFolder={beginFolderRename}
+          onDeleteFolder={(folder) => {
+            setContextMenu(null);
+            onClearFolderError();
+            setDeleteFolder(folder);
+          }}
+          onMoveScenario={(id, folderId, siblingIndex) => {
+            setContextMenu(null);
+            void onMoveScenario(id, folderId, siblingIndex);
+          }}
+          onRemoveScenario={(descriptor) => {
+            setContextMenu(null);
+            requestRemove(descriptor);
+          }}
+        />
+      ) : null}
       <aside className="scenario-sidebar" aria-label="Scenario browser">
         <div className="scenario-sidebar__header">
           <div className="scenario-sidebar__title">
@@ -556,6 +476,14 @@ export function ScenarioBrowser({
               <small>Unsaved</small>
             </div>
           ) : null}
+          {folderError && renameFolder === null && deleteFolder === null ? (
+            <div className="scenario-folder-error" role="alert">
+              <span>{folderError.message}</span>
+              <button type="button" aria-label="Dismiss folder error" onClick={onClearFolderError}>
+                <Xmark width={13} height={13} />
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div className="scenario-sidebar__scroll">
@@ -573,7 +501,6 @@ export function ScenarioBrowser({
             <section aria-label="Examples">
               <SectionLabel
                 label="Examples"
-                count={examples.length}
                 expanded={examplesExpanded}
                 onToggle={() => setExamplesExpanded(!examplesExpanded)}
                 onDismiss={() => setExamplesDismissed(true)}
@@ -605,36 +532,80 @@ export function ScenarioBrowser({
             </section>
           )}
 
-          <section aria-label="My scenarios">
+          <section
+            className="scenario-sidebar__local-section"
+            aria-label="My scenarios"
+            onContextMenu={(event) => openContextMenu(event, { kind: 'root', id: '' })}
+          >
             <SectionLabel
               label="My scenarios"
-              count={localScenarios.length}
               expanded={localsExpanded}
               onToggle={() => setLocalsExpanded((expanded) => !expanded)}
+              actions={
+                <>
+                  <button
+                    className="scenario-section-action"
+                    type="button"
+                    aria-label="New folder"
+                    title={folderMenuDisabled ? 'Finish the current operation first' : 'New folder'}
+                    disabled={folderMenuDisabled}
+                    onClick={() => onRequestCreateFolder()}
+                  >
+                    <FolderPlus width={14} height={14} />
+                  </button>
+                  <button
+                    className="scenario-section-action"
+                    type="button"
+                    aria-label="New scenario"
+                    title={importDisabled ? importDisabledReason : 'New scenario'}
+                    disabled={importDisabled}
+                    onClick={onNewScenario}
+                  >
+                    <PagePlus width={14} height={14} />
+                  </button>
+                </>
+              }
             />
             {localsExpanded ? (
-              <>
-                {matchingLocals.map((descriptor) => (
-                  <LocalScenarioRow
-                    key={descriptor.id}
-                    descriptor={descriptor}
-                    selectedScenarioId={selectedScenarioId}
-                    activeScenarioId={activeScenarioId}
-                    scenarioLoadingId={scenarioLoadingId}
-                    selectionDisabled={interactionDisabled || fileBusy || scenarioCatalogLoading}
-                    activeScenarioDirty={activeScenarioDirty}
-                    scenarioRemovalDisabled={scenarioRemovalDisabled}
-                    scenarioRemovalDisabledReason={scenarioRemovalDisabledReason}
-                    readOnly={readOnly}
-                    hasSaveError={
-                      descriptor.id === activeScenarioId &&
-                      fileError !== null &&
-                      (fileErrorOperation === 'saving' || fileErrorOperation === 'saving_as')
-                    }
-                    onSelectScenario={onSelectScenario}
-                    onRemoveScenarioRequest={requestRemove}
+              <div
+                className={`scenario-local-scenarios-area ${dropTarget?.kind === 'root' ? 'scenario-local-scenarios-area--drop-target' : ''}`}
+                onDragOver={handleRootDragOver}
+                onDrop={handleLocalRootDrop}
+              >
+                {localTree.folders.length > 0 || localTree.scenarios.length > 0 ? (
+                  <LocalScenarioTree
+                    folders={localTree.folders}
+                    scenarios={localTree.scenarios}
+                    expandedFolders={expandedLocalFolders}
+                    localFolderRecords={localFolders}
+                    state={{
+                      selectedScenarioId,
+                      activeScenarioId,
+                      scenarioLoadingId,
+                      selectionDisabled: interactionDisabled || fileBusy || scenarioCatalogLoading,
+                      readOnly,
+                      activeScenarioDirty,
+                      saveErrorScenarioId:
+                        fileError !== null &&
+                        (fileErrorOperation === 'saving' || fileErrorOperation === 'saving_as')
+                          ? activeScenarioId
+                          : null,
+                      searchActive,
+                      folderOperation,
+                    }}
+                    actions={{
+                      onToggleFolder: toggleLocalFolder,
+                      onSelectScenario,
+                      onContextMenu: openContextMenu,
+                      onMoveFolder,
+                      onReorderFolder,
+                      onMoveScenario,
+                      onDropTargetChange: setDropTarget,
+                    }}
+                    dropTarget={dropTarget}
+                    onRootDrop={handleRootDrop}
                   />
-                ))}
+                ) : null}
                 {matchingLocals.length === 0 ? (
                   <div className="scenario-sidebar__empty-local">
                     <span>
@@ -644,7 +615,7 @@ export function ScenarioBrowser({
                     </span>
                   </div>
                 ) : null}
-              </>
+              </div>
             ) : null}
           </section>
         </div>
@@ -729,6 +700,19 @@ export function ScenarioBrowser({
       {scenarioGuideOpen ? (
         <ScenarioGuideModal open onClose={() => setScenarioGuideOpen(false)} />
       ) : null}
+      <ScenarioFolderDialogs
+        renameFolder={renameFolder}
+        renameValue={renameValue}
+        folderError={folderError}
+        folderOperation={folderOperation}
+        deleteFolder={deleteFolder}
+        folderScenarioCount={folderScenarioCount}
+        onRenameValueChange={setRenameValue}
+        onConfirmRename={() => void confirmFolderRename()}
+        onCloseRename={closeRenameFolder}
+        onConfirmDelete={() => void confirmDeleteFolder()}
+        onCloseDelete={closeDeleteFolder}
+      />
     </>
   );
 }

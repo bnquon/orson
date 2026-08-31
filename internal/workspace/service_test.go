@@ -36,7 +36,7 @@ func TestDatabaseMigrationStartsWithoutWorkspace(t *testing.T) {
 	}
 	defer db.Close()
 	var version int
-	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 2 {
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("migration version = %d, err = %v", version, err)
 	}
 }
@@ -84,7 +84,7 @@ func TestDatabaseMigrationUpgradesVersionOneWithRunHistory(t *testing.T) {
 	}
 	defer db.Close()
 	var version int
-	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 2 {
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("migration version = %d, err = %v", version, err)
 	}
 	var tableName string
@@ -180,6 +180,194 @@ func TestRemoveScenarioOnlyRemovesTheWorkspaceAssociation(t *testing.T) {
 	}
 	if len(state.Scenarios[first]) != 1 {
 		t.Fatalf("other workspace association was removed: %+v", state.Scenarios)
+	}
+}
+
+func TestScenarioFoldersValidateNestingAndOrdering(t *testing.T) {
+	service := testService(t)
+	workspaceID := service.Snapshot().ActiveWorkspaceID
+	state, err := service.CreateFolder(workspaceID, "", " Checkout ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootID := state.Folders[workspaceID][0].ID
+	state, err = service.CreateFolder(workspaceID, rootID, "Retries")
+	if err != nil {
+		t.Fatal(err)
+	}
+	childID := state.Folders[workspaceID][1].ID
+	if _, err := service.CreateFolder(workspaceID, "", "checkout"); !errors.Is(err, ErrFolderNameDuplicate) {
+		t.Fatalf("duplicate root folder error = %v", err)
+	}
+	if _, err := service.CreateFolder(workspaceID, rootID, "bad/name"); !errors.Is(err, ErrFolderNameInvalid) {
+		t.Fatalf("invalid folder name error = %v", err)
+	}
+	if _, err := service.MoveFolder(workspaceID, rootID, childID); !errors.Is(err, ErrFolderMoveCycle) {
+		t.Fatalf("folder cycle error = %v", err)
+	}
+
+	if err := service.UpsertScenario(ScenarioReference{
+		WorkspaceID: workspaceID, CanonicalPath: "/tmp/a.yaml", DisplayFilename: "a.yaml", ImportedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpsertScenario(ScenarioReference{
+		WorkspaceID: workspaceID, CanonicalPath: "/tmp/b.yaml", DisplayFilename: "b.yaml", ImportedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.MoveScenario(workspaceID, "/tmp/a.yaml", rootID); err != nil {
+		t.Fatal(err)
+	}
+	state, err = service.ReorderScenario(workspaceID, "/tmp/a.yaml", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reference := range state.Scenarios[workspaceID] {
+		if reference.CanonicalPath == "/tmp/a.yaml" && reference.FolderID != rootID {
+			t.Fatalf("scenario folder = %q, want %q", reference.FolderID, rootID)
+		}
+	}
+}
+
+func TestScenarioFoldersAreWorkspaceScopedAndPersisted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orson.db")
+	service := NewService(Options{DatabasePath: path})
+	state, err := service.Create("First")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstID := state.ActiveWorkspaceID
+	state, err = service.Create("Second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondID := state.ActiveWorkspaceID
+
+	state, err = service.CreateFolder(firstID, "", "Zed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstZedID := state.Folders[firstID][0].ID
+	state, err = service.CreateFolder(firstID, "", "Alpha")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstAlphaID := state.Folders[firstID][1].ID
+	state, err = service.CreateFolder(firstID, firstZedID, "Nested")
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstNestedID := state.Folders[firstID][2].ID
+	state, err = service.CreateFolder(secondID, "", "Zed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondZedID := state.Folders[secondID][0].ID
+
+	if _, err := service.ReorderFolder(firstID, firstZedID, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpsertScenario(ScenarioReference{
+		WorkspaceID: firstID, CanonicalPath: "/tmp/first.yaml", DisplayFilename: "first.yaml",
+		FolderID: firstAlphaID, ImportedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpsertScenario(ScenarioReference{
+		WorkspaceID: firstID, CanonicalPath: "/tmp/nested.yaml", DisplayFilename: "nested.yaml",
+		FolderID: firstNestedID, ImportedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpsertScenario(ScenarioReference{
+		WorkspaceID: secondID, CanonicalPath: "/tmp/second.yaml", DisplayFilename: "second.yaml",
+		FolderID: secondZedID, ImportedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := NewService(Options{DatabasePath: path})
+	defer reopened.Close()
+	state = reopened.Snapshot()
+	firstFolders := state.Folders[firstID]
+	if len(firstFolders) != 3 || firstFolders[0].ID != firstZedID || firstFolders[1].ID != firstAlphaID {
+		t.Fatalf("first workspace folder order after reopen = %+v", firstFolders)
+	}
+	if firstFolders[2].ID != firstNestedID || firstFolders[2].ParentID != firstZedID {
+		t.Fatalf("nested folder after reopen = %+v", firstFolders[2])
+	}
+	if len(state.Folders[secondID]) != 1 || state.Folders[secondID][0].ID != secondZedID {
+		t.Fatalf("second workspace folders after reopen = %+v", state.Folders[secondID])
+	}
+	if len(state.Scenarios[firstID]) != 2 || state.Scenarios[firstID][0].FolderID == "" {
+		t.Fatalf("first workspace scenarios after reopen = %+v", state.Scenarios[firstID])
+	}
+	if len(state.Scenarios[secondID]) != 1 || state.Scenarios[secondID][0].FolderID != secondZedID {
+		t.Fatalf("second workspace scenarios after reopen = %+v", state.Scenarios[secondID])
+	}
+}
+
+func TestDeleteFolderKeepsSharedFilesAndReportsFailures(t *testing.T) {
+	service := testService(t)
+	firstID := service.Snapshot().ActiveWorkspaceID
+	state, err := service.Create("Second")
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondID := state.ActiveWorkspaceID
+	state, err = service.CreateFolder(firstID, "", "Orders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	folderID := state.Folders[firstID][0].ID
+	state, err = service.CreateFolder(firstID, folderID, "Retries")
+	if err != nil {
+		t.Fatal(err)
+	}
+	childFolderID := state.Folders[firstID][1].ID
+	for _, path := range []string{"/tmp/shared.yaml", "/tmp/failing.yaml"} {
+		if err := service.UpsertScenario(ScenarioReference{
+			WorkspaceID: firstID, CanonicalPath: path, DisplayFilename: filepath.Base(path), FolderID: folderID,
+			ImportedAt: time.Now().UTC(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := service.UpsertScenario(ScenarioReference{
+		WorkspaceID: firstID, CanonicalPath: "/tmp/nested.yaml", DisplayFilename: "nested.yaml", FolderID: childFolderID,
+		ImportedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpsertScenario(ScenarioReference{
+		WorkspaceID: secondID, CanonicalPath: "/tmp/shared.yaml", DisplayFilename: "shared.yaml", ImportedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	state, report, err := service.DeleteFolder(firstID, folderID, func(path string) error {
+		if path == "/tmp/failing.yaml" {
+			return errors.New("permission denied")
+		}
+		return nil
+	})
+	if !errors.Is(err, ErrFolderDeletionPartial) {
+		t.Fatalf("delete folder error = %v", err)
+	}
+	if len(report.SharedPaths) != 1 || len(report.FailedPaths) != 1 {
+		t.Fatalf("delete report = %+v", report)
+	}
+	if len(state.Scenarios[firstID]) != 1 || state.Scenarios[firstID][0].CanonicalPath != "/tmp/failing.yaml" {
+		t.Fatalf("remaining scenarios = %+v", state.Scenarios[firstID])
+	}
+	if len(state.Folders[firstID]) != 1 || state.Folders[firstID][0].ID != folderID {
+		t.Fatalf("remaining folders after recursive delete = %+v", state.Folders[firstID])
+	}
+	if len(state.Scenarios[secondID]) != 1 {
+		t.Fatalf("shared scenario removed from other workspace = %+v", state.Scenarios[secondID])
 	}
 }
 
