@@ -465,6 +465,9 @@ func TestConnectionPersistenceContainsOnlyNonSecretColumns(t *testing.T) {
 			t.Fatalf("unexpected sensitive column %q", name)
 		}
 	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestFallbackWarningAndConfirmedSnapshotRecovery(t *testing.T) {
