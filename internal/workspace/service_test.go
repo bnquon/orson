@@ -3,6 +3,7 @@ package workspace
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -363,7 +364,7 @@ func TestNestedFoldersRemainPersistableAfterReopen(t *testing.T) {
 	}
 }
 
-func TestDeleteFolderKeepsSharedFilesAndReportsFailures(t *testing.T) {
+func TestDeleteFolderRemovesAssociationsWithoutDeletingFiles(t *testing.T) {
 	service := testService(t)
 	firstID := service.Snapshot().ActiveWorkspaceID
 	state, err := service.Create("Second")
@@ -381,7 +382,12 @@ func TestDeleteFolderKeepsSharedFilesAndReportsFailures(t *testing.T) {
 		t.Fatal(err)
 	}
 	childFolderID := state.Folders[firstID][1].ID
-	for _, path := range []string{"/tmp/shared.yaml", "/tmp/failing.yaml"} {
+	sharedPath := filepath.Join(t.TempDir(), "shared.yaml")
+	removedPath := filepath.Join(t.TempDir(), "removed.yaml")
+	for _, path := range []string{sharedPath, removedPath} {
+		if err := os.WriteFile(path, []byte("name: test\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		if err := service.UpsertScenario(ScenarioReference{
 			WorkspaceID: firstID, CanonicalPath: path, DisplayFilename: filepath.Base(path), FolderID: folderID,
 			ImportedAt: time.Now().UTC(),
@@ -389,37 +395,41 @@ func TestDeleteFolderKeepsSharedFilesAndReportsFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	nestedPath := filepath.Join(t.TempDir(), "nested.yaml")
+	if err := os.WriteFile(nestedPath, []byte("name: nested\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err := service.UpsertScenario(ScenarioReference{
-		WorkspaceID: firstID, CanonicalPath: "/tmp/nested.yaml", DisplayFilename: "nested.yaml", FolderID: childFolderID,
+		WorkspaceID: firstID, CanonicalPath: nestedPath, DisplayFilename: "nested.yaml", FolderID: childFolderID,
 		ImportedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.UpsertScenario(ScenarioReference{
-		WorkspaceID: secondID, CanonicalPath: "/tmp/shared.yaml", DisplayFilename: "shared.yaml", ImportedAt: time.Now().UTC(),
+		WorkspaceID: secondID, CanonicalPath: sharedPath, DisplayFilename: "shared.yaml", ImportedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatal(err)
 	}
-	state, report, err := service.DeleteFolder(firstID, folderID, func(path string) error {
-		if path == "/tmp/failing.yaml" {
-			return errors.New("permission denied")
-		}
-		return nil
-	})
-	if !errors.Is(err, ErrFolderDeletionPartial) {
-		t.Fatalf("delete folder error = %v", err)
+	state, report, err := service.DeleteFolder(firstID, folderID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(report.SharedPaths) != 1 || len(report.FailedPaths) != 1 {
+	if len(report.SharedPaths) != 1 || len(report.RemovedPaths) != 3 {
 		t.Fatalf("delete report = %+v", report)
 	}
-	if len(state.Scenarios[firstID]) != 1 || state.Scenarios[firstID][0].CanonicalPath != "/tmp/failing.yaml" {
+	if len(state.Scenarios[firstID]) != 0 {
 		t.Fatalf("remaining scenarios = %+v", state.Scenarios[firstID])
 	}
-	if len(state.Folders[firstID]) != 1 || state.Folders[firstID][0].ID != folderID {
+	if len(state.Folders[firstID]) != 0 {
 		t.Fatalf("remaining folders after recursive delete = %+v", state.Folders[firstID])
 	}
 	if len(state.Scenarios[secondID]) != 1 {
 		t.Fatalf("shared scenario removed from other workspace = %+v", state.Scenarios[secondID])
+	}
+	for _, path := range []string{sharedPath, removedPath, nestedPath} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("scenario file %q was removed from disk: %v", path, err)
+		}
 	}
 }
 

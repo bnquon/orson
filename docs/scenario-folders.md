@@ -15,9 +15,7 @@ in the scenario list to move them back to the workspace root, or between
 sibling items to reorder them. Folders can be nested by dropping one folder
 onto another folder.
 
-Deleting a folder deletes the folder and its nested folders from the workspace,
-removes their scenario associations, and attempts to delete the associated
-local files. A file referenced by another workspace is kept on disk and only
-removed from the current workspace. If a file cannot be deleted, its scenario
-association remains so the failure can be retried. Use **Remove from workspace**
-when you want to forget a scenario association without deleting the file.
+Deleting a folder deletes the folder and its nested folders from the workspace
+and removes their scenario associations. The associated local files are always
+kept on disk. Use **Remove from workspace** when you want to forget a scenario
+association without deleting the file.

@@ -73,7 +73,7 @@ export function ScenarioFolderDialogs({
       <Modal
         open={deleteFolder !== null}
         title="Delete folder?"
-        description="This removes the folder organization and deletes its local scenario files when they are not shared with another workspace."
+        description="This removes the folder organization and scenario associations from the workspace. Your files remain on disk."
         closeDisabled={folderOperation !== 'idle'}
         onClose={onCloseDelete}
         footer={
@@ -87,7 +87,7 @@ export function ScenarioFolderDialogs({
               disabled={folderOperation !== 'idle'}
               onClick={onConfirmDelete}
             >
-              {folderOperation === 'deleting' ? 'Deleting…' : 'Delete folder and files'}
+              {folderOperation === 'deleting' ? 'Deleting…' : 'Delete folder'}
             </ModalButton>
           </ModalActions>
         }

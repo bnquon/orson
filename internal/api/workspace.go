@@ -38,10 +38,8 @@ type ScenarioFolder struct {
 }
 
 type FolderMutationSummary struct {
-	RemovedScenarioCount int      `json:"removedScenarioCount"`
-	RemovedFileCount     int      `json:"removedFileCount"`
-	SharedFileCount      int      `json:"sharedFileCount"`
-	FailedFiles          []string `json:"failedFiles,omitempty"`
+	RemovedScenarioCount int `json:"removedScenarioCount"`
+	SharedFileCount      int `json:"sharedFileCount"`
 }
 
 type ScenarioFolderData struct {
