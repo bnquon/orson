@@ -1,13 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-  type SubmitEvent,
-} from 'react';
-import type { WorkspaceGuardState } from '../workspace/useWorkspace';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type SubmitEvent } from 'react';
 import {
   CheckCircle,
   DotArrowRight,
@@ -21,6 +12,7 @@ import { Modal, ModalActions, ModalButton } from '../../components/Modal';
 import { Toast } from '../../components/Toast';
 import { Tooltip } from '../../components/Tooltip';
 import { ComposePanel } from './components/ComposePanel';
+import { FolderNameDialog } from './components/FolderNameDialog';
 import { FlowPanel } from './components/FlowPanel';
 import { HistoricalRunPanel } from './components/HistoricalRunPanel';
 import { HistoricalRunToolbar } from './components/HistoricalRunToolbar';
@@ -38,27 +30,13 @@ import { buildFlowViewModel } from './flowModel';
 import { toObservedRun } from './observedRun';
 import { formatStatusLabel, isActiveRunStatus, terminalRunStatuses } from './runStatus';
 import { toRunRequest } from './runMapping';
-import type { ScenarioDraftData } from './scenarioMapping';
 import { useScenarioDraftSession } from './scenarioDraftSession';
 import { useScenarioFileOperations } from './useScenarioFileOperations';
-import type { ScenarioFolderOperation } from './useScenario';
 import { useRun } from './useRun';
 import { useRunHistory } from './useRunHistory';
-import type {
-  ComposeEditorTab,
-  KafkaConnection,
-  TouchedState,
-  ValidatableField,
-  WorkspaceMode,
-  LoadedScenario,
-  ScenarioDescriptor,
-  ScenarioDiagnostic,
-  ScenarioFileFeedback,
-  ScenarioFileOperationOutcome,
-  ScenarioFolder,
-} from './types';
-import type { ApiError } from '../../api/result';
+import type { ComposeEditorTab, TouchedState, ValidatableField, WorkspaceMode } from './types';
 import { getJsonError, validateScenario } from './validation';
+import type { WorkbenchPageProps } from './workbenchPageTypes';
 import './styles/controls.css';
 
 const initialTouched: TouchedState = {
@@ -67,145 +45,54 @@ const initialTouched: TouchedState = {
   headerIds: [],
 };
 
-function FolderNameDialog({
-  open,
-  parentName,
-  value,
-  error,
-  busy,
-  onChange,
-  onClose,
-  onSubmit,
-}: {
-  open: boolean;
-  parentName: string;
-  value: string;
-  error: string;
-  busy: boolean;
-  onChange: (value: string) => void;
-  onClose: () => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <Modal
-      open={open}
-      title={parentName ? `New folder in ${parentName}` : 'New folder'}
-      description="Folder names are trimmed and unique within their parent folder."
-      closeDisabled={busy}
-      onClose={onClose}
-      footer={
-        <ModalActions>
-          <ModalButton type="button" onClick={onClose}>
-            Cancel
-          </ModalButton>
-          <ModalButton tone="primary" type="submit" form="new-scenario-folder" disabled={busy}>
-            {busy ? 'Creating…' : 'Create folder'}
-          </ModalButton>
-        </ModalActions>
-      }
-    >
-      <form id="new-scenario-folder" onSubmit={onSubmit}>
-        <label className="scenario-folder-field">
-          <span>Folder name</span>
-          <input autoFocus value={value} onChange={(event) => onChange(event.target.value)} />
-        </label>
-        {error ? (
-          <p className="workspace-dialog__error" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </form>
-    </Modal>
-  );
-}
-
-interface WorkbenchPageProps {
-  workspaceId: string;
-  connection: KafkaConnection;
-  scenario: LoadedScenario;
-  emptyWorkbench?: boolean;
-  examples: ScenarioDescriptor[];
-  localScenarios: ScenarioDescriptor[];
-  selectedScenarioId: string | null;
-  selectedDescriptor: ScenarioDescriptor | null;
-  selectedLoadError: ApiError | null;
-  selectedDiagnostics: ScenarioDiagnostic[];
-  scenarioLoadingId: string | null;
-  scenarioCatalogLoading: boolean;
-  examplesExpanded: boolean;
-  examplesDismissed: boolean;
-  onExamplesExpandedChange: (expanded: boolean) => void;
-  onExamplesDismissedChange: (dismissed: boolean) => void;
-  fileFeedback: ScenarioFileFeedback;
-  onSelectScenario: (id: string) => Promise<void>;
-  onCreateScenario: () => void;
-  onExitUnsavedScenario: () => void;
-  onImportScenario: () => Promise<ScenarioFileOperationOutcome>;
-  localFolders: ScenarioFolder[];
-  folderOperation: ScenarioFolderOperation;
-  folderError: ApiError | null;
-  onCreateFolder: (name: string, parentId?: string) => Promise<boolean>;
-  onRenameFolder: (id: string, name: string) => Promise<boolean>;
-  onDeleteFolder: (id: string) => Promise<boolean>;
-  onMoveFolder: (id: string, parentId: string) => Promise<boolean>;
-  onReorderFolder: (id: string, siblingIndex: number) => Promise<boolean>;
-  onMoveScenario: (id: string, folderId: string, siblingIndex: number) => Promise<boolean>;
-  onClearFolderError: () => void;
-  onRemoveScenario: (id: string) => Promise<ScenarioFileOperationOutcome>;
-  onSaveScenario: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
-  onSaveScenarioAs: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
-  onClearFileFeedback: () => void;
-  onRetrySelectedScenario: () => Promise<void>;
-  connectionDialogOpen: boolean;
-  onConnectionToggle: () => void;
-  onNavigateHome: () => void;
-  workspaceSelector: ReactNode;
-  onWorkspaceGuardChange: (guards: WorkspaceGuardState) => void;
-}
-
 export function WorkbenchPage({
   workspaceId,
   connection,
-  scenario,
+  scenario: scenarioModel,
   emptyWorkbench = false,
-  examples,
-  localScenarios,
-  selectedScenarioId,
-  selectedDescriptor,
-  selectedLoadError,
-  selectedDiagnostics,
-  scenarioLoadingId,
-  scenarioCatalogLoading,
-  examplesExpanded,
-  examplesDismissed,
-  onExamplesExpandedChange,
-  onExamplesDismissedChange,
-  fileFeedback,
-  onSelectScenario,
-  onCreateScenario,
-  onExitUnsavedScenario,
-  onImportScenario,
-  localFolders,
-  folderOperation,
-  folderError,
-  onCreateFolder,
-  onRenameFolder,
-  onDeleteFolder,
-  onMoveFolder,
-  onReorderFolder,
-  onMoveScenario,
-  onClearFolderError,
-  onRemoveScenario,
-  onSaveScenario,
-  onSaveScenarioAs,
-  onClearFileFeedback,
-  onRetrySelectedScenario,
-  connectionDialogOpen,
-  onConnectionToggle,
-  onNavigateHome,
-  workspaceSelector,
+  shell,
   onWorkspaceGuardChange,
 }: WorkbenchPageProps) {
+  const scenario = scenarioModel.active;
+  const {
+    examples,
+    localScenarios,
+    selectedScenarioId,
+    selectedDescriptor,
+    selectedLoadError,
+    selectedDiagnostics,
+    scenarioLoadingId,
+    scenarioCatalogLoading,
+    examplesExpanded,
+    examplesDismissed,
+    onExamplesExpandedChange,
+    onExamplesDismissedChange,
+  } = scenarioModel.catalog;
+  const {
+    fileFeedback,
+    onSelectScenario,
+    onCreateScenario,
+    onExitUnsavedScenario,
+    onImportScenario,
+    onRemoveScenario,
+    onSaveScenario,
+    onSaveScenarioAs,
+    onClearFileFeedback,
+    onRetrySelectedScenario,
+  } = scenarioModel.files;
+  const {
+    localFolders,
+    folderOperation,
+    folderError,
+    onCreateFolder,
+    onRenameFolder,
+    onDeleteFolder,
+    onMoveFolder,
+    onReorderFolder,
+    onMoveScenario,
+    onClearFolderError,
+  } = scenarioModel.folders;
+  const { connectionDialogOpen, onConnectionToggle, onNavigateHome, workspaceSelector } = shell;
   const [mode, setMode] = useState<WorkspaceMode>('compose');
   const [folderParentId, setFolderParentId] = useState<string | null>(null);
   const [folderName, setFolderName] = useState('');

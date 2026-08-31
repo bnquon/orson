@@ -8,6 +8,7 @@ import { WorkbenchPage } from '../workbench/WorkbenchPage';
 import { createUnsavedScenario } from '../workbench/scenarioFactory';
 import type { KafkaConnection, LoadedScenario } from '../workbench/types';
 import type { ScenarioController } from '../workbench/useScenario';
+import type { WorkbenchScenarioModel } from '../workbench/workbenchPageTypes';
 import { WorkbenchShell } from '../workbench/components/WorkbenchShell';
 import type { WorkspaceController, WorkspaceGuardState } from './useWorkspace';
 
@@ -133,6 +134,49 @@ export function WorkspaceContent({
       onDismiss={() => scenario.clearFileFeedback()}
     />
   ) : null;
+  const scenarioModel: WorkbenchScenarioModel = {
+    active: scenario.scenario ?? emptyWorkbenchScenario,
+    catalog: {
+      examples: scenario.examples,
+      localScenarios: scenario.localScenarios,
+      selectedScenarioId: scenario.selectedScenarioId,
+      selectedDescriptor: scenario.selectedDescriptor,
+      selectedLoadError: scenario.selectedLoadError,
+      selectedDiagnostics: scenario.selectedDiagnostics,
+      scenarioLoadingId:
+        scenario.selectedLoadStatus === 'loading' ? scenario.selectedScenarioId : null,
+      scenarioCatalogLoading: scenario.catalogStatus === 'loading',
+      examplesExpanded,
+      examplesDismissed,
+      onExamplesExpandedChange,
+      onExamplesDismissedChange: handleExamplesDismissedChange,
+    },
+    files: {
+      fileFeedback: scenario.fileFeedback,
+      onSelectScenario: (id) => scenario.selectScenario(id),
+      onCreateScenario: () => scenario.createScenario(),
+      onExitUnsavedScenario: () => scenario.exitScenario(),
+      onImportScenario: () => scenario.importScenario(),
+      onRemoveScenario: (id) => scenario.removeScenario(id),
+      onSaveScenario: (draft) => scenario.saveScenario(draft),
+      onSaveScenarioAs: (draft) => scenario.saveScenarioAs(draft),
+      onClearFileFeedback: () => scenario.clearFileFeedback(),
+      onRetrySelectedScenario: () => scenario.retrySelectedScenario(),
+    },
+    folders: {
+      localFolders: scenario.localFolders,
+      folderOperation: scenario.folderOperation,
+      folderError: scenario.folderError,
+      onCreateFolder: (name, parentId) => scenario.createFolder(name, parentId),
+      onRenameFolder: (id, name) => scenario.renameFolder(id, name),
+      onDeleteFolder: (id) => scenario.deleteFolder(id),
+      onMoveFolder: (id, parentId) => scenario.moveFolder(id, parentId),
+      onReorderFolder: (id, siblingIndex) => scenario.reorderFolder(id, siblingIndex),
+      onMoveScenario: (id, folderId, siblingIndex) =>
+        scenario.moveScenario(id, folderId, siblingIndex),
+      onClearFolderError: () => scenario.clearFolderError(),
+    },
+  };
 
   if (
     !emptyWorkbench &&
@@ -182,48 +226,14 @@ export function WorkspaceContent({
         key={data.activeWorkspace.id}
         workspaceId={data.activeWorkspace.id}
         connection={connection}
-        scenario={scenario.scenario ?? emptyWorkbenchScenario}
+        scenario={scenarioModel}
         emptyWorkbench={emptyWorkbench}
-        examples={scenario.examples}
-        localScenarios={scenario.localScenarios}
-        selectedScenarioId={scenario.selectedScenarioId}
-        selectedDescriptor={scenario.selectedDescriptor}
-        selectedLoadError={scenario.selectedLoadError}
-        selectedDiagnostics={scenario.selectedDiagnostics}
-        scenarioLoadingId={
-          scenario.selectedLoadStatus === 'loading' ? scenario.selectedScenarioId : null
-        }
-        scenarioCatalogLoading={scenario.catalogStatus === 'loading'}
-        examplesExpanded={examplesExpanded}
-        examplesDismissed={examplesDismissed}
-        onExamplesExpandedChange={onExamplesExpandedChange}
-        onExamplesDismissedChange={handleExamplesDismissedChange}
-        fileFeedback={scenario.fileFeedback}
-        onSelectScenario={(id) => scenario.selectScenario(id)}
-        onCreateScenario={() => scenario.createScenario()}
-        onExitUnsavedScenario={() => scenario.exitScenario()}
-        onImportScenario={() => scenario.importScenario()}
-        localFolders={scenario.localFolders}
-        folderOperation={scenario.folderOperation}
-        folderError={scenario.folderError}
-        onCreateFolder={(name, parentId) => scenario.createFolder(name, parentId)}
-        onRenameFolder={(id, name) => scenario.renameFolder(id, name)}
-        onDeleteFolder={(id) => scenario.deleteFolder(id)}
-        onMoveFolder={(id, parentId) => scenario.moveFolder(id, parentId)}
-        onReorderFolder={(id, siblingIndex) => scenario.reorderFolder(id, siblingIndex)}
-        onMoveScenario={(id, folderId, siblingIndex) =>
-          scenario.moveScenario(id, folderId, siblingIndex)
-        }
-        onClearFolderError={() => scenario.clearFolderError()}
-        onRemoveScenario={(id) => scenario.removeScenario(id)}
-        onSaveScenario={(draft) => scenario.saveScenario(draft)}
-        onSaveScenarioAs={(draft) => scenario.saveScenarioAs(draft)}
-        onClearFileFeedback={() => scenario.clearFileFeedback()}
-        onRetrySelectedScenario={() => scenario.retrySelectedScenario()}
-        connectionDialogOpen={connectionDialogOpen}
-        onConnectionToggle={onConnectionToggle}
-        onNavigateHome={onNavigateHome}
-        workspaceSelector={workspaceSelector}
+        shell={{
+          connectionDialogOpen,
+          onConnectionToggle,
+          onNavigateHome,
+          workspaceSelector,
+        }}
         onWorkspaceGuardChange={onWorkspaceGuardChange}
       />
       {folderFeedbackToast}
