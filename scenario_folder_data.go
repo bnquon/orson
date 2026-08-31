@@ -114,14 +114,12 @@ func (p scenarioFolderPaths) path(folderID string) string {
 }
 
 func folderMutationSummary(report workspacepkg.FolderDeletionReport) *api.FolderMutationSummary {
-	if len(report.RemovedPaths) == 0 && len(report.SharedPaths) == 0 && len(report.FailedPaths) == 0 {
+	if len(report.RemovedPaths) == 0 && len(report.SharedPaths) == 0 {
 		return nil
 	}
 	return &api.FolderMutationSummary{
 		RemovedScenarioCount: len(report.RemovedPaths),
-		RemovedFileCount:     len(report.RemovedPaths) - len(report.SharedPaths),
 		SharedFileCount:      len(report.SharedPaths),
-		FailedFiles:          append([]string(nil), report.FailedPaths...),
 	}
 }
 

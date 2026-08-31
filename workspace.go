@@ -219,7 +219,7 @@ func (a *App) MoveLocalScenario(request api.MoveLocalScenarioRequest) api.Scenar
 
 func (a *App) DeleteScenarioFolder(folderID string) api.ScenarioFolderResponse {
 	return a.mutateScenarioFolder(func(service *workspacepkg.Service, workspaceID string) (workspacepkg.State, workspacepkg.FolderDeletionReport, error) {
-		state, report, err := service.DeleteFolder(workspaceID, folderID, a.getLocalScenarioRegistry().DeletePath)
+		state, report, err := service.DeleteFolder(workspaceID, folderID)
 		for _, path := range report.RemovedPaths {
 			_ = a.getLocalScenarioRegistry().RemovePath(path)
 		}
@@ -392,8 +392,6 @@ func workspaceAPIError(err error) *api.APIError {
 		return api.NewError("scenario_not_found", "That local scenario is no longer available.", err.Error(), true)
 	case errors.Is(err, workspacepkg.ErrInvalidSiblingOrder):
 		return api.NewError("invalid_sibling_order", "That scenario position is no longer available.", err.Error(), true)
-	case errors.Is(err, workspacepkg.ErrFolderDeletionPartial):
-		return api.NewError("folder_deletion_partial", "The folder was only partially deleted.", err.Error(), true)
 	case errors.Is(err, workspacepkg.ErrWorkspaceNameRequired):
 		return api.NewError("workspace_name_required", "Workspace name is required.", err.Error(), false)
 	case errors.Is(err, workspacepkg.ErrWorkspaceNameDuplicate):

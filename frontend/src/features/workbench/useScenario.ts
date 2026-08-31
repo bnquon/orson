@@ -115,9 +115,6 @@ function toFolderDeletionSummary(
   if (summary === undefined) return null;
   return {
     removedScenarioCount: summary.removedScenarioCount ?? 0,
-    removedFileCount: summary.removedFileCount ?? 0,
-    sharedFileCount: summary.sharedFileCount ?? 0,
-    failedFiles: summary.failedFiles ?? [],
   };
 }
 
@@ -125,12 +122,7 @@ function folderDeletionMessage(summary: ScenarioFolderDeletionSummary | null): s
   if (summary === null) return 'Folder deleted';
 
   const scenarioLabel = summary.removedScenarioCount === 1 ? 'scenario' : 'scenarios';
-  let message = `Folder deleted. ${summary.removedScenarioCount} ${scenarioLabel} removed.`;
-  if (summary.sharedFileCount > 0) {
-    const fileLabel = summary.sharedFileCount === 1 ? 'file was' : 'files were';
-    message += ` ${summary.sharedFileCount} shared ${fileLabel} kept for another workspace.`;
-  }
-  return message;
+  return `Folder deleted. ${summary.removedScenarioCount} ${scenarioLabel} removed.`;
 }
 
 interface UseScenarioOptions {

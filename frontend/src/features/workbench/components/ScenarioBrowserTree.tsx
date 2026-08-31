@@ -541,17 +541,25 @@ export function LocalScenarioTree({
 
   return (
     <div
-      className={`scenario-local-tree ${dropTarget?.kind === 'root' ? 'scenario-local-tree--drop-target' : ''}`}
-      onDragOver={(event) => {
-        if (!state.searchActive && !disabled) {
-          event.preventDefault();
-          actions.onDropTargetChange({ kind: 'root', id: '', position: 'inside' });
-        }
-      }}
-      onDrop={(event) => {
-        actions.onDropTargetChange(null);
-        onRootDrop(event);
-      }}
+      className={`scenario-local-tree ${depth === 0 && dropTarget?.kind === 'root' ? 'scenario-local-tree--drop-target' : ''}`}
+      onDragOver={
+        depth === 0
+          ? (event) => {
+              if (!state.searchActive && !disabled) {
+                event.preventDefault();
+                actions.onDropTargetChange({ kind: 'root', id: '', position: 'inside' });
+              }
+            }
+          : undefined
+      }
+      onDrop={
+        depth === 0
+          ? (event) => {
+              actions.onDropTargetChange(null);
+              onRootDrop(event);
+            }
+          : undefined
+      }
     >
       {scenarios.map((descriptor, index) => renderScenario(descriptor, depth, index))}
       {folders.map((folder) => renderFolder(folder, depth))}

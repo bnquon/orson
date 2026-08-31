@@ -91,9 +91,6 @@ export interface ScenarioFolder {
 
 export interface ScenarioFolderDeletionSummary {
   removedScenarioCount: number;
-  removedFileCount: number;
-  sharedFileCount: number;
-  failedFiles: string[];
 }
 
 export interface ScenarioFolderFeedback {

@@ -36,7 +36,6 @@ type Folder struct {
 type FolderDeletionReport struct {
 	RemovedPaths []string
 	SharedPaths  []string
-	FailedPaths  []string
 }
 
 type ConnectionConfig struct {

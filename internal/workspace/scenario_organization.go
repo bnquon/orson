@@ -1,9 +1,6 @@
 package workspace
 
 import (
-	"errors"
-	"fmt"
-	"io/fs"
 	"sort"
 	"strings"
 )
@@ -219,9 +216,9 @@ func (s *Service) ReorderScenario(workspaceID, canonicalPath string, siblingInde
 	return cloneState(s.state), nil
 }
 
-// DeleteFolder removes a virtual folder tree and its local references. The
-// removeFile callback is deliberately supplied by the local-file adapter.
-func (s *Service) DeleteFolder(workspaceID, folderID string, removeFile func(string) error) (State, FolderDeletionReport, error) {
+// DeleteFolder removes a virtual folder tree and its local references without
+// modifying the referenced files on disk.
+func (s *Service) DeleteFolder(workspaceID, folderID string) (State, FolderDeletionReport, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	next := cloneState(s.state)
@@ -249,16 +246,6 @@ func (s *Service) DeleteFolder(workspaceID, folderID string, removeFile func(str
 			report.RemovedPaths = append(report.RemovedPaths, reference.CanonicalPath)
 			continue
 		}
-		if removeFile == nil {
-			report.FailedPaths = append(report.FailedPaths, reference.CanonicalPath)
-			remaining = append(remaining, reference)
-			continue
-		}
-		if err := removeFile(reference.CanonicalPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			report.FailedPaths = append(report.FailedPaths, reference.CanonicalPath)
-			remaining = append(remaining, reference)
-			continue
-		}
 		report.RemovedPaths = append(report.RemovedPaths, reference.CanonicalPath)
 	}
 	if len(remaining) == 0 {
@@ -278,9 +265,6 @@ func (s *Service) DeleteFolder(workspaceID, folderID string, removeFile func(str
 		next.Folders[workspaceID] = remainingFolders
 	}
 	s.commit(next, "delete scenario folder")
-	if len(report.FailedPaths) > 0 {
-		return cloneState(s.state), report, fmt.Errorf("%w: %s", ErrFolderDeletionPartial, strings.Join(report.FailedPaths, ", "))
-	}
 	return cloneState(s.state), report, nil
 }
 

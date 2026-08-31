@@ -28,7 +28,6 @@ var (
 	ErrFolderMoveCycle              = errors.New("folder cannot be moved into itself or a descendant")
 	ErrScenarioNotFound             = errors.New("scenario not found")
 	ErrInvalidSiblingOrder          = errors.New("invalid sibling order")
-	ErrFolderDeletionPartial        = errors.New("folder deletion partially failed")
 	ErrRecoveryConfirmationRequired = errors.New("persistence recovery confirmation is required")
 )
 
