@@ -375,7 +375,12 @@ export function ScenarioBrowser({
     scenarioLoadingId === null &&
     folderOperation === 'idle';
   const handleRootDrop = (event: DragEvent<HTMLDivElement>) => {
-    if (!rootDropEnabled) return;
+    if (
+      !rootDropEnabled ||
+      (event.target instanceof Element && event.target.closest('.scenario-folder-content') !== null)
+    ) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     const drag = readDragData(event);
@@ -383,7 +388,12 @@ export function ScenarioBrowser({
     if (drag?.kind === 'scenario') void onMoveScenario(drag.id, '', localTree.scenarios.length);
   };
   const handleRootDragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (!rootDropEnabled) return;
+    if (
+      !rootDropEnabled ||
+      (event.target instanceof Element && event.target.closest('.scenario-folder-content') !== null)
+    ) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     setDropTarget({ kind: 'root', id: '', position: 'inside' });
@@ -603,7 +613,6 @@ export function ScenarioBrowser({
                       onDropTargetChange: setDropTarget,
                     }}
                     dropTarget={dropTarget}
-                    onRootDrop={handleRootDrop}
                   />
                 ) : null}
                 {matchingLocals.length === 0 ? (

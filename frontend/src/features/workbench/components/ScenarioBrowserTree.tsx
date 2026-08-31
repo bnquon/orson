@@ -278,7 +278,6 @@ export interface LocalScenarioTreeProps {
   state: LocalScenarioTreeState;
   actions: LocalScenarioTreeActions;
   dropTarget: DropTarget | null;
-  onRootDrop: (event: DragEvent<HTMLDivElement>) => void;
   depth?: number;
 }
 
@@ -290,7 +289,6 @@ export function LocalScenarioTree({
   state,
   actions,
   dropTarget,
-  onRootDrop,
   depth = 0,
 }: LocalScenarioTreeProps) {
   const disabled = state.selectionDisabled || state.readOnly || state.folderOperation !== 'idle';
@@ -529,7 +527,6 @@ export function LocalScenarioTree({
                 state={state}
                 actions={actions}
                 dropTarget={dropTarget}
-                onRootDrop={onRootDrop}
                 depth={depth + 1}
               />
             ) : null}
@@ -540,27 +537,7 @@ export function LocalScenarioTree({
   };
 
   return (
-    <div
-      className={`scenario-local-tree ${depth === 0 && dropTarget?.kind === 'root' ? 'scenario-local-tree--drop-target' : ''}`}
-      onDragOver={
-        depth === 0
-          ? (event) => {
-              if (!state.searchActive && !disabled) {
-                event.preventDefault();
-                actions.onDropTargetChange({ kind: 'root', id: '', position: 'inside' });
-              }
-            }
-          : undefined
-      }
-      onDrop={
-        depth === 0
-          ? (event) => {
-              actions.onDropTargetChange(null);
-              onRootDrop(event);
-            }
-          : undefined
-      }
-    >
+    <div className="scenario-local-tree">
       {scenarios.map((descriptor, index) => renderScenario(descriptor, depth, index))}
       {folders.map((folder) => renderFolder(folder, depth))}
     </div>
