@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type SubmitEvent } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+  type SubmitEvent,
+} from 'react';
 import type { WorkspaceGuardState } from '../workspace/useWorkspace';
 import {
   CheckCircle,
@@ -33,6 +41,7 @@ import { toRunRequest } from './runMapping';
 import type { ScenarioDraftData } from './scenarioMapping';
 import { useScenarioDraftSession } from './scenarioDraftSession';
 import { useScenarioFileOperations } from './useScenarioFileOperations';
+import type { ScenarioFolderOperation } from './useScenario';
 import { useRun } from './useRun';
 import { useRunHistory } from './useRunHistory';
 import type {
@@ -46,6 +55,7 @@ import type {
   ScenarioDiagnostic,
   ScenarioFileFeedback,
   ScenarioFileOperationOutcome,
+  ScenarioFolder,
 } from './types';
 import type { ApiError } from '../../api/result';
 import { getJsonError, validateScenario } from './validation';
@@ -56,6 +66,58 @@ const initialTouched: TouchedState = {
   watchedTopicIds: [],
   headerIds: [],
 };
+
+function FolderNameDialog({
+  open,
+  parentName,
+  value,
+  error,
+  busy,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  parentName: string;
+  value: string;
+  error: string;
+  busy: boolean;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <Modal
+      open={open}
+      title={parentName ? `New folder in ${parentName}` : 'New folder'}
+      description="Folder names are trimmed and unique within their parent folder."
+      closeDisabled={busy}
+      onClose={onClose}
+      footer={
+        <ModalActions>
+          <ModalButton type="button" onClick={onClose}>
+            Cancel
+          </ModalButton>
+          <ModalButton tone="primary" type="submit" form="new-scenario-folder" disabled={busy}>
+            {busy ? 'Creating…' : 'Create folder'}
+          </ModalButton>
+        </ModalActions>
+      }
+    >
+      <form id="new-scenario-folder" onSubmit={onSubmit}>
+        <label className="scenario-folder-field">
+          <span>Folder name</span>
+          <input autoFocus value={value} onChange={(event) => onChange(event.target.value)} />
+        </label>
+        {error ? (
+          <p className="workspace-dialog__error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </form>
+    </Modal>
+  );
+}
 
 interface WorkbenchPageProps {
   workspaceId: string;
@@ -79,6 +141,16 @@ interface WorkbenchPageProps {
   onCreateScenario: () => void;
   onExitUnsavedScenario: () => void;
   onImportScenario: () => Promise<ScenarioFileOperationOutcome>;
+  localFolders: ScenarioFolder[];
+  folderOperation: ScenarioFolderOperation;
+  folderError: ApiError | null;
+  onCreateFolder: (name: string, parentId?: string) => Promise<boolean>;
+  onRenameFolder: (id: string, name: string) => Promise<boolean>;
+  onDeleteFolder: (id: string) => Promise<boolean>;
+  onMoveFolder: (id: string, parentId: string) => Promise<boolean>;
+  onReorderFolder: (id: string, siblingIndex: number) => Promise<boolean>;
+  onMoveScenario: (id: string, folderId: string, siblingIndex: number) => Promise<boolean>;
+  onClearFolderError: () => void;
   onRemoveScenario: (id: string) => Promise<ScenarioFileOperationOutcome>;
   onSaveScenario: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
   onSaveScenarioAs: (draft: ScenarioDraftData) => Promise<ScenarioFileOperationOutcome>;
@@ -113,6 +185,16 @@ export function WorkbenchPage({
   onCreateScenario,
   onExitUnsavedScenario,
   onImportScenario,
+  localFolders,
+  folderOperation,
+  folderError,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onMoveFolder,
+  onReorderFolder,
+  onMoveScenario,
+  onClearFolderError,
   onRemoveScenario,
   onSaveScenario,
   onSaveScenarioAs,
@@ -125,6 +207,9 @@ export function WorkbenchPage({
   onWorkspaceGuardChange,
 }: WorkbenchPageProps) {
   const [mode, setMode] = useState<WorkspaceMode>('compose');
+  const [folderParentId, setFolderParentId] = useState<string | null>(null);
+  const [folderName, setFolderName] = useState('');
+  const [folderNameError, setFolderNameError] = useState('');
   const { draft, savedDraft, setDraft, markSaveStarted, markSaveFailed } =
     useScenarioDraftSession(scenario);
   const [activeEditorTab, setActiveEditorTab] = useState<ComposeEditorTab>('payload');
@@ -232,6 +317,34 @@ export function WorkbenchPage({
 
   const showEmptyWorkbench = emptyWorkbench && !isRunActive && history.mode !== 'historical';
 
+  const openFolderDialog = (parentId = '') => {
+    onClearFolderError();
+    setFolderParentId(parentId);
+    setFolderName('');
+    setFolderNameError('');
+  };
+  const closeFolderDialog = () => {
+    if (folderOperation === 'idle') {
+      onClearFolderError();
+      setFolderParentId(null);
+    }
+  };
+  const submitFolder = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (folderParentId === null) return;
+    setFolderNameError('');
+    void onCreateFolder(folderName, folderParentId).then((success) => {
+      if (success) setFolderParentId(null);
+      else setFolderNameError('The folder could not be created. Check the name and try again.');
+    });
+  };
+  const folderParentName = localFolders.find((folder) => folder.id === folderParentId)?.name ?? '';
+  const folderMutationDisabled =
+    history.mode === 'historical' ||
+    isRunActive ||
+    fileOperations.fileBusy ||
+    scenarioSelectionLoading ||
+    folderOperation !== 'idle';
   const saveAsMissingItems = new Set<string>();
   const saveValidationLabels: Partial<Record<ValidatableField, string>> = {
     name: 'scenario name',
@@ -484,6 +597,16 @@ export function WorkbenchPage({
       onNewScenario={showEmptyWorkbench ? onCreateScenario : fileOperations.requestNewScenario}
       onImportScenario={showEmptyWorkbench ? onImportScenario : fileOperations.requestImport}
       onRemoveScenario={onRemoveScenario}
+      localFolders={localFolders}
+      folderOperation={folderOperation}
+      folderError={folderParentId === null ? folderError : null}
+      onClearFolderError={onClearFolderError}
+      onRequestCreateFolder={folderMutationDisabled ? undefined : openFolderDialog}
+      onRenameFolder={onRenameFolder}
+      onDeleteFolder={onDeleteFolder}
+      onMoveFolder={onMoveFolder}
+      onReorderFolder={onReorderFolder}
+      onMoveScenario={onMoveScenario}
     />
   );
   const workspaceToolbar = showEmptyWorkbench ? (
@@ -567,10 +690,7 @@ export function WorkbenchPage({
               {scenarioDiagnostics}
               <div className="workspace-empty-state" role="status">
                 <strong>No scenario selected</strong>
-                <span>Restore the examples or import a YAML file from the sidebar to begin.</span>
-                <button type="button" onClick={() => onExamplesDismissedChange(false)}>
-                  Restore bundled examples
-                </button>
+                <span>Select a scenario or import a YAML file from the sidebar to begin.</span>
               </div>
             </>
           ) : history.mode === 'historical' ? (
@@ -638,6 +758,16 @@ export function WorkbenchPage({
                   ? 'Unsaved scenario · save as YAML to keep it'
                   : 'Examples are read-only'
         }
+      />
+      <FolderNameDialog
+        open={folderParentId !== null}
+        parentName={folderParentName}
+        value={folderName}
+        error={folderError?.message || folderNameError}
+        busy={folderOperation === 'creating'}
+        onChange={setFolderName}
+        onClose={closeFolderDialog}
+        onSubmit={submitFolder}
       />
       {fileFeedback.successMessage ? (
         <Toast

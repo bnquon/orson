@@ -22,11 +22,63 @@ type WorkspaceBootstrapData struct {
 	ActiveWorkspace      Workspace                  `json:"activeWorkspace"`
 	BundledScenarios     []ScenarioDescriptor       `json:"bundledScenarios"`
 	LocalScenarios       []ScenarioDescriptor       `json:"localScenarios"`
+	LocalFolders         []ScenarioFolder           `json:"localFolders"`
 	SelectedScenarioID   string                     `json:"selectedScenarioId,omitempty"`
 	SelectedScenario     *ScenarioData              `json:"selectedScenario,omitempty"`
 	RememberedConnection *ConnectionInfo            `json:"rememberedConnection,omitempty"`
 	Connection           ConnectionState            `json:"connection"`
 	Persistence          WorkspacePersistenceStatus `json:"persistence"`
+}
+
+type ScenarioFolder struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	ParentID     string `json:"parentId,omitempty"`
+	SiblingOrder int    `json:"siblingOrder"`
+}
+
+type FolderMutationSummary struct {
+	RemovedScenarioCount int      `json:"removedScenarioCount"`
+	RemovedFileCount     int      `json:"removedFileCount"`
+	SharedFileCount      int      `json:"sharedFileCount"`
+	FailedFiles          []string `json:"failedFiles,omitempty"`
+}
+
+type ScenarioFolderData struct {
+	Folders     []ScenarioFolder           `json:"folders"`
+	Scenarios   []ScenarioDescriptor       `json:"scenarios"`
+	Persistence WorkspacePersistenceStatus `json:"persistence"`
+	Summary     *FolderMutationSummary     `json:"summary,omitempty"`
+}
+
+type ScenarioFolderResponse struct {
+	OK    bool                `json:"ok"`
+	Data  *ScenarioFolderData `json:"data,omitempty"`
+	Error *APIError           `json:"error,omitempty"`
+}
+
+func ScenarioFolderSuccess(data ScenarioFolderData) ScenarioFolderResponse {
+	return ScenarioFolderResponse{OK: true, Data: &data}
+}
+
+func ScenarioFolderFailure(err *APIError, data *ScenarioFolderData) ScenarioFolderResponse {
+	return ScenarioFolderResponse{Data: data, Error: err}
+}
+
+type MoveScenarioFolderRequest struct {
+	FolderID string `json:"folderId"`
+	ParentID string `json:"parentId"`
+}
+
+type ReorderScenarioFolderRequest struct {
+	FolderID     string `json:"folderId"`
+	SiblingIndex int    `json:"siblingIndex"`
+}
+
+type MoveLocalScenarioRequest struct {
+	ScenarioID   string `json:"scenarioId"`
+	FolderID     string `json:"folderId"`
+	SiblingIndex int    `json:"siblingIndex"`
 }
 
 type WorkspaceBootstrapResponse struct {

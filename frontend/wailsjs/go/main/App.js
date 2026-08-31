@@ -14,12 +14,20 @@ export function Connect(arg1) {
   return window['go']['main']['App']['Connect'](arg1);
 }
 
+export function CreateScenarioFolder(arg1, arg2) {
+  return window['go']['main']['App']['CreateScenarioFolder'](arg1, arg2);
+}
+
 export function CreateWorkspace(arg1) {
   return window['go']['main']['App']['CreateWorkspace'](arg1);
 }
 
 export function DeleteRunHistory(arg1, arg2) {
   return window['go']['main']['App']['DeleteRunHistory'](arg1, arg2);
+}
+
+export function DeleteScenarioFolder(arg1) {
+  return window['go']['main']['App']['DeleteScenarioFolder'](arg1);
 }
 
 export function DeleteWorkspace(arg1) {
@@ -62,12 +70,28 @@ export function LoadLocalScenario(arg1) {
   return window['go']['main']['App']['LoadLocalScenario'](arg1);
 }
 
+export function MoveLocalScenario(arg1) {
+  return window['go']['main']['App']['MoveLocalScenario'](arg1);
+}
+
+export function MoveScenarioFolder(arg1) {
+  return window['go']['main']['App']['MoveScenarioFolder'](arg1);
+}
+
 export function RemoveLocalScenario(arg1) {
   return window['go']['main']['App']['RemoveLocalScenario'](arg1);
 }
 
+export function RenameScenarioFolder(arg1, arg2) {
+  return window['go']['main']['App']['RenameScenarioFolder'](arg1, arg2);
+}
+
 export function RenameWorkspace(arg1, arg2) {
   return window['go']['main']['App']['RenameWorkspace'](arg1, arg2);
+}
+
+export function ReorderScenarioFolder(arg1) {
+  return window['go']['main']['App']['ReorderScenarioFolder'](arg1);
 }
 
 export function RetryWorkspacePersistence(arg1) {

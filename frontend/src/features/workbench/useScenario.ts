@@ -10,6 +10,14 @@ import {
   saveScenarioAs,
   type ScenarioFileResult,
 } from '../../api/scenario';
+import {
+  createScenarioFolder,
+  deleteScenarioFolder,
+  moveLocalScenario,
+  moveScenarioFolder,
+  reorderScenarioFolder,
+  renameScenarioFolder,
+} from '../../api/scenarioFolders';
 import type { ApiError } from '../../api/result';
 import {
   initialLocalScenarioSessionState,
@@ -30,14 +38,23 @@ import type {
   ScenarioDiagnostic,
   ScenarioFileFeedback,
   ScenarioFileOperationOutcome,
+  ScenarioFolderDeletionSummary,
+  ScenarioFolderFeedback,
+  ScenarioFolder,
 } from './types';
 
 type ScenarioCatalogStatus = 'loading' | 'loaded' | 'failed';
 type ScenarioSelectionStatus = 'idle' | 'loading' | 'failed';
+export type ScenarioFolderOperation = 'idle' | 'creating' | 'renaming' | 'moving' | 'deleting';
 export interface ScenarioController {
   catalogStatus: ScenarioCatalogStatus;
   examples: ScenarioDescriptor[];
   localScenarios: ScenarioDescriptor[];
+  localFolders: ScenarioFolder[];
+  folderOperation: ScenarioFolderOperation;
+  folderError: ApiError | null;
+  folderFeedback: ScenarioFolderFeedback;
+  activeScenarioCleared: boolean;
   descriptors: ScenarioDescriptor[];
   selectedScenarioId: string | null;
   activeScenarioId: string | null;
@@ -58,6 +75,14 @@ export interface ScenarioController {
   saveScenario(draft: ScenarioDraftData): Promise<ScenarioFileOperationOutcome>;
   saveScenarioAs(draft: ScenarioDraftData): Promise<ScenarioFileOperationOutcome>;
   clearFileFeedback(): void;
+  createFolder(name: string, parentId?: string): Promise<boolean>;
+  renameFolder(id: string, name: string): Promise<boolean>;
+  moveFolder(id: string, parentId: string): Promise<boolean>;
+  reorderFolder(id: string, siblingIndex: number): Promise<boolean>;
+  moveScenario(id: string, folderId: string, siblingIndex: number): Promise<boolean>;
+  deleteFolder(id: string): Promise<boolean>;
+  clearFolderError(): void;
+  clearFolderFeedback(): void;
 }
 
 function invalidSelectionError(descriptor: ScenarioDescriptor): ApiError {
@@ -82,6 +107,30 @@ function protocolError(message: string): ApiError {
     message,
     retryable: true,
   };
+}
+
+function toFolderDeletionSummary(
+  summary: api.FolderMutationSummary | undefined,
+): ScenarioFolderDeletionSummary | null {
+  if (summary === undefined) return null;
+  return {
+    removedScenarioCount: summary.removedScenarioCount ?? 0,
+    removedFileCount: summary.removedFileCount ?? 0,
+    sharedFileCount: summary.sharedFileCount ?? 0,
+    failedFiles: summary.failedFiles ?? [],
+  };
+}
+
+function folderDeletionMessage(summary: ScenarioFolderDeletionSummary | null): string {
+  if (summary === null) return 'Folder deleted';
+
+  const scenarioLabel = summary.removedScenarioCount === 1 ? 'scenario' : 'scenarios';
+  let message = `Folder deleted. ${summary.removedScenarioCount} ${scenarioLabel} removed.`;
+  if (summary.sharedFileCount > 0) {
+    const fileLabel = summary.sharedFileCount === 1 ? 'file was' : 'files were';
+    message += ` ${summary.sharedFileCount} shared ${fileLabel} kept for another workspace.`;
+  }
+  return message;
 }
 
 interface UseScenarioOptions {
@@ -118,6 +167,14 @@ export function useScenario({
   const [selectedLoadStatus, setSelectedLoadStatus] = useState<ScenarioSelectionStatus>('idle');
   const [selectedLoadError, setSelectedLoadError] = useState<ApiError | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
+  const [localFolders, setLocalFolders] = useState<ScenarioFolder[]>([]);
+  const [folderOperation, setFolderOperation] = useState<ScenarioFolderOperation>('idle');
+  const [folderError, setFolderError] = useState<ApiError | null>(null);
+  const [folderFeedback, setFolderFeedback] = useState<ScenarioFolderFeedback>({
+    successMessage: null,
+    deletionSummary: null,
+  });
+  const [activeScenarioCleared, setActiveScenarioCleared] = useState(false);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
   const exampleDescriptorsRef = useRef<ScenarioDescriptor[]>([]);
@@ -133,6 +190,13 @@ export function useScenario({
           bootstrap.selectedScenarioId,
           bootstrap.selectedScenario?.id ?? '',
           ...bootstrap.localScenarios.map((descriptor) => descriptor.id),
+          ...bootstrap.localScenarios.map(
+            (descriptor) =>
+              `${descriptor.id}:${descriptor.folderId ?? ''}:${descriptor.siblingOrder ?? 0}`,
+          ),
+          ...(bootstrap.localFolders ?? []).map(
+            (folder) => `${folder.id}:${folder.parentId ?? ''}:${folder.siblingOrder}`,
+          ),
         ].join('|');
 
   const allDescriptors = useCallback(
@@ -155,10 +219,128 @@ export function useScenario({
     return descriptors;
   }, [replaceLocalDescriptors]);
 
+  const applyFolderData = useCallback(
+    (data: api.ScenarioFolderData) => {
+      setLocalFolders(
+        (data.folders ?? []).map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+          parentId: folder.parentId ?? '',
+          siblingOrder: folder.siblingOrder ?? 0,
+        })),
+      );
+      replaceLocalDescriptors((data.scenarios ?? []).map(toScenarioDescriptor));
+    },
+    [replaceLocalDescriptors],
+  );
+
+  const clearScenarioSelection = useCallback((showBlankWorkbench: boolean) => {
+    requestIdRef.current += 1;
+    setScenario(null);
+    setActiveScenarioId(null);
+    activeScenarioIdRef.current = null;
+    setSelectedScenarioId(null);
+    setSelectedDiagnostics([]);
+    setSelectedLoadStatus('idle');
+    setSelectedLoadError(null);
+    setActiveScenarioCleared(showBlankWorkbench);
+  }, []);
+
+  const runFolderOperation = useCallback(
+    async (
+      operation: Exclude<ScenarioFolderOperation, 'idle'>,
+      request: () => ReturnType<typeof createScenarioFolder>,
+    ) => {
+      setFolderOperation(operation);
+      setFolderError(null);
+      setFolderFeedback({ successMessage: null, deletionSummary: null });
+      const activeIdBeforeOperation = activeScenarioIdRef.current;
+      const activeWasLocal =
+        activeIdBeforeOperation !== null &&
+        localDescriptorsRef.current.some((item) => item.id === activeIdBeforeOperation);
+      const selectedIdBeforeOperation = selectedScenarioId;
+      const selectedWasLocal =
+        selectedIdBeforeOperation !== null &&
+        localDescriptorsRef.current.some((item) => item.id === selectedIdBeforeOperation);
+      const result = await request();
+      if (!mountedRef.current) return false;
+      if (result.data !== undefined) applyFolderData(result.data);
+      if (result.data?.persistence !== undefined) onPersistence(result.data.persistence);
+      const deletionSummary =
+        operation === 'deleting' ? toFolderDeletionSummary(result.data?.summary) : null;
+      if (operation === 'deleting' && result.data !== undefined) {
+        const remainingScenarioIds = new Set(result.data.scenarios.map((item) => item.id));
+        const activeWasRemoved =
+          activeWasLocal &&
+          activeIdBeforeOperation !== null &&
+          !remainingScenarioIds.has(activeIdBeforeOperation);
+        const selectedWasRemoved =
+          selectedWasLocal &&
+          selectedIdBeforeOperation !== null &&
+          !remainingScenarioIds.has(selectedIdBeforeOperation);
+
+        if (activeWasRemoved) {
+          clearScenarioSelection(true);
+        } else if (selectedWasRemoved) {
+          setSelectedScenarioId(null);
+          setSelectedDiagnostics([]);
+          setSelectedLoadStatus('idle');
+          setSelectedLoadError(null);
+        }
+        if (result.ok) {
+          setFolderFeedback({
+            successMessage: folderDeletionMessage(deletionSummary),
+            deletionSummary,
+          });
+        }
+      }
+      if (!result.ok) {
+        setFolderError(result.error);
+        setFolderOperation('idle');
+        return false;
+      }
+      setFolderError(null);
+      setFolderOperation('idle');
+      return true;
+    },
+    [applyFolderData, clearScenarioSelection, onPersistence, selectedScenarioId],
+  );
+
+  const createFolder = useCallback(
+    (name: string, parentId = '') =>
+      runFolderOperation('creating', () => createScenarioFolder(name, parentId)),
+    [runFolderOperation],
+  );
+  const renameFolder = useCallback(
+    (id: string, name: string) =>
+      runFolderOperation('renaming', () => renameScenarioFolder(id, name)),
+    [runFolderOperation],
+  );
+  const moveFolder = useCallback(
+    (id: string, parentId: string) =>
+      runFolderOperation('moving', () => moveScenarioFolder(id, parentId)),
+    [runFolderOperation],
+  );
+  const reorderFolder = useCallback(
+    (id: string, siblingIndex: number) =>
+      runFolderOperation('moving', () => reorderScenarioFolder(id, siblingIndex)),
+    [runFolderOperation],
+  );
+  const moveScenario = useCallback(
+    (id: string, folderId: string, siblingIndex: number) =>
+      runFolderOperation('moving', () => moveLocalScenario(id, folderId, siblingIndex)),
+    [runFolderOperation],
+  );
+  const deleteFolder = useCallback(
+    (id: string) => runFolderOperation('deleting', () => deleteScenarioFolder(id)),
+    [runFolderOperation],
+  );
+
   const activateScenario = useCallback(
     (loaded: LoadedScenario, selectedId: string | null = loaded.id) => {
       requestIdRef.current += 1;
       setScenario(loaded);
+      setActiveScenarioCleared(false);
       setActiveScenarioId(loaded.id);
       activeScenarioIdRef.current = loaded.id;
       setSelectedScenarioId(selectedId);
@@ -413,14 +595,7 @@ export function useScenario({
       }
       dispatchLocalSession({ type: 'removed', id });
       if (activeScenarioIdRef.current === id) {
-        requestIdRef.current += 1;
-        setScenario(null);
-        setActiveScenarioId(null);
-        activeScenarioIdRef.current = null;
-        setSelectedScenarioId(null);
-        setSelectedDiagnostics([]);
-        setSelectedLoadStatus('idle');
-        setSelectedLoadError(null);
+        clearScenarioSelection(false);
       }
       bootstrapIdentityRef.current = '';
       const refreshed = await onRetryBootstrap();
@@ -440,6 +615,7 @@ export function useScenario({
       return 'succeeded';
     },
     [
+      clearScenarioSelection,
       dispatchLocalSession,
       onPersistence,
       onRetryBootstrap,
@@ -481,9 +657,16 @@ export function useScenario({
 
       const nextExamples = bootstrap.bundledScenarios.map(toScenarioDescriptor);
       const nextLocals = bootstrap.localScenarios.map(toScenarioDescriptor);
+      const nextFolders = (bootstrap.localFolders ?? []).map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        parentId: folder.parentId ?? '',
+        siblingOrder: folder.siblingOrder ?? 0,
+      }));
       exampleDescriptorsRef.current = nextExamples;
       localDescriptorsRef.current = nextLocals;
       setExamples(nextExamples);
+      setLocalFolders(nextFolders);
       replaceLocalDescriptors(nextLocals);
       setCatalogStatus('loaded');
       setError(null);
@@ -493,9 +676,7 @@ export function useScenario({
       setSelectedLoadError(null);
 
       if (bootstrap.selectedScenario === undefined) {
-        setScenario(null);
-        setActiveScenarioId(null);
-        activeScenarioIdRef.current = null;
+        clearScenarioSelection(false);
         const selected = [...nextExamples, ...nextLocals].find(
           (descriptor) => descriptor.id === bootstrap.selectedScenarioId,
         );
@@ -511,6 +692,7 @@ export function useScenario({
 
       const loaded = toLoadedScenario(bootstrap.selectedScenario);
       setScenario(loaded);
+      setActiveScenarioCleared(false);
       setActiveScenarioId(loaded.id);
       activeScenarioIdRef.current = loaded.id;
       if (bootstrap.selectedScenarioId && bootstrap.selectedScenarioId !== loaded.id) {
@@ -525,7 +707,13 @@ export function useScenario({
         }
       }
     });
-  }, [bootstrap, bootstrapError, bootstrapIdentity, replaceLocalDescriptors]);
+  }, [
+    bootstrap,
+    bootstrapError,
+    bootstrapIdentity,
+    clearScenarioSelection,
+    replaceLocalDescriptors,
+  ]);
 
   const descriptors = [...examples, ...localSession.descriptors];
   const selectedDescriptor =
@@ -535,6 +723,9 @@ export function useScenario({
     catalogStatus,
     examples,
     localScenarios: localSession.descriptors,
+    localFolders,
+    folderOperation,
+    folderError,
     descriptors,
     selectedScenarioId,
     activeScenarioId,
@@ -561,5 +752,15 @@ export function useScenario({
     saveScenario,
     saveScenarioAs: saveActiveScenarioAs,
     clearFileFeedback,
+    folderFeedback,
+    activeScenarioCleared,
+    createFolder,
+    renameFolder,
+    moveFolder,
+    reorderFolder,
+    moveScenario,
+    deleteFolder,
+    clearFolderError: () => setFolderError(null),
+    clearFolderFeedback: () => setFolderFeedback({ successMessage: null, deletionSummary: null }),
   };
 }

@@ -10,6 +10,7 @@ import (
 
 	"orson/internal/api"
 	"orson/internal/scenario"
+	workspacepkg "orson/internal/workspace"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -49,11 +50,8 @@ func (a *App) ListLocalScenarios() api.ScenarioListResponse {
 	a.scenarioOpMu.Lock()
 	defer a.scenarioOpMu.Unlock()
 
-	descriptors := a.getLocalScenarioRegistry().List()
-	items := make([]api.ScenarioDescriptor, 0, len(descriptors))
-	for _, descriptor := range descriptors {
-		items = append(items, toAPIScenarioDescriptor(descriptor))
-	}
+	state := a.workspaceService().Snapshot()
+	items := a.scenarioFolderData(state, workspacepkg.FolderDeletionReport{}).Scenarios
 	return api.ScenarioListSuccess(api.ScenarioListData{Scenarios: items})
 }
 
@@ -92,7 +90,7 @@ func (a *App) ImportLocalScenario() api.ScenarioFileResponse {
 	if err := a.persistLocalScenarioDescriptor(descriptor); err != nil {
 		return api.ScenarioFileFailure(workspaceAPIError(err), nil)
 	}
-	apiDescriptor := toAPIScenarioDescriptor(descriptor)
+	apiDescriptor := a.apiLocalScenarioDescriptor(descriptor)
 	apiScenario := toAPILocalScenarioData(descriptor, loaded)
 	return api.ScenarioFileSuccess(api.ScenarioFileData{
 		Descriptor:  &apiDescriptor,
@@ -160,7 +158,7 @@ func (a *App) SaveLocalScenario(id string, draft api.ScenarioDraft) api.Scenario
 	if err := a.persistLocalScenarioDescriptor(descriptor); err != nil {
 		return api.ScenarioFileFailure(workspaceAPIError(err), nil)
 	}
-	apiDescriptor := toAPIScenarioDescriptor(descriptor)
+	apiDescriptor := a.apiLocalScenarioDescriptor(descriptor)
 	apiScenario := toAPILocalScenarioData(descriptor, loaded)
 	return api.ScenarioFileSuccess(api.ScenarioFileData{
 		Descriptor:  &apiDescriptor,
@@ -210,7 +208,7 @@ func (a *App) SaveScenarioAs(draft api.ScenarioDraft) api.ScenarioFileResponse {
 	if err := a.persistLocalScenarioDescriptor(descriptor); err != nil {
 		return api.ScenarioFileFailure(workspaceAPIError(err), nil)
 	}
-	apiDescriptor := toAPIScenarioDescriptor(descriptor)
+	apiDescriptor := a.apiLocalScenarioDescriptor(descriptor)
 	apiScenario := toAPILocalScenarioData(descriptor, loaded)
 	return api.ScenarioFileSuccess(api.ScenarioFileData{
 		Descriptor:  &apiDescriptor,

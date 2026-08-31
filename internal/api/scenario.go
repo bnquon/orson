@@ -55,6 +55,8 @@ type ScenarioDescriptor struct {
 	DisplayName    string               `json:"displayName"`
 	RelativePath   string               `json:"relativePath"`
 	FolderPath     string               `json:"folderPath,omitempty"`
+	FolderID       string               `json:"folderId,omitempty"`
+	SiblingOrder   int                  `json:"siblingOrder"`
 	SourceFilename string               `json:"sourceFilename"`
 	Source         ScenarioSource       `json:"source"`
 	SourcePath     string               `json:"sourcePath,omitempty"`
@@ -78,6 +80,7 @@ type ScenarioData struct {
 	ID                 string                 `json:"id"`
 	RelativePath       string                 `json:"relativePath"`
 	FolderPath         string                 `json:"folderPath,omitempty"`
+	FolderID           string                 `json:"folderId,omitempty"`
 	Name               string                 `json:"name"`
 	SourceFilename     string                 `json:"sourceFilename"`
 	Source             ScenarioSource         `json:"source"`

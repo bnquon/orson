@@ -227,6 +227,63 @@ func (r *LocalRegistry) Remove(id string) error {
 	return nil
 }
 
+// RemovePath unregisters an imported file by canonical path without touching
+// the file on disk. It is used when workspace metadata removes a reference
+// after a folder operation.
+func (r *LocalRegistry) RemovePath(path string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	_, key, err := r.normalizePath(path)
+	if err != nil {
+		return err
+	}
+	id, exists := r.byPath[key]
+	if !exists {
+		return nil
+	}
+	return r.removeLocked(id)
+}
+
+// DeletePath removes an imported file from disk through the configured file
+// adapter and unregisters it only after the delete succeeds.
+func (r *LocalRegistry) DeletePath(path string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	normalized, key, err := r.normalizePath(path)
+	if err != nil {
+		return err
+	}
+	if err := r.files.Remove(normalized); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	id, exists := r.byPath[key]
+	if !exists {
+		return nil
+	}
+	return r.removeLocked(id)
+}
+
+func (r *LocalRegistry) removeLocked(id string) error {
+	if _, err := r.entry(id); err != nil {
+		return err
+	}
+	delete(r.entries, id)
+	for path, registeredID := range r.byPath {
+		if registeredID == id {
+			delete(r.byPath, path)
+		}
+	}
+	for index, registeredID := range r.order {
+		if registeredID == id {
+			r.order = append(r.order[:index], r.order[index+1:]...)
+			break
+		}
+	}
+	return nil
+}
+
 func (r *LocalRegistry) Import(selectedPath string) (Descriptor, Scenario, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

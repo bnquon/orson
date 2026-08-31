@@ -18,6 +18,25 @@ type ScenarioReference struct {
 	Fingerprint     string    `json:"fingerprint,omitempty"`
 	ModifiedAtNS    int64     `json:"modifiedAtNs,omitempty"`
 	SizeBytes       int64     `json:"sizeBytes,omitempty"`
+	FolderID        string    `json:"folderId,omitempty"`
+	SiblingOrder    int       `json:"siblingOrder"`
+}
+
+// Folder is virtual workspace metadata. It never maps to a directory on disk.
+type Folder struct {
+	ID           string    `json:"id"`
+	WorkspaceID  string    `json:"workspaceId"`
+	Name         string    `json:"name"`
+	ParentID     string    `json:"parentId,omitempty"`
+	SiblingOrder int       `json:"siblingOrder"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
+type FolderDeletionReport struct {
+	RemovedPaths []string
+	SharedPaths  []string
+	FailedPaths  []string
 }
 
 type ConnectionConfig struct {
@@ -47,6 +66,7 @@ type State struct {
 	Workspaces        []Workspace
 	ActiveWorkspaceID string
 	Scenarios         map[string][]ScenarioReference
+	Folders           map[string][]Folder
 	Connections       map[string]*ConnectionConfig
 	Selections        map[string]*Selection
 	Persistence       PersistenceStatus
