@@ -1379,11 +1379,13 @@ func replaceState(db *sql.DB, state State) error {
 	if _, err := tx.Exec(`INSERT INTO app_state(key, value) VALUES('active_workspace_id', ?)`, state.ActiveWorkspaceID); err != nil {
 		return err
 	}
-	for _, items := range state.Folders {
-		for _, folder := range items {
-			if _, err := tx.Exec(`INSERT INTO workspace_folders(id, workspace_id, name, name_key, parent_id, sibling_order, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, folder.ID, folder.WorkspaceID, folder.Name, strings.ToLower(strings.TrimSpace(folder.Name)), nullString(folder.ParentID), folder.SiblingOrder, folder.CreatedAt.Format(time.RFC3339Nano), folder.UpdatedAt.Format(time.RFC3339Nano)); err != nil {
-				return err
-			}
+	folders, err := orderedFoldersForPersistence(state.Folders)
+	if err != nil {
+		return err
+	}
+	for _, folder := range folders {
+		if _, err := tx.Exec(`INSERT INTO workspace_folders(id, workspace_id, name, name_key, parent_id, sibling_order, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`, folder.ID, folder.WorkspaceID, folder.Name, strings.ToLower(strings.TrimSpace(folder.Name)), nullString(folder.ParentID), folder.SiblingOrder, folder.CreatedAt.Format(time.RFC3339Nano), folder.UpdatedAt.Format(time.RFC3339Nano)); err != nil {
+			return err
 		}
 	}
 	for _, items := range state.Scenarios {
@@ -1408,6 +1410,46 @@ func replaceState(db *sql.DB, state State) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func orderedFoldersForPersistence(foldersByWorkspace map[string][]Folder) ([]Folder, error) {
+	pending := make(map[string][]Folder, len(foldersByWorkspace))
+	inserted := make(map[string]map[string]struct{}, len(foldersByWorkspace))
+	remaining := 0
+	for workspaceID, folders := range foldersByWorkspace {
+		pending[workspaceID] = append([]Folder(nil), folders...)
+		inserted[workspaceID] = make(map[string]struct{}, len(folders))
+		remaining += len(folders)
+	}
+
+	ordered := make([]Folder, 0, remaining)
+	for remaining > 0 {
+		progressed := false
+		for workspaceID, folders := range pending {
+			next := make([]Folder, 0, len(folders))
+			for _, folder := range folders {
+				if folder.ParentID != "" {
+					if _, exists := inserted[workspaceID][folder.ParentID]; !exists {
+						next = append(next, folder)
+						continue
+					}
+				}
+				ordered = append(ordered, folder)
+				inserted[workspaceID][folder.ID] = struct{}{}
+				remaining--
+				progressed = true
+			}
+			if len(next) == 0 {
+				delete(pending, workspaceID)
+			} else {
+				pending[workspaceID] = next
+			}
+		}
+		if !progressed {
+			return nil, errors.New("folder hierarchy contains a missing parent or cycle")
+		}
+	}
+	return ordered, nil
 }
 
 func nullString(value string) any {

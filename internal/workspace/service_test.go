@@ -311,6 +311,58 @@ func TestScenarioFoldersAreWorkspaceScopedAndPersisted(t *testing.T) {
 	}
 }
 
+func TestNestedFoldersRemainPersistableAfterReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "orson.db")
+	ids := []string{"workspace", "z-root", "a-child", "grandchild"}
+	service := NewService(Options{
+		DatabasePath: path,
+		NewID: func() string {
+			id := ids[0]
+			ids = ids[1:]
+			return id
+		},
+	})
+	state, err := service.Create("Test workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspaceID := state.ActiveWorkspaceID
+	state, err = service.CreateFolder(workspaceID, "", "Root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootID := state.Folders[workspaceID][0].ID
+	state, err = service.CreateFolder(workspaceID, rootID, "Child")
+	if err != nil {
+		t.Fatal(err)
+	}
+	childID := state.Folders[workspaceID][1].ID
+	if _, err := service.CreateFolder(workspaceID, childID, "Grandchild"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened := NewService(Options{DatabasePath: path})
+	state, err = reopened.RenameFolder(workspaceID, rootID, "Renamed root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Persistence.Mode != "persistent" {
+		t.Fatalf("persistence mode after nested-folder mutation = %q, want persistent", state.Persistence.Mode)
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	verified := NewService(Options{DatabasePath: path})
+	defer verified.Close()
+	if got := verified.Snapshot().Folders[workspaceID][0].Name; got != "Renamed root" {
+		t.Fatalf("renamed root after reopen = %q, want %q", got, "Renamed root")
+	}
+}
+
 func TestDeleteFolderKeepsSharedFilesAndReportsFailures(t *testing.T) {
 	service := testService(t)
 	firstID := service.Snapshot().ActiveWorkspaceID
