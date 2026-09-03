@@ -211,9 +211,7 @@ export namespace api {
 	}
 	export class FolderMutationSummary {
 	    removedScenarioCount: number;
-	    removedFileCount: number;
 	    sharedFileCount: number;
-	    failedFiles?: string[];
 
 	    static createFrom(source: any = {}) {
 	        return new FolderMutationSummary(source);
@@ -222,9 +220,7 @@ export namespace api {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.removedScenarioCount = source["removedScenarioCount"];
-	        this.removedFileCount = source["removedFileCount"];
 	        this.sharedFileCount = source["sharedFileCount"];
-	        this.failedFiles = source["failedFiles"];
 	    }
 	}
 	export class Header {
