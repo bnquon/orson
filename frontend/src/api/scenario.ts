@@ -3,6 +3,7 @@ import {
   ListLocalScenarios,
   LoadBundledScenario,
   LoadLocalScenario,
+  PreviewScenarioYAML,
   RemoveLocalScenario,
   SaveLocalScenario,
   SaveScenarioAs,
@@ -15,6 +16,20 @@ import type { ApiError, Result } from './result';
 
 export type ScenarioFileResult =
   | { ok: true; data: api.ScenarioFileData }
+  | {
+      ok: false;
+      error: ApiError;
+      diagnostics: api.ScenarioDiagnostic[];
+    };
+
+export type ScenarioYamlPreviewResult =
+  | {
+      ok: true;
+      data: {
+        yaml: string;
+        warnings: api.ScenarioWarning[];
+      };
+    }
   | {
       ok: false;
       error: ApiError;
@@ -122,4 +137,42 @@ export function saveLocalScenario(
 
 export function saveScenarioAs(draft: ScenarioDraftData): Promise<ScenarioFileResult> {
   return fileCall(() => SaveScenarioAs(new api.ScenarioDraft(draft)));
+}
+
+export async function previewScenarioYaml(
+  draft: ScenarioDraftData,
+  sourceFilename = '',
+): Promise<ScenarioYamlPreviewResult> {
+  try {
+    const response = await PreviewScenarioYAML(new api.ScenarioDraft(draft), sourceFilename);
+    if (response.ok && response.data?.yaml !== undefined) {
+      return {
+        ok: true,
+        data: {
+          yaml: response.data.yaml,
+          warnings: response.data.warnings ?? [],
+        },
+      };
+    }
+
+    return {
+      ok: false,
+      error: response.error ?? {
+        code: 'scenario_yaml_preview_failed',
+        message: 'The current draft could not be converted to YAML.',
+        retryable: false,
+      },
+      diagnostics: response.data?.diagnostics ?? [],
+    };
+  } catch {
+    return {
+      ok: false,
+      error: {
+        code: 'bridge_error',
+        message: 'The app could not communicate with the backend.',
+        retryable: true,
+      },
+      diagnostics: [],
+    };
+  }
 }

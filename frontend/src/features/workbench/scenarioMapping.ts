@@ -85,7 +85,10 @@ function toSourceMetadata(data: {
   return { source, sourcePath: data.sourcePath ?? '', localStatus };
 }
 
-function toWarning(warning: api.ScenarioWarning, sourceFilename: string): ScenarioWarning {
+export function toScenarioWarning(
+  warning: api.ScenarioWarning,
+  sourceFilename: string,
+): ScenarioWarning {
   return {
     code: warning.code,
     path: warning.path ?? '',
@@ -123,7 +126,7 @@ export function toScenarioDescriptor(data: api.ScenarioDescriptor): ScenarioDesc
     sourceFilename,
     ...toSourceMetadata(data),
     status: data.status as ScenarioDescriptor['status'],
-    warnings: (data.warnings ?? []).map((warning) => toWarning(warning, sourceFilename)),
+    warnings: (data.warnings ?? []).map((warning) => toScenarioWarning(warning, sourceFilename)),
     diagnostics: (data.diagnostics ?? []).map((diagnostic) =>
       toScenarioDiagnostic(diagnostic, sourceFilename),
     ),
@@ -141,7 +144,7 @@ export function toLoadedScenario(data: api.ScenarioData): LoadedScenario {
     sourceFilename,
     ...toSourceMetadata(data),
     draft: toDraft(data),
-    warnings: (data.warnings ?? []).map((warning) => toWarning(warning, sourceFilename)),
+    warnings: (data.warnings ?? []).map((warning) => toScenarioWarning(warning, sourceFilename)),
   };
 }
 

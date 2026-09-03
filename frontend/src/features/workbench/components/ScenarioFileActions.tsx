@@ -1,9 +1,7 @@
 import { useId, type ReactNode } from 'react';
-import { FloppyDisk, FloppyDiskArrowIn } from 'iconoir-react';
+import { CodeBrackets, FloppyDisk, FloppyDiskArrowIn } from 'iconoir-react';
 import { LoadingDots } from '../../../components/LoadingDots';
 import type { ScenarioFileOperation, ScenarioSource } from '../types';
-
-// TODO: [YAML] Add a read-only YAML preview and copy action.
 
 interface ScenarioFileActionsProps {
   source: Exclude<ScenarioSource, 'unsaved'>;
@@ -14,9 +12,13 @@ interface ScenarioFileActionsProps {
   saveAsDisabled: boolean;
   saveDisabledReason: string;
   saveAsDisabledReason: string;
+  previewDisabled: boolean;
+  previewDisabledReason: string;
+  previewing: boolean;
   operation: ScenarioFileOperation;
   onSave: () => void;
   onSaveAs: () => void;
+  onPreview: () => void;
 }
 
 function FileAction({
@@ -24,18 +26,20 @@ function FileAction({
   disabled,
   disabledReason,
   enabledTitle,
+  wrapperClassName = '',
   onClick,
 }: {
   children: ReactNode;
   disabled: boolean;
   disabledReason: string;
   enabledTitle: string;
+  wrapperClassName?: string;
   onClick: () => void;
 }) {
   const descriptionId = useId();
   return (
     <span
-      className="scenario-disabled-action"
+      className={`scenario-disabled-action${wrapperClassName ? ` ${wrapperClassName}` : ''}`}
       tabIndex={disabled ? 0 : undefined}
       aria-label={disabled ? disabledReason : undefined}
       title={disabled ? disabledReason : undefined}
@@ -68,9 +72,13 @@ export function ScenarioFileActions({
   saveAsDisabled,
   saveDisabledReason,
   saveAsDisabledReason,
+  previewDisabled,
+  previewDisabledReason,
+  previewing,
   operation,
   onSave,
   onSaveAs,
+  onPreview,
 }: ScenarioFileActionsProps) {
   const saveIsDisabled = readOnly || saveDisabled || !dirty;
   const effectiveSaveDisabledReason = readOnly
@@ -117,6 +125,25 @@ export function ScenarioFileActions({
           </>
         )}
       </FileAction>
+      {!readOnly ? (
+        <FileAction
+          disabled={previewDisabled}
+          disabledReason={previewDisabledReason || 'YAML preview is currently unavailable'}
+          enabledTitle="View canonical YAML"
+          wrapperClassName={source === 'local' ? 'scenario-yaml-preview-action' : undefined}
+          onClick={onPreview}
+        >
+          {previewing ? (
+            <>
+              <LoadingDots size="inline" /> Loading…
+            </>
+          ) : (
+            <>
+              <CodeBrackets width={15} height={15} aria-hidden="true" /> View YAML
+            </>
+          )}
+        </FileAction>
+      ) : null}
     </div>
   );
 }

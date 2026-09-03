@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { LoadingDots } from '../../../components/LoadingDots';
 import type { ApiError } from '../../../api/result';
 import type { ScenarioDescriptor, ScenarioDiagnostic, ScenarioWarning } from '../types';
+import { ScenarioDiagnosticList, scenarioWarningKey } from './ScenarioFeedback';
 import '../styles/scenario.css';
 
 interface ScenarioLoadStateProps {
@@ -57,33 +58,6 @@ export function ScenarioLoadState({
   );
 }
 
-function sourceLocation(diagnostic: ScenarioDiagnostic): string {
-  return `${diagnostic.sourceFilename}${diagnostic.line > 0 ? `:${diagnostic.line}` : ''}${diagnostic.column > 0 ? `:${diagnostic.column}` : ''}`;
-}
-
-function diagnosticKey(diagnostic: ScenarioDiagnostic): string {
-  return [
-    diagnostic.code,
-    diagnostic.sourceFilename,
-    diagnostic.line,
-    diagnostic.column,
-    diagnostic.path,
-    diagnostic.message,
-    diagnostic.details,
-  ].join('\u0000');
-}
-
-function warningKey(warning: ScenarioWarning): string {
-  return [
-    warning.code,
-    warning.path,
-    warning.sourceFilename,
-    warning.line,
-    warning.column,
-    warning.message,
-  ].join('\u0000');
-}
-
 function ScenarioDescriptorDiagnostics({ descriptor }: { descriptor: ScenarioDescriptor }) {
   return (
     <section
@@ -94,29 +68,9 @@ function ScenarioDescriptorDiagnostics({ descriptor }: { descriptor: ScenarioDes
       {descriptor.diagnostics.length === 0 ? (
         <p>{descriptor.sourceFilename} has no blocking diagnostics.</p>
       ) : (
-        <DiagnosticList diagnostics={descriptor.diagnostics} />
+        <ScenarioDiagnosticList diagnostics={descriptor.diagnostics} />
       )}
     </section>
-  );
-}
-
-function DiagnosticList({ diagnostics }: { diagnostics: ScenarioDiagnostic[] }) {
-  return (
-    <ul>
-      {diagnostics.map((diagnostic) => (
-        <li key={diagnosticKey(diagnostic)}>
-          <span>{diagnostic.message}</span>
-          <code>{sourceLocation(diagnostic)}</code>
-          {diagnostic.path ? <small>{diagnostic.path}</small> : null}
-          {diagnostic.details && diagnostic.details !== diagnostic.message ? (
-            <details>
-              <summary>Technical details</summary>
-              <pre>{diagnostic.details}</pre>
-            </details>
-          ) : null}
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -158,7 +112,7 @@ export function ScenarioFileOperationError({
         </button>
       </div>
       {diagnostics.length > 0 ? (
-        <DiagnosticList diagnostics={diagnostics} />
+        <ScenarioDiagnosticList diagnostics={diagnostics} />
       ) : error.details ? (
         <details>
           <summary>Technical details</summary>
@@ -191,7 +145,7 @@ export function ScenarioSelectionLoadError({
       <p>{error.message}</p>
       <code>{sourceFilename}</code>
       {diagnostics.length > 0 ? (
-        <DiagnosticList diagnostics={diagnostics} />
+        <ScenarioDiagnosticList diagnostics={diagnostics} />
       ) : error.details ? (
         <details>
           <summary>Technical details</summary>
@@ -258,7 +212,7 @@ export function ScenarioDiagnostics({
       {expanded ? (
         <ul className="scenario-diagnostics__details">
           {warnings.map((warning) => (
-            <li key={warningKey(warning)}>
+            <li key={scenarioWarningKey(warning)}>
               <span>{warning.message}</span>
               <code>
                 {warning.sourceFilename}

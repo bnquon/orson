@@ -217,6 +217,28 @@ func (a *App) SaveScenarioAs(draft api.ScenarioDraft) api.ScenarioFileResponse {
 	})
 }
 
+// PreviewScenarioYAML validates and serializes the current structured draft
+// without reading or writing scenario files.
+func (a *App) PreviewScenarioYAML(draft api.ScenarioDraft, sourceFilename string) api.ScenarioYAMLResponse {
+	filename := filepath.Base(strings.TrimSpace(sourceFilename))
+	if filename == "." || filename == "" {
+		filename = defaultScenarioFilename(draft.Name)
+	}
+	loaded, source, err := scenario.CanonicalizeDraft(filename, toScenarioDraft(draft))
+	if err != nil {
+		failure := localScenarioFailure(localDraftValidationError(filename, err))
+		var diagnostics []api.ScenarioDiagnostic
+		if failure.Data != nil {
+			diagnostics = failure.Data.Diagnostics
+		}
+		return api.ScenarioYAMLFailure(failure.Error, diagnostics)
+	}
+	return api.ScenarioYAMLSuccess(api.ScenarioYAMLData{
+		YAML:     string(source),
+		Warnings: toAPIWarnings(loaded.Warnings, filename),
+	})
+}
+
 func (a *App) persistLocalScenarioDescriptor(descriptor scenario.Descriptor) error {
 	service := a.workspaceService()
 	state := service.Snapshot()

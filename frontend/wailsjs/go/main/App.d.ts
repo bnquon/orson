@@ -40,6 +40,8 @@ export function MoveLocalScenario(arg1:api.MoveLocalScenarioRequest):Promise<api
 
 export function MoveScenarioFolder(arg1:api.MoveScenarioFolderRequest):Promise<api.ScenarioFolderResponse>;
 
+export function PreviewScenarioYAML(arg1:api.ScenarioDraft,arg2:string):Promise<api.ScenarioYAMLResponse>;
+
 export function RemoveLocalScenario(arg1:string):Promise<api.ScenarioFileResponse>;
 
 export function RenameScenarioFolder(arg1:string,arg2:string):Promise<api.ScenarioFolderResponse>;

@@ -190,6 +190,74 @@ func TestSaveScenarioAsThenSaveLocalScenario(t *testing.T) {
 	}
 }
 
+func TestPreviewScenarioYAMLMatchesSavedCanonicalYAML(t *testing.T) {
+	directory := t.TempDir()
+	target := filepath.Join(directory, "previewed.yaml")
+	dialogs := &fakeScenarioDialogs{savePaths: []string{target}}
+	app := &App{scenarioDialogs: dialogs, localScenarios: scenario.NewLocalRegistry(nil)}
+	startWorkspaceScenarioTestApp(t, app)
+	draft := localAPITestDraft()
+
+	preview := app.PreviewScenarioYAML(draft, "previewed.yaml")
+	if !preview.OK || preview.Data == nil || preview.Data.YAML == "" || preview.Error != nil {
+		t.Fatalf("PreviewScenarioYAML() = %+v, want canonical YAML", preview)
+	}
+	if saved := app.SaveScenarioAs(draft); !saved.OK {
+		t.Fatalf("SaveScenarioAs() = %+v, want success", saved)
+	}
+	source, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("ReadFile(saved) failed: %v", err)
+	}
+	if preview.Data.YAML != string(source) {
+		t.Fatalf("preview differs from saved YAML:\npreview:\n%s\nsaved:\n%s", preview.Data.YAML, source)
+	}
+}
+
+func TestPreviewScenarioYAMLReturnsNormalizationWarnings(t *testing.T) {
+	draft := localAPITestDraft()
+	draft.CorrelationHeader = ""
+
+	response := (&App{}).PreviewScenarioYAML(draft, "")
+	if !response.OK || response.Data == nil || response.Data.YAML == "" || response.Error != nil {
+		t.Fatalf("PreviewScenarioYAML() = %+v, want warning-bearing success", response)
+	}
+	if len(response.Data.Warnings) != 1 || response.Data.Warnings[0].Code != "missing_correlation_header" {
+		t.Fatalf("warnings = %+v, want missing_correlation_header", response.Data.Warnings)
+	}
+	if response.Data.Warnings[0].SourceFilename != "payment-debug.yaml" {
+		t.Fatalf("warning filename = %q, want payment-debug.yaml", response.Data.Warnings[0].SourceFilename)
+	}
+	if !strings.Contains(response.Data.YAML, "header: x-correlation-id") {
+		t.Fatalf("canonical YAML did not include normalized correlation header:\n%s", response.Data.YAML)
+	}
+}
+
+func TestPreviewScenarioYAMLReturnsDiagnosticsWithoutFileOperationGuards(t *testing.T) {
+	dialogs := &fakeScenarioDialogs{}
+	app := &App{activeRuns: 1, scenarioDialogs: dialogs}
+	draft := localAPITestDraft()
+	draft.PublishPayload = "not JSON"
+
+	response := app.PreviewScenarioYAML(draft, "imported-payment.yml")
+	if response.OK || response.Error == nil || response.Error.Code != "scenario_validation_failed" {
+		t.Fatalf("PreviewScenarioYAML(invalid) = %+v, want structured validation failure", response)
+	}
+	if response.Data == nil || len(response.Data.Diagnostics) != 1 {
+		t.Fatalf("diagnostics = %+v, want one diagnostic", response.Data)
+	}
+	diagnostic := response.Data.Diagnostics[0]
+	if diagnostic.Code != "invalid_publish_payload" || diagnostic.Path != "publish.payload" {
+		t.Fatalf("diagnostic = %+v, want invalid_publish_payload at publish.payload", diagnostic)
+	}
+	if diagnostic.SourceFilename != "imported-payment.yml" {
+		t.Fatalf("diagnostic filename = %q, want imported-payment.yml", diagnostic.SourceFilename)
+	}
+	if dialogs.openCalls != 0 || len(dialogs.defaultFilenames) != 0 {
+		t.Fatalf("preview opened a native dialog: %+v", dialogs)
+	}
+}
+
 func TestSaveScenarioAsReplacesExistingSelectedFile(t *testing.T) {
 	directory := t.TempDir()
 	target := filepath.Join(directory, "existing.yaml")

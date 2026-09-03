@@ -124,6 +124,18 @@ type ScenarioFileResponse struct {
 	Error *APIError         `json:"error,omitempty"`
 }
 
+type ScenarioYAMLData struct {
+	YAML        string               `json:"yaml,omitempty"`
+	Warnings    []ScenarioWarning    `json:"warnings,omitempty"`
+	Diagnostics []ScenarioDiagnostic `json:"diagnostics,omitempty"`
+}
+
+type ScenarioYAMLResponse struct {
+	OK    bool              `json:"ok"`
+	Data  *ScenarioYAMLData `json:"data,omitempty"`
+	Error *APIError         `json:"error,omitempty"`
+}
+
 type ScenarioResponse struct {
 	OK    bool          `json:"ok"`
 	Data  *ScenarioData `json:"data,omitempty"`
@@ -154,6 +166,18 @@ func ScenarioFileFailure(err *APIError, diagnostics []ScenarioDiagnostic) Scenar
 	response := ScenarioFileResponse{Error: err}
 	if len(diagnostics) > 0 {
 		response.Data = &ScenarioFileData{Diagnostics: diagnostics}
+	}
+	return response
+}
+
+func ScenarioYAMLSuccess(data ScenarioYAMLData) ScenarioYAMLResponse {
+	return ScenarioYAMLResponse{OK: true, Data: &data}
+}
+
+func ScenarioYAMLFailure(err *APIError, diagnostics []ScenarioDiagnostic) ScenarioYAMLResponse {
+	response := ScenarioYAMLResponse{Error: err}
+	if len(diagnostics) > 0 {
+		response.Data = &ScenarioYAMLData{Diagnostics: diagnostics}
 	}
 	return response
 }

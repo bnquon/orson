@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type SubmitEvent } from 'react';
 import {
   CheckCircle,
+  CodeBrackets,
   DotArrowRight,
   FloppyDiskArrowIn,
   InfoCircle,
@@ -11,6 +12,7 @@ import { LoadingDots } from '../../components/LoadingDots';
 import { Modal, ModalActions, ModalButton } from '../../components/Modal';
 import { Toast } from '../../components/Toast';
 import { Tooltip } from '../../components/Tooltip';
+import { previewScenarioYaml } from '../../api/scenario';
 import { ComposePanel } from './components/ComposePanel';
 import { FolderNameDialog } from './components/FolderNameDialog';
 import { FlowPanel } from './components/FlowPanel';
@@ -19,6 +21,10 @@ import { HistoricalRunToolbar } from './components/HistoricalRunToolbar';
 import { RunContextPanel } from './components/RunContextPanel';
 import { ScenarioBrowser } from './components/ScenarioBrowser';
 import { ScenarioFileActions } from './components/ScenarioFileActions';
+import {
+  ScenarioYamlPreviewModal,
+  type ScenarioYamlPreviewState,
+} from './components/ScenarioYamlPreviewModal';
 import { WorkbenchShell } from './components/WorkbenchShell';
 import { WorkspaceToolbar } from './components/WorkspaceToolbar';
 import {
@@ -30,6 +36,7 @@ import { buildFlowViewModel } from './flowModel';
 import { toObservedRun } from './observedRun';
 import { formatStatusLabel, isActiveRunStatus, terminalRunStatuses } from './runStatus';
 import { toRunRequest } from './runMapping';
+import { toScenarioDiagnostic, toScenarioDraftData, toScenarioWarning } from './scenarioMapping';
 import { useScenarioDraftSession } from './scenarioDraftSession';
 import { useScenarioFileOperations } from './useScenarioFileOperations';
 import { useRun } from './useRun';
@@ -108,6 +115,9 @@ export function WorkbenchPage({
     scenarioIdentity,
     dismissed: false,
   });
+  const [yamlPreviewOpen, setYamlPreviewOpen] = useState(false);
+  const [yamlPreview, setYamlPreview] = useState<ScenarioYamlPreviewState>({ status: 'idle' });
+  const yamlPreviewRequestRef = useRef(0);
   const rootTopicEditRef = useRef<string | null>(null);
   const [jsonValidation, setJsonValidation] = useState(() => ({
     payload: scenario.draft.payload,
@@ -129,6 +139,9 @@ export function WorkbenchPage({
     setPublishAttempted(false);
     setComposeConfigHeight(null);
     setWarningDismissal({ scenarioIdentity: scenario.id, dismissed: false });
+    yamlPreviewRequestRef.current += 1;
+    setYamlPreviewOpen(false);
+    setYamlPreview({ status: 'idle' });
     rootTopicEditRef.current = null;
     run.resetRun();
   }, [run, scenario.id]);
@@ -173,6 +186,13 @@ export function WorkbenchPage({
     liveRun.events.find((event) => event.id === run.state.selectedRecordId) ?? null;
   const isRunActive = isActiveRunStatus(run.state.status);
   const scenarioSelectionLoading = scenarioLoadingId !== null || scenarioCatalogLoading;
+  const yamlPreviewLoading = yamlPreview.status === 'loading';
+  const yamlPreviewDisabled = scenarioSelectionLoading || yamlPreviewLoading;
+  const yamlPreviewDisabledReason = scenarioSelectionLoading
+    ? 'Wait for the selected scenario to finish loading'
+    : yamlPreviewLoading
+      ? 'Wait for the YAML preview to finish loading'
+      : '';
   const fileOperations = useScenarioFileOperations({
     scenario,
     examples,
@@ -338,6 +358,39 @@ export function WorkbenchPage({
     publishRun();
   };
 
+  const openYamlPreview = () => {
+    if (history.mode === 'historical' || yamlPreviewDisabled) return;
+
+    const requestId = ++yamlPreviewRequestRef.current;
+    const sourceFilename =
+      scenario.source === 'unsaved' ? '' : scenario.sourceFilename || 'scenario.yaml';
+    setYamlPreviewOpen(true);
+    setYamlPreview({ status: 'loading' });
+
+    void previewScenarioYaml(toScenarioDraftData(draft), sourceFilename).then((result) => {
+      if (yamlPreviewRequestRef.current !== requestId) return;
+
+      if (result.ok) {
+        setYamlPreview({
+          status: 'ready',
+          yaml: result.data.yaml,
+          warnings: result.data.warnings.map((warning) =>
+            toScenarioWarning(warning, sourceFilename),
+          ),
+        });
+        return;
+      }
+
+      setYamlPreview({
+        status: 'failed',
+        error: result.error,
+        diagnostics: result.diagnostics.map((diagnostic) =>
+          toScenarioDiagnostic(diagnostic, sourceFilename),
+        ),
+      });
+    });
+  };
+
   const fileActions = showEmptyWorkbench ? (
     <span />
   ) : scenario.source === 'unsaved' ? (
@@ -380,6 +433,10 @@ export function WorkbenchPage({
       operation={fileFeedback.operation}
       onSave={() => void fileOperations.saveDraft()}
       onSaveAs={() => void fileOperations.saveDraftAs()}
+      previewDisabled={yamlPreviewDisabled}
+      previewDisabledReason={yamlPreviewDisabledReason}
+      previewing={yamlPreviewLoading}
+      onPreview={openYamlPreview}
     />
   );
   let publishTitle = `Publish to ${connection.name} · ${connection.brokers.join(', ')}`;
@@ -390,6 +447,22 @@ export function WorkbenchPage({
   } else if (scenarioSelectionLoading) {
     publishTitle = 'Wait for the selected scenario to finish loading';
   }
+  const unsavedYamlPreviewAction = (
+    <button
+      className="compose-secondary-button"
+      type="button"
+      onClick={openYamlPreview}
+      disabled={yamlPreviewDisabled}
+      title={yamlPreviewDisabled ? yamlPreviewDisabledReason : 'View canonical YAML'}
+    >
+      {yamlPreviewLoading ? (
+        <LoadingDots size="inline" />
+      ) : (
+        <CodeBrackets width={16} height={16} aria-hidden="true" />
+      )}
+      View YAML
+    </button>
+  );
   const publishAction = showEmptyWorkbench ? (
     <span />
   ) : history.mode === 'historical' ? (
@@ -397,14 +470,17 @@ export function WorkbenchPage({
       Read-only run
     </span>
   ) : isRunActive ? (
-    <button
-      className="publish-button publish-button--stop"
-      type="button"
-      onClick={() => void run.stopRun()}
-      title="Stop the active run"
-    >
-      <LoadingDots size="inline" /> Stop
-    </button>
+    <>
+      {scenario.source === 'unsaved' ? unsavedYamlPreviewAction : null}
+      <button
+        className="publish-button publish-button--stop"
+        type="button"
+        onClick={() => void run.stopRun()}
+        title="Stop the active run"
+      >
+        <LoadingDots size="inline" /> Stop
+      </button>
+    </>
   ) : scenario.source === 'unsaved' ? (
     <span className="workspace-toolbar__save-action">
       {fileOperations.saveDisabled ? (
@@ -412,6 +488,7 @@ export function WorkbenchPage({
           <InfoCircle width={16} height={16} aria-hidden="true" />
         </Tooltip>
       ) : null}
+      {unsavedYamlPreviewAction}
       <button
         className="publish-button"
         type="button"
@@ -656,6 +733,13 @@ export function WorkbenchPage({
         onClose={closeFolderDialog}
         onSubmit={submitFolder}
       />
+      {yamlPreviewOpen ? (
+        <ScenarioYamlPreviewModal
+          open
+          preview={yamlPreview}
+          onClose={() => setYamlPreviewOpen(false)}
+        />
+      ) : null}
       {fileFeedback.successMessage ? (
         <Toast
           message={fileFeedback.successMessage}
