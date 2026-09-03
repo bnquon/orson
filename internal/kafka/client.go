@@ -9,9 +9,8 @@ import (
 )
 
 type Client struct {
-	franz  *kgo.Client
-	admin  *kadm.Client
-	config Config
+	franz *kgo.Client
+	admin *kadm.Client
 }
 
 func Connect(ctx context.Context, config Config) (*Client, error) {
@@ -39,9 +38,8 @@ func Connect(ctx context.Context, config Config) (*Client, error) {
 	adm := kadm.NewClient(franz)
 
 	return &Client{
-		franz:  franz,
-		admin:  adm,
-		config: config,
+		franz: franz,
+		admin: adm,
 	}, nil
 }
 

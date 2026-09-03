@@ -207,24 +207,7 @@ func (r *LocalRegistry) Remove(id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	trimmedID := strings.TrimSpace(id)
-	_, err := r.entry(trimmedID)
-	if err != nil {
-		return err
-	}
-	delete(r.entries, trimmedID)
-	for path, registeredID := range r.byPath {
-		if registeredID == trimmedID {
-			delete(r.byPath, path)
-		}
-	}
-	for index, registeredID := range r.order {
-		if registeredID == trimmedID {
-			r.order = append(r.order[:index], r.order[index+1:]...)
-			break
-		}
-	}
-	return nil
+	return r.removeLocked(strings.TrimSpace(id))
 }
 
 // RemovePath unregisters an imported file by canonical path without touching
@@ -236,26 +219,6 @@ func (r *LocalRegistry) RemovePath(path string) error {
 
 	_, key, err := r.normalizePath(path)
 	if err != nil {
-		return err
-	}
-	id, exists := r.byPath[key]
-	if !exists {
-		return nil
-	}
-	return r.removeLocked(id)
-}
-
-// DeletePath removes an imported file from disk through the configured file
-// adapter and unregisters it only after the delete succeeds.
-func (r *LocalRegistry) DeletePath(path string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	normalized, key, err := r.normalizePath(path)
-	if err != nil {
-		return err
-	}
-	if err := r.files.Remove(normalized); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	id, exists := r.byPath[key]
