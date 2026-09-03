@@ -314,12 +314,12 @@ func (r *LocalRegistry) Save(id string, draft Draft) (Descriptor, Scenario, erro
 	if err != nil {
 		return Descriptor{}, Scenario{}, err
 	}
-	loaded, err := NormalizeDraft(filepath.Base(entry.normalized), draft)
+	loaded, source, err := CanonicalizeDraft(filepath.Base(entry.normalized), draft)
 	if err != nil {
-		return Descriptor{}, Scenario{}, localValidationError(filepath.Base(entry.normalized), err)
-	}
-	source, err := MarshalCanonical(loaded)
-	if err != nil {
+		var loadErr *LoadError
+		if errors.As(err, &loadErr) {
+			return Descriptor{}, Scenario{}, localValidationError(filepath.Base(entry.normalized), err)
+		}
 		return Descriptor{}, Scenario{}, &FileError{
 			Code: "scenario_serialize_failed", Message: "the scenario could not be serialized", Path: entry.normalized, Err: err,
 		}
@@ -354,12 +354,12 @@ func (r *LocalRegistry) SaveAs(selectedPath string, draft Draft) (Descriptor, Sc
 	if err := r.rejectSymlinkSaveTarget(selectedPath); err != nil {
 		return Descriptor{}, Scenario{}, err
 	}
-	loaded, err := NormalizeDraft(filepath.Base(normalized), draft)
+	loaded, source, err := CanonicalizeDraft(filepath.Base(normalized), draft)
 	if err != nil {
-		return Descriptor{}, Scenario{}, localValidationError(filepath.Base(normalized), err)
-	}
-	source, err := MarshalCanonical(loaded)
-	if err != nil {
+		var loadErr *LoadError
+		if errors.As(err, &loadErr) {
+			return Descriptor{}, Scenario{}, localValidationError(filepath.Base(normalized), err)
+		}
 		return Descriptor{}, Scenario{}, &FileError{
 			Code: "scenario_serialize_failed", Message: "the scenario could not be serialized", Path: normalized, Err: err,
 		}

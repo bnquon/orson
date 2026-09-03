@@ -9,16 +9,21 @@ const commonProps = {
   saveAsDisabled: false,
   saveDisabledReason: '',
   saveAsDisabledReason: '',
+  previewDisabled: false,
+  previewDisabledReason: '',
+  previewing: false,
   operation: 'idle' as const,
   onSave: () => undefined,
   onSaveAs: () => undefined,
+  onPreview: () => undefined,
 };
 
 describe('ScenarioFileActions', () => {
-  it('offers only Save as for a read-only example', () => {
+  it('offers Save as and View YAML for an example', () => {
     const markup = renderToStaticMarkup(<ScenarioFileActions {...commonProps} source="example" />);
 
     expect(markup).toContain('Save as');
+    expect(markup).toContain('View YAML');
     expect(markup).toContain('scenario-file-actions--example');
     expect(markup).toContain('<svg');
     expect(markup).not.toContain('title="Save order.yaml"');
@@ -29,6 +34,7 @@ describe('ScenarioFileActions', () => {
 
     expect(markup).toContain('title="Save order.yaml"');
     expect(markup).toContain('Save as');
+    expect(markup).toContain('View YAML');
   });
 
   it('disables file actions for invalid drafts or active runs', () => {
@@ -73,6 +79,31 @@ describe('ScenarioFileActions', () => {
     expect(markup.match(/disabled=""/g)).toHaveLength(2);
     expect(markup).toContain('Save');
     expect(markup).toContain('Save as');
+    expect(markup).toContain('View YAML');
     expect(markup).not.toContain('loading-dots');
+  });
+
+  it('keeps preview available when save actions are disabled', () => {
+    const markup = renderToStaticMarkup(
+      <ScenarioFileActions
+        {...commonProps}
+        source="local"
+        saveDisabled
+        saveAsDisabled
+        saveDisabledReason="Saving is disabled while a run is active"
+        saveAsDisabledReason="Saving is disabled while a run is active"
+      />,
+    );
+
+    expect(markup.match(/disabled=""/g)).toHaveLength(2);
+    expect(markup).toContain('title="View canonical YAML"');
+  });
+
+  it('does not expose preview in read-only historical mode', () => {
+    const markup = renderToStaticMarkup(
+      <ScenarioFileActions {...commonProps} source="example" readOnly />,
+    );
+
+    expect(markup).not.toContain('View YAML');
   });
 });

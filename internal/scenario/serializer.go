@@ -35,6 +35,20 @@ func NormalizeDraft(filename string, draft Draft) (Scenario, error) {
 	return Load(filename, source)
 }
 
+// CanonicalizeDraft validates a draft and serializes the normalized result in
+// the canonical format used for local scenario files.
+func CanonicalizeDraft(filename string, draft Draft) (Scenario, []byte, error) {
+	loaded, err := NormalizeDraft(filename, draft)
+	if err != nil {
+		return Scenario{}, nil, err
+	}
+	source, err := MarshalCanonical(loaded)
+	if err != nil {
+		return Scenario{}, nil, err
+	}
+	return loaded, source, nil
+}
+
 // MarshalCanonical serializes a validated scenario with deterministic field
 // and whitespace formatting. Semantically ordered lists retain their configured
 // order; headers, watched topics, and topology edges are never sorted.

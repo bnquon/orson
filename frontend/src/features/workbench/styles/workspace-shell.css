@@ -124,7 +124,7 @@
   width: 100%;
 }
 
-.scenario-file-actions--example .scenario-disabled-action {
+.scenario-yaml-preview-action {
   grid-column: 1 / -1;
 }
 
@@ -168,6 +168,11 @@
 .scenario-file-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.workspace-toolbar__action .compose-secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .mode-switch {

@@ -78,6 +78,10 @@ export function MoveScenarioFolder(arg1) {
   return window['go']['main']['App']['MoveScenarioFolder'](arg1);
 }
 
+export function PreviewScenarioYAML(arg1, arg2) {
+  return window['go']['main']['App']['PreviewScenarioYAML'](arg1, arg2);
+}
+
 export function RemoveLocalScenario(arg1) {
   return window['go']['main']['App']['RemoveLocalScenario'](arg1);
 }

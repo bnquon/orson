@@ -250,6 +250,113 @@
   margin: 0;
 }
 
+.scenario-yaml-preview {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.scenario-yaml-preview__loading {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: var(--text-sm);
+  gap: 8px;
+  min-height: 140px;
+  justify-content: center;
+}
+
+.scenario-yaml-preview__warnings {
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 36%, var(--color-border));
+  color: var(--color-warning);
+  font-size: var(--text-xs);
+  padding: 9px 10px;
+}
+
+.scenario-yaml-preview__warnings > div {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.scenario-yaml-preview__warnings strong {
+  color: var(--color-text);
+}
+
+.scenario-yaml-preview__warnings ul,
+.scenario-yaml-preview__error ul {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0 0 0 23px;
+}
+
+.scenario-yaml-preview__warnings li,
+.scenario-yaml-preview__error li {
+  display: grid;
+  gap: 2px;
+}
+
+.scenario-yaml-preview__warnings code,
+.scenario-yaml-preview__error code,
+.scenario-yaml-preview__error small,
+.scenario-yaml-preview__error pre {
+  color: var(--color-text-dim);
+  font-family: var(--font-code);
+  font-size: 10px;
+}
+
+.scenario-yaml-preview__code {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  font-family: var(--font-code);
+  font-size: var(--text-xs);
+  line-height: var(--line-code);
+  margin: 0;
+  max-height: min(55vh, 520px);
+  min-height: 220px;
+  overflow: auto;
+  padding: var(--space-3);
+  white-space: pre;
+}
+
+.scenario-yaml-preview__error {
+  color: var(--color-danger);
+  font-size: var(--text-xs);
+}
+
+.scenario-yaml-preview__error > div {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+}
+
+.scenario-yaml-preview__error strong {
+  color: var(--color-text);
+}
+
+.scenario-yaml-preview__error p {
+  color: var(--color-text-muted);
+  margin: 4px 0 0;
+}
+
+.scenario-yaml-preview__error details {
+  color: var(--color-text-dim);
+  margin-top: 5px;
+}
+
+.scenario-yaml-preview__error summary {
+  cursor: pointer;
+}
+
+.scenario-yaml-preview__error pre {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+}
+
 .scenario-diagnostics {
   background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
   border-bottom: 1px solid color-mix(in srgb, var(--color-warning) 36%, var(--color-border));
