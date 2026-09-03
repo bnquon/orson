@@ -1,3 +1,7 @@
+import type { ApiError as ApiErrorModel } from '../../api/result';
+
+export type ApiError = ApiErrorModel;
+
 export type WorkspaceMode = 'compose' | 'flow';
 
 export type ComposeEditorTab = 'headers' | 'payload';
@@ -89,13 +93,8 @@ export interface ScenarioFolder {
   siblingOrder: number;
 }
 
-export interface ScenarioFolderDeletionSummary {
-  removedScenarioCount: number;
-}
-
 export interface ScenarioFolderFeedback {
   successMessage: string | null;
-  deletionSummary: ScenarioFolderDeletionSummary | null;
 }
 
 export interface LoadedScenario {
@@ -191,13 +190,6 @@ type TrackedEventStatus = 'in_progress' | 'completed' | 'unwitnessed' | 'failed'
 export interface TrackedEvent {
   topic: string;
   status: TrackedEventStatus;
-}
-
-export interface ApiError {
-  code: string;
-  message: string;
-  details?: string;
-  retryable: boolean;
 }
 
 type RunEventKind = 'started' | 'ready' | 'root_published' | 'message' | 'finished';

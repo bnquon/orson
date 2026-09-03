@@ -45,7 +45,7 @@ func (wailsScenarioFileDialogs) SaveScenarioFile(ctx context.Context, defaultFil
 	})
 }
 
-// ListLocalScenarios returns imported files registered for this process only.
+// ListLocalScenarios returns imported files registered to the active workspace.
 func (a *App) ListLocalScenarios() api.ScenarioListResponse {
 	a.scenarioOpMu.Lock()
 	defer a.scenarioOpMu.Unlock()

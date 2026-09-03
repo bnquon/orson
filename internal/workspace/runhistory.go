@@ -26,7 +26,7 @@ func (s *Service) SaveRunHistory(entry runhistory.Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.validateRunHistoryWorkspaceLocked(entry.WorkspaceID); err != nil {
+	if err := s.validateExpectedWorkspaceLocked(entry.WorkspaceID); err != nil {
 		return err
 	}
 	if s.db == nil {
@@ -242,10 +242,6 @@ func (s *Service) ClearRunHistory(workspaceID string) error {
 		return fmt.Errorf("clear run history: %w", err)
 	}
 	return nil
-}
-
-func (s *Service) validateRunHistoryWorkspaceLocked(workspaceID string) error {
-	return s.validateExpectedWorkspaceLocked(workspaceID)
 }
 
 func (s *Service) validateExpectedWorkspaceLocked(workspaceID string) error {

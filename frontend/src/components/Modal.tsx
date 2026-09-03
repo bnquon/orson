@@ -81,7 +81,13 @@ export function Modal({
     document.body.style.overflow = 'hidden';
 
     const focusInitialElement = () => {
-      closeButtonRef.current?.focus();
+      const dialog = dialogRef.current;
+      const activeElement =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      if (dialog !== null && activeElement !== null && dialog.contains(activeElement)) return;
+
+      const autoFocusElement = dialog?.querySelector<HTMLElement>('[autofocus]');
+      (autoFocusElement ?? closeButtonRef.current)?.focus();
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {

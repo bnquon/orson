@@ -330,7 +330,9 @@ func loadState(db *sql.DB) (State, error) {
 	if err := rows.Err(); err != nil {
 		return State{}, err
 	}
-	_ = db.QueryRow(`SELECT value FROM app_state WHERE key = 'active_workspace_id'`).Scan(&state.ActiveWorkspaceID)
+	if err := db.QueryRow(`SELECT value FROM app_state WHERE key = 'active_workspace_id'`).Scan(&state.ActiveWorkspaceID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return State{}, err
+	}
 	if state.ActiveWorkspaceID == "" && len(state.Workspaces) > 0 {
 		state.ActiveWorkspaceID = state.Workspaces[0].ID
 	}
@@ -356,6 +358,9 @@ func loadState(db *sql.DB) (State, error) {
 		state.Scenarios[ref.WorkspaceID] = append(state.Scenarios[ref.WorkspaceID], ref)
 	}
 	if err := rows.Close(); err != nil {
+		return State{}, err
+	}
+	if err := rows.Err(); err != nil {
 		return State{}, err
 	}
 	rows, err = db.Query(`SELECT id, workspace_id, name, COALESCE(parent_id, ''), sibling_order, created_at, updated_at FROM workspace_folders ORDER BY workspace_id ASC, parent_id ASC, sibling_order ASC, id ASC`)
@@ -410,6 +415,9 @@ func loadState(db *sql.DB) (State, error) {
 	if err := rows.Close(); err != nil {
 		return State{}, err
 	}
+	if err := rows.Err(); err != nil {
+		return State{}, err
+	}
 	rows, err = db.Query(`SELECT workspace_id, selected_scenario_source, selected_scenario_ref, updated_at FROM workspace_preferences`)
 	if err != nil {
 		return State{}, err
@@ -429,6 +437,9 @@ func loadState(db *sql.DB) (State, error) {
 		state.Selections[selection.WorkspaceID] = &selection
 	}
 	if err := rows.Close(); err != nil {
+		return State{}, err
+	}
+	if err := rows.Err(); err != nil {
 		return State{}, err
 	}
 	return state, nil

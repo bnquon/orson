@@ -11,19 +11,13 @@ import { api } from '../../wailsjs/go/models';
 import type { ScenarioDraftData } from '../features/workbench/scenarioMapping';
 
 import { call } from './client';
-import type { Result } from './result';
+import type { ApiError, Result } from './result';
 
 export type ScenarioFileResult =
   | { ok: true; data: api.ScenarioFileData }
   | {
       ok: false;
-      error: {
-        code: string;
-        message: string;
-        details?: string;
-        fieldErrors?: Record<string, string>;
-        retryable: boolean;
-      };
+      error: ApiError;
       diagnostics: api.ScenarioDiagnostic[];
     };
 

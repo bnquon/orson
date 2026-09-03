@@ -43,10 +43,16 @@ export function FolderNameDialog({
       <form id="new-scenario-folder" onSubmit={onSubmit}>
         <label className="scenario-folder-field">
           <span>Folder name</span>
-          <input autoFocus value={value} onChange={(event) => onChange(event.target.value)} />
+          <input
+            autoFocus
+            value={value}
+            aria-invalid={error !== ''}
+            aria-describedby={error ? 'new-scenario-folder-error' : undefined}
+            onChange={(event) => onChange(event.target.value)}
+          />
         </label>
         {error ? (
-          <p className="workspace-dialog__error" role="alert">
+          <p className="workspace-dialog__error" id="new-scenario-folder-error" role="alert">
             {error}
           </p>
         ) : null}
