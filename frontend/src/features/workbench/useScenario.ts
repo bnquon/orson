@@ -38,7 +38,6 @@ import type {
   ScenarioDiagnostic,
   ScenarioFileFeedback,
   ScenarioFileOperationOutcome,
-  ScenarioFolderDeletionSummary,
   ScenarioFolderFeedback,
   ScenarioFolder,
 } from './types';
@@ -109,20 +108,12 @@ function protocolError(message: string): ApiError {
   };
 }
 
-function toFolderDeletionSummary(
-  summary: api.FolderMutationSummary | undefined,
-): ScenarioFolderDeletionSummary | null {
-  if (summary === undefined) return null;
-  return {
-    removedScenarioCount: summary.removedScenarioCount ?? 0,
-  };
-}
+function folderDeletionMessage(summary: api.FolderMutationSummary | undefined): string {
+  if (summary === undefined) return 'Folder deleted';
 
-function folderDeletionMessage(summary: ScenarioFolderDeletionSummary | null): string {
-  if (summary === null) return 'Folder deleted';
-
-  const scenarioLabel = summary.removedScenarioCount === 1 ? 'scenario' : 'scenarios';
-  return `Folder deleted. ${summary.removedScenarioCount} ${scenarioLabel} removed.`;
+  const removedScenarioCount = summary.removedScenarioCount ?? 0;
+  const scenarioLabel = removedScenarioCount === 1 ? 'scenario' : 'scenarios';
+  return `Folder deleted. ${removedScenarioCount} ${scenarioLabel} removed.`;
 }
 
 interface UseScenarioOptions {
@@ -164,7 +155,6 @@ export function useScenario({
   const [folderError, setFolderError] = useState<ApiError | null>(null);
   const [folderFeedback, setFolderFeedback] = useState<ScenarioFolderFeedback>({
     successMessage: null,
-    deletionSummary: null,
   });
   const [activeScenarioCleared, setActiveScenarioCleared] = useState(false);
   const requestIdRef = useRef(0);
@@ -245,7 +235,7 @@ export function useScenario({
     ) => {
       setFolderOperation(operation);
       setFolderError(null);
-      setFolderFeedback({ successMessage: null, deletionSummary: null });
+      setFolderFeedback({ successMessage: null });
       const activeIdBeforeOperation = activeScenarioIdRef.current;
       const activeWasLocal =
         activeIdBeforeOperation !== null &&
@@ -258,8 +248,6 @@ export function useScenario({
       if (!mountedRef.current) return false;
       if (result.data !== undefined) applyFolderData(result.data);
       if (result.data?.persistence !== undefined) onPersistence(result.data.persistence);
-      const deletionSummary =
-        operation === 'deleting' ? toFolderDeletionSummary(result.data?.summary) : null;
       if (operation === 'deleting' && result.data !== undefined) {
         const remainingScenarioIds = new Set(result.data.scenarios.map((item) => item.id));
         const activeWasRemoved =
@@ -281,8 +269,7 @@ export function useScenario({
         }
         if (result.ok) {
           setFolderFeedback({
-            successMessage: folderDeletionMessage(deletionSummary),
-            deletionSummary,
+            successMessage: folderDeletionMessage(result.data.summary),
           });
         }
       }
@@ -753,6 +740,6 @@ export function useScenario({
     moveScenario,
     deleteFolder,
     clearFolderError: () => setFolderError(null),
-    clearFolderFeedback: () => setFolderFeedback({ successMessage: null, deletionSummary: null }),
+    clearFolderFeedback: () => setFolderFeedback({ successMessage: null }),
   };
 }

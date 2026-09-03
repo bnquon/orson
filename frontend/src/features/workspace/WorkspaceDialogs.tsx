@@ -32,6 +32,7 @@ export function WorkspaceNameDialog({
 }: WorkspaceNameDialogProps) {
   const launcher = variant === 'launcher';
   const errorClass = launcher ? 'workspace-start__field-error' : 'workspace-dialog__error';
+  const nameErrorId = `${formId}-name-error`;
 
   return (
     <Modal
@@ -78,11 +79,12 @@ export function WorkspaceNameDialog({
             value={name}
             placeholder="Workspace 1"
             aria-invalid={nameError !== ''}
+            aria-describedby={nameError ? nameErrorId : undefined}
             onChange={(event) => onNameChange(event.target.value)}
           />
         </label>
         {nameError ? (
-          <p className={errorClass} role="alert">
+          <p className={errorClass} id={nameErrorId} role="alert">
             {nameError}
           </p>
         ) : null}

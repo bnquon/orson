@@ -22,7 +22,11 @@ function HistoricalRunState({
 }: Pick<HistoricalRunPanelProps, 'detailStatus' | 'errorMessage' | 'onBackToHistory'>) {
   const loading = detailStatus === 'loading';
   return (
-    <div className="historical-run__state" role={loading ? undefined : 'alert'}>
+    <div
+      className="historical-run__state"
+      role={loading ? 'status' : 'alert'}
+      aria-busy={loading || undefined}
+    >
       {loading ? <LoadingDots size="setup" /> : <WarningCircle width={20} height={20} />}
       <strong>{loading ? 'Loading historical run' : 'Historical run unavailable'}</strong>
       <span>{loading ? 'Retrieving the recorded scenario and events.' : errorMessage}</span>

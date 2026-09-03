@@ -13,32 +13,28 @@ import type { Result } from './result';
 
 type BootstrapResult = Promise<Result<api.WorkspaceBootstrapData>>;
 
-function bootstrapCall(request: () => Promise<api.WorkspaceBootstrapResponse>): BootstrapResult {
-  return call(request);
-}
-
 export function bootstrapWorkspace(): BootstrapResult {
-  return bootstrapCall(() => BootstrapWorkspace());
+  return call(() => BootstrapWorkspace());
 }
 
 export function createWorkspace(name: string): BootstrapResult {
-  return bootstrapCall(() => CreateWorkspace(name));
+  return call(() => CreateWorkspace(name));
 }
 
 export function renameWorkspace(id: string, name: string): BootstrapResult {
-  return bootstrapCall(() => RenameWorkspace(id, name));
+  return call(() => RenameWorkspace(id, name));
 }
 
 export function deleteWorkspace(id: string): BootstrapResult {
-  return bootstrapCall(() => DeleteWorkspace(id));
+  return call(() => DeleteWorkspace(id));
 }
 
 export function setActiveWorkspace(id: string): BootstrapResult {
-  return bootstrapCall(() => SetActiveWorkspace(id));
+  return call(() => SetActiveWorkspace(id));
 }
 
 export function retryWorkspacePersistence(confirmSessionWrite: boolean): BootstrapResult {
-  return bootstrapCall(() => RetryWorkspacePersistence(confirmSessionWrite));
+  return call(() => RetryWorkspacePersistence(confirmSessionWrite));
 }
 
 export function setWorkspaceSelectedScenario(

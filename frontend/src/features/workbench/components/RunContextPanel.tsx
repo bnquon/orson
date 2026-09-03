@@ -417,7 +417,7 @@ export function RunContextPanel({
               </div>
             ) : null}
             {history.listStatus === 'loading' ? (
-              <div className="run-context__state">
+              <div className="run-context__state" role="status" aria-busy="true">
                 <LoadingDots size="setup" />
                 <span>Loading saved runs</span>
               </div>
@@ -473,7 +473,11 @@ export function RunContextPanel({
       ) : (
         <>
           {history.detailStatus === 'loading' ? (
-            <div className="run-context__state run-context__state--detail">
+            <div
+              className="run-context__state run-context__state--detail"
+              role="status"
+              aria-busy="true"
+            >
               <LoadingDots size="setup" />
               <span>Loading historical run</span>
             </div>

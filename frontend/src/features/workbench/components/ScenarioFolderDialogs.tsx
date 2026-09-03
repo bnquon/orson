@@ -58,6 +58,8 @@ export function ScenarioFolderDialogs({
           <input
             autoFocus
             value={renameValue}
+            aria-invalid={folderError !== null}
+            aria-describedby={folderError ? 'rename-scenario-folder-error' : undefined}
             onChange={(event) => onRenameValueChange(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') onConfirmRename();
@@ -65,7 +67,7 @@ export function ScenarioFolderDialogs({
           />
         </label>
         {folderError ? (
-          <p className="workspace-dialog__error" role="alert">
+          <p className="workspace-dialog__error" id="rename-scenario-folder-error" role="alert">
             {folderError.message}
           </p>
         ) : null}
