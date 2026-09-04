@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
-import { Check, NavArrowDown } from 'iconoir-react';
+import { NavArrowDown, Plus } from 'iconoir-react';
 import { createPortal } from 'react-dom';
 
 interface TopologySourceOption {
@@ -9,17 +9,11 @@ interface TopologySourceOption {
 
 interface TopologySourcePickerProps {
   topicLabel: string;
-  value: string;
   options: TopologySourceOption[];
-  onChange: (value: string) => void;
+  onSelect: (value: string) => void;
 }
 
-export function TopologySourcePicker({
-  topicLabel,
-  value,
-  options,
-  onChange,
-}: TopologySourcePickerProps) {
+export function TopologySourcePicker({ topicLabel, options, onSelect }: TopologySourcePickerProps) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{
     top: number;
@@ -30,8 +24,6 @@ export function TopologySourcePicker({
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const optionRefs = useRef(new Map<string, HTMLButtonElement>());
-  const menuItems = [{ value: '', label: 'Not connected' }, ...options];
-  const selected = menuItems.find((item) => item.value === value) ?? menuItems[0];
 
   useEffect(() => {
     if (!open) return;
@@ -54,7 +46,7 @@ export function TopologySourcePicker({
       if (trigger === null) return;
       const bounds = trigger.getBoundingClientRect();
       const width = Math.min(Math.max(bounds.width, 180), window.innerWidth - 16);
-      const estimatedHeight = Math.min(menuItems.length * 29 + 8, window.innerHeight - 16);
+      const estimatedHeight = Math.min(options.length * 29 + 8, window.innerHeight - 16);
       const spaceBelow = window.innerHeight - bounds.bottom;
       const top =
         spaceBelow < estimatedHeight + 8 && bounds.top > estimatedHeight + 8
@@ -71,31 +63,33 @@ export function TopologySourcePicker({
       window.removeEventListener('resize', updateMenuPosition);
       window.removeEventListener('scroll', updateMenuPosition, true);
     };
-  }, [menuItems.length, open]);
+  }, [open, options.length]);
 
   const focusOption = (optionValue: string) => {
     window.requestAnimationFrame(() => {
-      (optionRefs.current.get(optionValue) ?? optionRefs.current.get(''))?.focus();
+      optionRefs.current.get(optionValue)?.focus();
     });
   };
 
   const openMenu = () => {
     setMenuPosition(null);
     setOpen(true);
-    focusOption(value);
+    const firstOption = options[0];
+    if (firstOption !== undefined) focusOption(firstOption.value);
   };
 
   const choose = (nextValue: string) => {
-    onChange(nextValue);
+    onSelect(nextValue);
     setMenuPosition(null);
     setOpen(false);
     triggerRef.current?.focus();
   };
 
   const moveFocus = (currentValue: string, direction: number) => {
-    const currentIndex = menuItems.findIndex((item) => item.value === currentValue);
-    const nextIndex = Math.max(0, Math.min(menuItems.length - 1, currentIndex + direction));
-    focusOption(menuItems[nextIndex]?.value ?? '');
+    const currentIndex = options.findIndex((item) => item.value === currentValue);
+    const nextIndex = Math.max(0, Math.min(options.length - 1, currentIndex + direction));
+    const nextOption = options[nextIndex];
+    if (nextOption !== undefined) focusOption(nextOption.value);
   };
 
   const handleTriggerKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -118,10 +112,12 @@ export function TopologySourcePicker({
       moveFocus(optionValue, -1);
     } else if (event.key === 'Home') {
       event.preventDefault();
-      focusOption(menuItems[0]?.value ?? '');
+      const firstOption = options[0];
+      if (firstOption !== undefined) focusOption(firstOption.value);
     } else if (event.key === 'End') {
       event.preventDefault();
-      focusOption(menuItems[menuItems.length - 1]?.value ?? '');
+      const lastOption = options[options.length - 1];
+      if (lastOption !== undefined) focusOption(lastOption.value);
     } else if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       choose(optionValue);
@@ -139,10 +135,15 @@ export function TopologySourcePicker({
         ref={triggerRef}
         className="watched-topic-row__source"
         type="button"
+        disabled={options.length === 0}
         aria-expanded={open}
         aria-haspopup="menu"
-        aria-label={`Connect ${topicLabel} from`}
-        title="Choose the upstream topic for this watched topic"
+        aria-label={`Add source to ${topicLabel}`}
+        title={
+          options.length === 0
+            ? 'No additional source topics are available'
+            : 'Add another source topic'
+        }
         onClick={() => {
           if (open) {
             setMenuPosition(null);
@@ -153,7 +154,8 @@ export function TopologySourcePicker({
         }}
         onKeyDown={handleTriggerKeyDown}
       >
-        <span>{selected?.label ?? 'Not connected'}</span>
+        <Plus width={13} height={13} aria-hidden="true" />
+        <span>Add source</span>
         <NavArrowDown width={13} height={13} aria-hidden="true" />
       </button>
       {open && menuPosition !== null
@@ -162,27 +164,23 @@ export function TopologySourcePicker({
               className="watched-topic-row__source-menu"
               ref={menuRef}
               role="menu"
-              aria-label="Connect from"
+              aria-label={`Choose source for ${topicLabel}`}
               style={menuPosition}
             >
-              {menuItems.map((item) => (
+              {options.map((item) => (
                 <button
                   ref={(element) => {
                     if (element === null) optionRefs.current.delete(item.value);
                     else optionRefs.current.set(item.value, element);
                   }}
-                  className={`watched-topic-row__source-option ${item.value === value ? 'watched-topic-row__source-option--selected' : ''}`}
+                  className="watched-topic-row__source-option"
                   type="button"
-                  role="menuitemradio"
-                  aria-checked={item.value === value}
-                  key={item.value || 'none'}
+                  role="menuitem"
+                  key={item.value}
                   onClick={() => choose(item.value)}
                   onKeyDown={(event) => handleOptionKeyDown(event, item.value)}
                 >
                   <span>{item.label}</span>
-                  {item.value === value ? (
-                    <Check width={13} height={13} aria-hidden="true" />
-                  ) : null}
                 </button>
               ))}
             </div>,

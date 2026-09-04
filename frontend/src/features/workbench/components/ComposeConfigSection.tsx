@@ -1,5 +1,5 @@
-import { useRef, type Dispatch, type RefObject, type SetStateAction } from 'react';
-import { Clock, Key, Plus, Trash, WarningCircle } from 'iconoir-react';
+import { useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
+import { Clock, Key, Plus, Trash, WarningCircle, Xmark } from 'iconoir-react';
 import type {
   KafkaConnection,
   ScenarioDraft,
@@ -7,7 +7,13 @@ import type {
   ValidatableField,
   ValidationResult,
 } from '../types';
-import { connectTopologyTopic, removeTopologyTopic, renameTopologyTopic } from '../draftEditing';
+import {
+  addTopologyEdge,
+  removeTopologyEdge,
+  removeWatchedTopic as removeWatchedTopicFromDraft,
+  renameWatchedTopic,
+  setRootTopic,
+} from '../draftEditing';
 import { focusControl } from './focusControl';
 import { TopologySourcePicker } from './TopologySourcePicker';
 
@@ -35,8 +41,17 @@ export function ComposeConfigSection({
   onTouchWatchedTopic,
 }: ComposeConfigSectionProps) {
   const watchedTopicEditRefs = useRef(new Map<string, string>());
+  const [topologyFeedback, setTopologyFeedback] = useState<{
+    draft: ScenarioDraft;
+    message: string;
+    topicId: string;
+  } | null>(null);
   const touchedWatchedTopicIds = new Set(touched.watchedTopicIds);
   const showFieldError = (field: ValidatableField) => touched.fields[field] === true;
+
+  const clearTopologyFeedback = (topicId: string) => {
+    setTopologyFeedback((current) => (current?.topicId === topicId ? null : current));
+  };
 
   const beginRootTopicEdit = () => {
     if (rootTopicEditRef.current === null) rootTopicEditRef.current = draft.rootTopic;
@@ -49,20 +64,11 @@ export function ComposeConfigSection({
       rootTopicEditRef.current = null;
       return;
     }
-    const normalizedNextName = nextName.trim();
-    if (
-      normalizedNextName === '' ||
-      draft.watchedTopics.some((topic) => topic.name.trim() === normalizedNextName)
-    ) {
-      return;
-    }
+    const result = setRootTopic(draft, nextName, previousName);
+    if (!result.ok) return;
 
     rootTopicEditRef.current = null;
-    setDraft((current) => ({
-      ...current,
-      topology: renameTopologyTopic(current.topology, previousName, nextName),
-      configuredTopology: renameTopologyTopic(current.configuredTopology, previousName, nextName),
-    }));
+    setDraft(result.draft);
   };
 
   const beginWatchedTopicEdit = (topicId: string, topicName: string) => {
@@ -78,23 +84,12 @@ export function ComposeConfigSection({
       watchedTopicEditRefs.current.delete(topicId);
       return;
     }
-    const normalizedNextName = nextName.trim();
-    if (
-      normalizedNextName === '' ||
-      normalizedNextName === draft.rootTopic.trim() ||
-      draft.watchedTopics.some(
-        (topic) => topic.id !== topicId && topic.name.trim() === normalizedNextName,
-      )
-    ) {
-      return;
-    }
+    const result = renameWatchedTopic(draft, topicId, nextName, previousName);
+    if (!result.ok) return;
 
     watchedTopicEditRefs.current.delete(topicId);
-    setDraft((current) => ({
-      ...current,
-      topology: renameTopologyTopic(current.topology, previousName, nextName),
-      configuredTopology: renameTopologyTopic(current.configuredTopology, previousName, nextName),
-    }));
+    clearTopologyFeedback(topicId);
+    setDraft(result.draft);
   };
 
   const addWatchedTopic = () => {
@@ -107,58 +102,63 @@ export function ComposeConfigSection({
   };
 
   const removeWatchedTopic = (topicId: string) => {
-    const removedTopic = draft.watchedTopics.find((topic) => topic.id === topicId);
     const index = draft.watchedTopics.findIndex((topic) => topic.id === topicId);
     const remaining = draft.watchedTopics.filter((topic) => topic.id !== topicId);
     const nextTopic = remaining[Math.min(index, remaining.length - 1)];
+    const result = removeWatchedTopicFromDraft(draft, topicId);
+    if (!result.ok) return;
+
     watchedTopicEditRefs.current.delete(topicId);
-    setDraft((current) => ({
-      ...current,
-      watchedTopics: remaining,
-      topology:
-        removedTopic === undefined
-          ? current.topology
-          : removeTopologyTopic(current.topology, removedTopic.name),
-      configuredTopology:
-        removedTopic === undefined
-          ? current.configuredTopology
-          : removeTopologyTopic(current.configuredTopology, removedTopic.name),
-    }));
+    clearTopologyFeedback(topicId);
+    setDraft(result.draft);
     focusControl(
       nextTopic === undefined ? 'compose-add-watched-topic' : `watched-topic-${nextTopic.id}`,
     );
   };
 
-  const connectWatchedTopic = (topicId: string, sourceName: string) => {
-    setDraft((current) => {
-      const topic = current.watchedTopics.find((item) => item.id === topicId);
-      if (topic === undefined) return current;
-      return {
-        ...current,
-        topology: connectTopologyTopic(current.topology, topic.name, sourceName),
-        configuredTopology: connectTopologyTopic(
-          current.configuredTopology,
-          topic.name,
-          sourceName,
-        ),
-      };
-    });
+  const addWatchedTopicSource = (topicId: string, sourceName: string) => {
+    const topic = draft.watchedTopics.find((item) => item.id === topicId);
+    if (topic === undefined) return;
+
+    const result = addTopologyEdge(draft, { from: sourceName, to: topic.name });
+    if (!result.ok) {
+      setTopologyFeedback({ draft, message: result.error.message, topicId });
+      return;
+    }
+
+    clearTopologyFeedback(topicId);
+    setDraft(result.draft);
   };
 
-  const topologySources = (topicId: string) => {
+  const removeWatchedTopicSource = (topicId: string, sourceName: string, targetName: string) => {
+    const result = removeTopologyEdge(draft, { from: sourceName, to: targetName });
+    if (!result.ok) {
+      setTopologyFeedback({ draft, message: result.error.message, topicId });
+      return;
+    }
+
+    clearTopologyFeedback(topicId);
+    setDraft(result.draft);
+  };
+
+  const topologySources = (topicId: string, connectedSources: ReadonlySet<string>) => {
     const sources = [
       ...(draft.rootTopic.trim() === ''
         ? []
         : [{ value: draft.rootTopic.trim(), label: `${draft.rootTopic.trim()} (root)` }]),
       ...draft.watchedTopics
         .filter((item) => item.id !== topicId && item.name.trim() !== '')
-        .map((item) => ({ value: item.name.trim(), label: item.name.trim() })),
+        .map((item) => ({ value: item.name.trim(), label: `${item.name.trim()} (source)` })),
     ];
     return sources.filter(
       (source, index) =>
+        !connectedSources.has(source.value) &&
         sources.findIndex((candidate) => candidate.value === source.value) === index,
     );
   };
+
+  const topologySourceLabel = (sourceName: string) =>
+    sourceName === draft.rootTopic.trim() ? `${sourceName} (root)` : `${sourceName} (source)`;
 
   return (
     <div className="compose-config workbench-scroll-region">
@@ -308,31 +308,70 @@ export function ComposeConfigSection({
           {draft.watchedTopics.map((topic) => {
             const showError = touchedWatchedTopicIds.has(topic.id);
             const error = validation.watchedTopicErrors[topic.id];
-            const connectedFrom =
-              draft.configuredTopology.find((edge) => edge.to.trim() === topic.name.trim())?.from ??
-              '';
+            const targetName = topic.name.trim();
+            const incomingSources = draft.configuredTopology.filter(
+              (edge) => targetName !== '' && edge.to.trim() === targetName,
+            );
+            const connectedSources = new Set(incomingSources.map((edge) => edge.from.trim()));
+            const sourceFeedback =
+              topologyFeedback?.draft === draft && topologyFeedback.topicId === topic.id
+                ? topologyFeedback.message
+                : undefined;
             return (
               <div className="watched-topic-row" key={topic.id}>
                 <div className="watched-topic-row__control">
-                  <TopologySourcePicker
-                    topicLabel={topic.name || 'watched topic'}
-                    value={connectedFrom}
-                    options={topologySources(topic.id)}
-                    onChange={(sourceName) => connectWatchedTopic(topic.id, sourceName)}
-                  />
+                  <div
+                    className="watched-topic-row__sources"
+                    aria-label={`Sources for ${topic.name || 'watched topic'}`}
+                    aria-describedby={
+                      sourceFeedback ? `watched-topic-error-${topic.id}` : undefined
+                    }
+                  >
+                    {incomingSources.length === 0 ? (
+                      <span className="watched-topic-row__not-connected">Not connected</span>
+                    ) : (
+                      incomingSources.map((edge, index) => {
+                        const sourceName = edge.from.trim();
+                        return (
+                          <span
+                            className="watched-topic-row__connection"
+                            key={`${edge.id}:${index}`}
+                          >
+                            <span title={sourceName}>{topologySourceLabel(sourceName)}</span>
+                            <button
+                              type="button"
+                              aria-label={`Remove ${sourceName} as a source for ${targetName || 'watched topic'}`}
+                              title={`Remove source ${sourceName}`}
+                              onClick={() =>
+                                removeWatchedTopicSource(topic.id, sourceName, targetName)
+                              }
+                            >
+                              <Xmark width={12} height={12} aria-hidden="true" />
+                            </button>
+                          </span>
+                        );
+                      })
+                    )}
+                    <TopologySourcePicker
+                      topicLabel={topic.name || 'watched topic'}
+                      options={topologySources(topic.id, connectedSources)}
+                      onSelect={(sourceName) => addWatchedTopicSource(topic.id, sourceName)}
+                    />
+                  </div>
                   <input
                     id={`watched-topic-${topic.id}`}
                     className={showError && error !== undefined ? 'compose-control--invalid' : ''}
                     value={topic.name}
                     onFocus={() => beginWatchedTopicEdit(topic.id, topic.name)}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      clearTopologyFeedback(topic.id);
                       setDraft((current) => ({
                         ...current,
                         watchedTopics: current.watchedTopics.map((item) =>
                           item.id === topic.id ? { ...item, name: event.target.value } : item,
                         ),
-                      }))
-                    }
+                      }));
+                    }}
                     onBlur={(event) => {
                       commitWatchedTopicEdit(topic.id, event.currentTarget.value);
                       onTouchWatchedTopic(topic.id);
@@ -351,8 +390,12 @@ export function ComposeConfigSection({
                     <Trash width={16} height={16} />
                   </button>
                 </div>
-                <span className="compose-error-slot" id={`watched-topic-error-${topic.id}`}>
-                  {showError ? error : null}
+                <span
+                  className="compose-error-slot"
+                  id={`watched-topic-error-${topic.id}`}
+                  role={sourceFeedback ? 'alert' : undefined}
+                >
+                  {sourceFeedback ?? (showError ? error : null)}
                 </span>
               </div>
             );
