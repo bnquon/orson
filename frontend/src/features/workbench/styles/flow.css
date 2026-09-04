@@ -3,6 +3,7 @@
   grid-template-rows: 39px minmax(0, 1fr);
   height: 100%;
   min-height: 0;
+  position: relative;
 }
 
 .flow-panel__toolbar {
@@ -16,10 +17,34 @@
 
 .flow-panel__toolbar strong {
   display: block;
+  font-size: 10px;
 }
 
-.flow-panel__toolbar strong {
-  font-size: 10px;
+.flow-panel__heading,
+.flow-panel__edge-summary {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.flow-panel__edge-summary {
+  color: var(--color-text-dim);
+  font-family: var(--font-code);
+  font-size: 9px;
+}
+
+.flow-panel__edge-summary button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: var(--color-danger);
+  cursor: pointer;
+  display: inline-flex;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  gap: 3px;
+  padding: 2px 4px;
 }
 
 .flow-panel__controls {
@@ -71,6 +96,16 @@
   width: auto;
 }
 
+.flow-panel__controls .flow-panel__add-topic {
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  gap: 4px;
+  margin-right: 5px;
+  padding: 0 7px;
+  width: auto;
+}
+
 .flow-panel__controls button:disabled {
   color: var(--color-border);
   cursor: default;
@@ -102,11 +137,76 @@
   position: absolute;
 }
 
+.flow-map__empty {
+  align-items: center;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  left: 50%;
+  position: absolute;
+  text-align: center;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.flow-map__empty strong {
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.flow-map__empty span {
+  font-size: 10px;
+}
+
+.flow-map__empty button {
+  align-items: center;
+  background: var(--color-accent);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-bg);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 10px;
+  gap: 5px;
+  height: 29px;
+  margin-top: 3px;
+  padding: 0 9px;
+}
+
+.flow-map__empty button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.flow-map__routing-warning {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--color-warning) 38%, var(--color-border));
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: 10px;
+  gap: 6px;
+  left: 50%;
+  max-width: 520px;
+  padding: 5px 8px;
+  position: absolute;
+  top: 18px;
+  transform: translateX(-50%);
+  z-index: 4;
+}
+
+.flow-map__routing-warning svg {
+  color: var(--color-warning);
+  flex: none;
+}
+
 .flow-map__edges {
   height: 100%;
   left: 0;
   overflow: visible;
-  pointer-events: none;
+  pointer-events: auto;
   position: absolute;
   top: 0;
   width: 100%;
@@ -115,8 +215,46 @@
 
 .flow-map__edge {
   fill: none;
+  pointer-events: none;
   stroke-linecap: round;
   stroke-width: 1.5;
+}
+
+.flow-map__edge--selected {
+  filter: drop-shadow(0 0 2px color-mix(in srgb, var(--color-accent) 65%, transparent));
+  stroke: var(--color-accent);
+  stroke-width: 2.5;
+}
+
+.flow-map__edge-hit {
+  fill: none;
+  pointer-events: stroke;
+  stroke: transparent;
+  stroke-width: 14;
+}
+
+.flow-map__edge-hit:focus-visible {
+  outline: none;
+  stroke: color-mix(in srgb, var(--color-focus) 25%, transparent);
+}
+
+.flow-map__edge-preview {
+  fill: none;
+  pointer-events: none;
+  stroke: var(--color-accent);
+  stroke-dasharray: 4 4;
+  stroke-width: 1.5;
+}
+
+.flow-node-shell {
+  height: 82px;
+  position: absolute;
+  width: 190px;
+  z-index: 1;
+}
+
+.flow-node-shell--menu-open {
+  z-index: 5;
 }
 
 .flow-map__edge--configured {
@@ -150,14 +288,14 @@
   color: var(--color-text);
   min-height: 82px;
   padding: 10px;
-  position: absolute;
+  height: 100%;
+  position: relative;
   text-align: left;
   transition:
     background-color var(--duration-fast) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard),
     box-shadow var(--duration-fast) var(--ease-standard);
   width: 190px;
-  z-index: 1;
 }
 
 button.flow-node {
@@ -196,6 +334,11 @@ button.flow-node:active {
 .flow-node--selected {
   background: var(--color-selection-surface);
   border-color: var(--color-selection);
+}
+
+.flow-node--drop-target {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 22%, transparent);
 }
 
 .flow-node__topline {
@@ -267,9 +410,200 @@ button.flow-node:active {
   white-space: nowrap;
 }
 
+.flow-node--editable strong,
+.flow-node--editable .flow-node__record-state {
+  padding-right: 26px;
+}
+
+.flow-node__record-state--disconnected {
+  color: var(--color-warning);
+}
+
+.flow-node__menu-trigger,
+.flow-node__source-handle {
+  align-items: center;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-dim);
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  position: absolute;
+  z-index: 3;
+}
+
+.flow-node__menu-trigger {
+  border-radius: var(--radius-sm);
+  height: 22px;
+  right: 6px;
+  top: 29px;
+  width: 24px;
+}
+
+.flow-node__source-handle,
+.flow-node__target-handle {
+  border-radius: 50%;
+  height: 12px;
+  top: calc(50% - 6px);
+  width: 12px;
+}
+
+.flow-node__source-handle {
+  padding: 0;
+  right: -6px;
+  touch-action: none;
+}
+
+.flow-node__target-handle {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  left: -6px;
+  position: absolute;
+  z-index: 3;
+}
+
+.flow-node__menu-trigger:hover,
+.flow-node__source-handle:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+.flow-node__menu-trigger:disabled,
+.flow-node__source-handle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.flow-node__menu {
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 10px 24px rgb(0 0 0 / 24%);
+  display: grid;
+  gap: 2px;
+  min-width: 158px;
+  padding: 4px;
+  position: absolute;
+  right: 4px;
+  top: 54px;
+  z-index: 6;
+}
+
+.flow-node__menu > button,
+.flow-node__connect-targets button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  font-size: 10px;
+  gap: 6px;
+  min-height: 27px;
+  padding: 0 6px;
+  text-align: left;
+  width: 100%;
+}
+
+.flow-node__menu > button:hover,
+.flow-node__connect-targets button:hover,
+.flow-node__menu > button:focus-visible,
+.flow-node__connect-targets button:focus-visible {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  outline: 0;
+}
+
+.flow-node__menu > .flow-node__delete {
+  color: var(--color-danger);
+}
+
+.flow-node__connect-targets {
+  border-bottom: 1px solid var(--color-border-subtle);
+  border-top: 1px solid var(--color-border-subtle);
+  display: grid;
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 3px 0;
+}
+
+.flow-node__connect-targets button {
+  font-family: var(--font-code);
+  font-size: 9px;
+}
+
+.flow-node__connect-targets span {
+  color: var(--color-text-dim);
+  font-size: 9px;
+  padding: 6px;
+}
+
+.flow-panel__feedback {
+  align-items: center;
+  background: var(--color-surface-raised);
+  border: 1px solid color-mix(in srgb, var(--color-danger) 42%, var(--color-border));
+  border-radius: var(--radius-sm);
+  bottom: 12px;
+  color: var(--color-text-muted);
+  display: flex;
+  font-size: 10px;
+  gap: 6px;
+  left: 50%;
+  max-width: min(520px, calc(100% - 24px));
+  padding: 7px 9px;
+  position: absolute;
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.flow-panel__feedback svg {
+  color: var(--color-danger);
+  flex: none;
+}
+
+.topology-topic-dialog label {
+  display: grid;
+  gap: 5px;
+}
+
+.topology-topic-dialog label > span {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+}
+
+.topology-topic-dialog input {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-family: var(--font-code);
+  font-size: 11px;
+  height: 34px;
+  outline: 0;
+  padding: 0 9px;
+}
+
+.topology-topic-dialog input:focus {
+  border-color: var(--color-focus);
+}
+
+.topology-topic-dialog input[aria-invalid='true'] {
+  border-color: var(--color-danger);
+}
+
+.topology-topic-dialog p {
+  color: var(--color-danger);
+  font-size: 10px;
+  margin: 5px 0 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .flow-panel__controls button,
-  .flow-node {
+  .flow-node,
+  .flow-node__menu-trigger,
+  .flow-node__source-handle {
     transition: none;
   }
 }

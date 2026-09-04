@@ -41,6 +41,7 @@ import { useScenarioDraftSession } from './scenarioDraftSession';
 import { useScenarioFileOperations } from './useScenarioFileOperations';
 import { useRun } from './useRun';
 import { useRunHistory } from './useRunHistory';
+import { useTopologyEditing } from './useTopologyEditing';
 import type { ComposeEditorTab, TouchedState, ValidatableField, WorkspaceMode } from './types';
 import { getJsonError, validateScenario } from './validation';
 import type { WorkbenchPageProps } from './workbenchPageTypes';
@@ -182,6 +183,7 @@ export function WorkbenchPage({
   );
   const liveRun = useMemo(() => toObservedRun(run.state, 'live'), [run.state]);
   const flowModel = useMemo(() => buildFlowViewModel(draft, run.state), [draft, run.state]);
+  const topologyEditing = useTopologyEditing(draft, setDraft);
   const selectedEvent =
     liveRun.events.find((event) => event.id === run.state.selectedRecordId) ?? null;
   const isRunActive = isActiveRunStatus(run.state.status);
@@ -214,6 +216,14 @@ export function WorkbenchPage({
     onSaveScenarioAs,
     onClearFileFeedback,
   });
+  const flowEditingDisabled = isRunActive || scenarioSelectionLoading || fileOperations.fileBusy;
+  const flowEditingDisabledReason = isRunActive
+    ? 'Stop the active run before editing the topology'
+    : scenarioSelectionLoading
+      ? 'Wait for the selected scenario to finish loading'
+      : fileOperations.fileBusy
+        ? 'Wait for the current scenario file operation to finish'
+        : '';
 
   useEffect(() => {
     onWorkspaceGuardChange({
@@ -696,6 +706,14 @@ export function WorkbenchPage({
                 model={flowModel}
                 selectedRecordId={run.state.selectedRecordId}
                 onSelectRecord={(recordId) => run.selectRecord(recordId)}
+                editingDisabled={flowEditingDisabled}
+                editingDisabledReason={flowEditingDisabledReason}
+                onAddRootTopic={topologyEditing.addRoot}
+                onAddWatchedTopic={topologyEditing.addWatched}
+                onRenameTopic={topologyEditing.renameTopic}
+                onRemoveTopic={topologyEditing.removeTopic}
+                onCreateEdge={topologyEditing.createEdge}
+                onRemoveEdge={topologyEditing.removeEdge}
               />
             </>
           )
