@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/twmb/franz-go/pkg/kadm"
 	"github.com/twmb/franz-go/pkg/kerr"
+	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 type Topic struct {
@@ -28,31 +28,57 @@ type TopicMetadata struct {
 }
 
 func (c *Client) LookupTopics(ctx context.Context, names []string) ([]TopicMetadata, error) {
-	// kadm.Metadata issues a fresh request (cache max age zero), with
-	// AllowAutoTopicCreation false, including when the broker permits creation.
-	metadata, err := c.admin.Metadata(ctx, names...)
+	metadata, err := topicMetadataRequest(names).RequestWith(ctx, c.franz)
 	if err != nil {
 		return nil, fmt.Errorf("lookup topic metadata: %w", err)
+	}
+	if metadata == nil {
+		return nil, errors.New("lookup topic metadata: broker returned an unexpected response")
 	}
 	return topicMetadataResults(metadata.Topics, names), nil
 }
 
-func topicMetadataResults(topics kadm.TopicDetails, names []string) []TopicMetadata {
+func topicMetadataRequest(names []string) *kmsg.MetadataRequest {
+	request := kmsg.NewPtrMetadataRequest()
+	request.AllowAutoTopicCreation = false
+	request.Topics = make([]kmsg.MetadataRequestTopic, 0, len(names))
+	for _, name := range names {
+		topic := kmsg.NewMetadataRequestTopic()
+		topic.Topic = kmsg.StringPtr(name)
+		request.Topics = append(request.Topics, topic)
+	}
+	return request
+}
+
+func topicMetadataResults(topics []kmsg.MetadataResponseTopic, names []string) []TopicMetadata {
+	byName := make(map[string]int, len(topics))
+	for index, topic := range topics {
+		if topic.Topic != nil {
+			byName[*topic.Topic] = index
+		}
+	}
+
 	results := make([]TopicMetadata, 0, len(names))
 	for _, name := range names {
-		topic, ok := topics[name]
+		index, ok := byName[name]
 		result := TopicMetadata{Name: name}
-		switch {
-		case !ok:
+		if !ok {
 			result.Err = errors.New("broker omitted requested topic metadata")
-		case errors.Is(topic.Err, kerr.UnknownTopicOrPartition):
+			results = append(results, result)
+			continue
+		}
+
+		topic := topics[index]
+		topicErr := kerr.ErrorForCode(topic.ErrorCode)
+		switch {
+		case errors.Is(topicErr, kerr.UnknownTopicOrPartition):
 			result.Missing = true
-		case topic.Err != nil:
-			result.Err = topic.Err
+		case topicErr != nil:
+			result.Err = topicErr
 		default:
-			for _, partition := range topic.Partitions.Sorted() {
-				if partition.Err != nil {
-					result.Err = partition.Err
+			for _, partition := range topic.Partitions {
+				if partitionErr := kerr.ErrorForCode(partition.ErrorCode); partitionErr != nil {
+					result.Err = partitionErr
 					break
 				}
 			}
