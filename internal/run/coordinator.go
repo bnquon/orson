@@ -26,18 +26,40 @@ func NewCoordinator(kafkaClient KafkaClient) (*Coordinator, error) {
 // Run executes one root event and emits ordered lifecycle events until the
 // capture timeout, cancellation, or an explicit Kafka failure.
 func (c *Coordinator) Run(ctx context.Context, request RunRequest, sink EventSink) error {
+	execute, err := c.Prepare(ctx, request)
+	if err != nil {
+		return err
+	}
+	return execute(sink)
+}
+
+// Prepare checks topics before any lifecycle events or capture. The returned
+// operation retains the checked request so callers cannot bypass the check.
+func (c *Coordinator) Prepare(ctx context.Context, request RunRequest) (func(EventSink) error, error) {
 	if request.RunID == "" {
-		return ErrMissingRunID
+		return nil, ErrMissingRunID
 	}
 	if request.CaptureTimeout <= 0 {
-		return errors.New("capture timeout must be positive")
+		return nil, errors.New("capture timeout must be positive")
 	}
 	correlationHeader := correlation.ResolveHeader(request.CorrelationHeader)
 	for _, header := range request.RootMessage.Headers {
 		if correlation.HeaderNamesEqual(header.Key, correlationHeader) {
-			return fmt.Errorf("correlation header %q is managed automatically", correlationHeader)
+			return nil, fmt.Errorf("correlation header %q is managed automatically", correlationHeader)
 		}
 	}
+	request, err := normalizeRequest(request)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.preflight(ctx, request); err != nil {
+		return nil, err
+	}
+	return func(sink EventSink) error { return c.run(ctx, request, sink) }, nil
+}
+
+func (c *Coordinator) run(ctx context.Context, request RunRequest, sink EventSink) error {
+	correlationHeader := correlation.ResolveHeader(request.CorrelationHeader)
 
 	emitter := &eventEmitter{runID: request.RunID, sink: sink}
 	emitter.emit(Event{Kind: EventStarted, Status: RunStatusStarting})

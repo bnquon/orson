@@ -6,6 +6,7 @@ export namespace api {
 	    details?: string;
 	    fieldErrors?: Record<string, string>;
 	    retryable: boolean;
+	    topicDiagnostics?: TopicDiagnostic[];
 	
 	    static createFrom(source: any = {}) {
 	        return new APIError(source);
@@ -18,6 +19,41 @@ export namespace api {
 	        this.details = source["details"];
 	        this.fieldErrors = source["fieldErrors"];
 	        this.retryable = source["retryable"];
+	        this.topicDiagnostics = this.convertValues(source["topicDiagnostics"], TopicDiagnostic);
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TopicDiagnostic {
+	    kind: string;
+	    topic?: string;
+	    roles?: string[];
+
+	    static createFrom(source: any = {}) {
+	        return new TopicDiagnostic(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.kind = source["kind"];
+	        this.topic = source["topic"];
+	        this.roles = source["roles"];
 	    }
 	}
 	export class ConnectionAttempt {
@@ -1508,4 +1544,3 @@ export namespace api {
 	}
 
 }
-

@@ -352,6 +352,7 @@ export function WorkbenchPage({
       return;
     }
 
+    history.setMode('current');
     void run.startRun(
       toRunRequest(draft, {
         source: scenario.source,
@@ -479,6 +480,10 @@ export function WorkbenchPage({
     <span className="publish-summary" aria-label="Historical run is read-only">
       Read-only run
     </span>
+  ) : run.state.status === 'checking' ? (
+    <button className="publish-button" type="button" disabled aria-busy="true">
+      <LoadingDots size="inline" /> Checking Kafka topics
+    </button>
   ) : isRunActive ? (
     <>
       {scenario.source === 'unsaved' ? unsavedYamlPreviewAction : null}
@@ -720,6 +725,7 @@ export function WorkbenchPage({
         }
         previousRun={
           <RunContextPanel
+            onRetryPreflight={publishRun}
             currentRun={liveRun}
             currentSelectedEventId={run.state.selectedRecordId}
             currentSelectedEvent={selectedEvent}

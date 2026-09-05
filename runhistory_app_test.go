@@ -30,9 +30,9 @@ func TestAppPersistsTerminalRunHistoryWithoutChangingLiveRunEvents(t *testing.T)
 		t.Fatalf("Connect() failed: %+v", response.Error)
 	}
 	start := app.StartRun(api.RunRequest{
-		RootTopic:             "order.created",
+		RootTopic:             " order.created ",
 		Payload:               `{"orderId":"42"}`,
-		WatchedTopics:         []string{"payment.charged"},
+		WatchedTopics:         []string{" payment.charged ", "payment.charged"},
 		CaptureTimeoutSeconds: 5,
 		ScenarioSnapshot: &api.RunScenarioSnapshot{
 			Version:           1,
@@ -41,8 +41,8 @@ func TestAppPersistsTerminalRunHistoryWithoutChangingLiveRunEvents(t *testing.T)
 			SourcePath:        "/tmp/checkout.yaml",
 			SourceFilename:    "checkout.yaml",
 			DisplayName:       "Checkout flow",
-			RootTopic:         "order.created",
-			WatchedTopics:     []string{"payment.charged"},
+			RootTopic:         " order.created ",
+			WatchedTopics:     []string{" payment.charged ", "payment.charged"},
 			Payload:           `{"orderId":"42"}`,
 			CaptureTimeoutSec: 5,
 		},
@@ -85,6 +85,9 @@ func TestAppPersistsTerminalRunHistoryWithoutChangingLiveRunEvents(t *testing.T)
 	detail := app.GetRunHistory(start.Data.RunID, workspaceID)
 	if !detail.OK || detail.Data == nil || detail.Data.Scenario.Reference != "/tmp/checkout.yaml" {
 		t.Fatalf("GetRunHistory() = %+v", detail)
+	}
+	if detail.Data.Scenario.RootTopic != "order.created" || len(detail.Data.Scenario.WatchedTopics) != 1 || detail.Data.Scenario.WatchedTopics[0] != "payment.charged" {
+		t.Fatalf("history topics = %q / %v, want canonical topics", detail.Data.Scenario.RootTopic, detail.Data.Scenario.WatchedTopics)
 	}
 }
 

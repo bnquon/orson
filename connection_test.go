@@ -414,11 +414,23 @@ func (f *fakeKafkaConnector) callCount() int {
 }
 
 type fakeKafkaConnection struct {
+	lookupTopics    func(context.Context, []string) ([]kafka.TopicMetadata, error)
 	readFromOffsets func(context.Context, []kafka.PartitionOffset, func(kafka.Record) error) error
 
 	mu        sync.Mutex
 	closed    bool
 	published []kafka.Message
+}
+
+func (f *fakeKafkaConnection) LookupTopics(ctx context.Context, names []string) ([]kafka.TopicMetadata, error) {
+	if f.lookupTopics != nil {
+		return f.lookupTopics(ctx, names)
+	}
+	result := make([]kafka.TopicMetadata, 0, len(names))
+	for _, name := range names {
+		result = append(result, kafka.TopicMetadata{Name: name})
+	}
+	return result, nil
 }
 
 func (f *fakeKafkaConnection) Close() {

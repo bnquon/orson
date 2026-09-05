@@ -1,3 +1,4 @@
+import { preflightErrorCodes, type PreflightErrorCode } from '../../api/result';
 import type { ApiError, RunStatus } from './types';
 
 export const terminalRunStatuses: ReadonlySet<RunStatus> = new Set([
@@ -10,7 +11,16 @@ export const terminalRunStatuses: ReadonlySet<RunStatus> = new Set([
 export type RunFailureStage = 'publish' | 'capture' | 'processing' | 'unknown' | null;
 
 export function isActiveRunStatus(status: RunStatus): boolean {
-  return status === 'starting' || status === 'in_progress';
+  return status === 'checking' || status === 'starting' || status === 'in_progress';
+}
+
+export function isPreflightError(
+  error: ApiError | null | undefined,
+): error is ApiError & { code: PreflightErrorCode } {
+  return (
+    error?.code === preflightErrorCodes.missingTopics ||
+    error?.code === preflightErrorCodes.metadataUnavailable
+  );
 }
 
 export function formatStatusLabel(status: string): string {
