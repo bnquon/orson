@@ -13,6 +13,7 @@ import (
 // KafkaClient is the part of the Kafka module needed by the run coordinator.
 // Keeping this interface small gives the coordinator a clear seam for tests.
 type KafkaClient interface {
+	LookupTopics(context.Context, []string) ([]kafka.TopicMetadata, error)
 	ReadEndOffsets(context.Context, []string) ([]kafka.PartitionOffset, error)
 	PublishMessage(context.Context, kafka.Message) (kafka.Record, error)
 	ReadFromOffsets(context.Context, []kafka.PartitionOffset, func(), func(kafka.Record) error) error

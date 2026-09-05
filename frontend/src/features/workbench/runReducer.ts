@@ -1,6 +1,6 @@
 import { getRunRecordId } from './flowModel';
 import { isValidRunEvent } from './runEvents';
-import { runFailureStage, terminalRunStatuses } from './runStatus';
+import { isPreflightError, runFailureStage, terminalRunStatuses } from './runStatus';
 import type { ApiError, RunEvent, RunState, RunStatus, TrackedEvent } from './types';
 
 export type RunAction =
@@ -13,11 +13,13 @@ export type RunAction =
   | { type: 'reset' };
 
 export interface ReducerRunState extends RunState {
+  pendingTopics: string[];
   ignoredRunIds: ReadonlySet<string>;
   ignoreUnknownRunEvents: boolean;
 }
 
 export const initialRunState: ReducerRunState = {
+  pendingTopics: [],
   runId: null,
   status: 'idle',
   rootRecord: null,
@@ -93,7 +95,11 @@ function applyEvent(state: ReducerRunState, event: RunEvent): ReducerRunState {
 
   switch (event.kind) {
     case 'started':
-      return { ...next, status: 'starting' };
+      return {
+        ...next,
+        status: 'starting',
+        trackedEvents: trackedEventsFor(state.pendingTopics, 'in_progress'),
+      };
     case 'ready':
       return { ...next, status: 'in_progress' };
     case 'root_published': {
@@ -141,15 +147,34 @@ export function runReducer(state: ReducerRunState, action: RunAction): ReducerRu
         ...initialRunState,
         ignoredRunIds: state.ignoredRunIds,
         ignoreUnknownRunEvents: false,
-        status: 'starting',
-        trackedEvents: trackedEventsFor(action.watchedTopics, 'in_progress'),
+        status: 'checking',
+        pendingTopics: action.watchedTopics,
       };
     case 'accepted':
       if (state.runId !== null && state.runId !== action.runId) return state;
-      return { ...state, runId: action.runId };
+      return {
+        ...state,
+        runId: action.runId,
+        ...(state.status === 'checking'
+          ? {
+              status: 'starting' as const,
+              trackedEvents: trackedEventsFor(state.pendingTopics, 'in_progress'),
+            }
+          : {}),
+      };
     case 'event':
       return applyEvent(state, action.event);
     case 'failure':
+      if (isPreflightError(action.error) && state.runId === null) {
+        return {
+          ...state,
+          status: 'idle',
+          error: action.error,
+          trackedEvents: [],
+          pendingTopics: [],
+          ignoreUnknownRunEvents: true,
+        };
+      }
       return {
         ...state,
         status: 'failed',

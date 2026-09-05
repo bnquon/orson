@@ -293,6 +293,7 @@ func apiScenarioSource(source scenario.Source) api.ScenarioSource {
 // StartRun validates and registers a run, then returns its ID before Kafka
 // capture or publishing completes. Runtime failures are delivered as events.
 func (a *App) StartRun(request api.RunRequest) api.RunStartResponse {
+	request = request.Normalize()
 	if err := request.Validate(); err != nil {
 		return api.RunStartFailure(api.NewError(
 			"invalid_request",
@@ -306,6 +307,17 @@ func (a *App) StartRun(request api.RunRequest) api.RunStartResponse {
 	if apiErr != nil {
 		return api.RunStartFailure(apiErr)
 	}
+	execute, err := coordinator.Prepare(requestContext, run.RunRequest{
+		RunID:             runID,
+		CorrelationHeader: request.ResolvedCorrelationHeader(),
+		RootMessage:       kafka.Message{Topic: request.RootTopic, Key: []byte(request.MessageKey), Value: []byte(request.Payload), Headers: toKafkaHeaders(request.Headers)},
+		WatchedTopics:     request.WatchedTopics,
+		CaptureTimeout:    time.Duration(request.CaptureTimeoutSeconds) * time.Second,
+	})
+	if err != nil {
+		a.endRun(runID)
+		return api.RunStartFailure(preflightAPIError(err))
+	}
 	workspaceID := a.workspaceService().Snapshot().ActiveWorkspaceID
 	a.stateMu.Lock()
 	connectionName := ""
@@ -317,25 +329,31 @@ func (a *App) StartRun(request api.RunRequest) api.RunStartResponse {
 
 	go func() {
 		defer a.endRun(runID)
-		correlationHeader := request.ResolvedCorrelationHeader()
-		err := coordinator.Run(requestContext, run.RunRequest{
-			RunID:             runID,
-			CorrelationHeader: correlationHeader,
-			RootMessage: kafka.Message{
-				Topic:   request.RootTopic,
-				Key:     []byte(request.MessageKey),
-				Value:   []byte(request.Payload),
-				Headers: toKafkaHeaders(request.Headers),
-			},
-			WatchedTopics:  request.WatchedTopics,
-			CaptureTimeout: time.Duration(request.CaptureTimeoutSeconds) * time.Second,
-		}, historyRecorder.sink)
+		err := execute(historyRecorder.sink)
 		if err != nil {
 			log.Printf("run failed before terminal event: %v", err)
 		}
 	}()
 
 	return api.RunStartSuccess(string(runID))
+}
+
+func preflightAPIError(err error) *api.APIError {
+	var preflight *run.PreflightError
+	if !errors.As(err, &preflight) {
+		return api.NewError("run_start_failed", "The run could not be started.", err.Error(), true)
+	}
+	code := api.ErrorCodePreflightMissingTopics
+	message := "Some configured Kafka topics do not exist. Fix the scenario or create the topics before publishing."
+	if preflight.Retryable() {
+		code = api.ErrorCodePreflightMetadataUnavailable
+		message = "Kafka topic metadata could not be checked. Check the connection and permissions, then retry."
+	}
+	result := api.NewError(code, message, "", preflight.Retryable())
+	for _, diagnostic := range preflight.Diagnostics {
+		result.TopicDiagnostics = append(result.TopicDiagnostics, api.TopicDiagnostic{Kind: api.TopicDiagnosticKind(diagnostic.Kind), Topic: diagnostic.Topic, Roles: diagnostic.Roles})
+	}
+	return result
 }
 
 // StopRun requests cancellation of the active run. The terminal state is

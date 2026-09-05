@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle, Clock, MoreHoriz, NavArrowLeft, Refresh, WarningCircle } from 'iconoir-react';
+import { preflightErrorCodes, topicDiagnosticKinds } from '../../../api/result';
 import { LoadingDots } from '../../../components/LoadingDots';
 import { Modal, ModalActions, ModalButton } from '../../../components/Modal';
 import { Toast } from '../../../components/Toast';
@@ -7,7 +8,7 @@ import { formatObservedTimestamp } from '../observedEvent';
 import { formatRunDuration } from '../historyFormatting';
 import { toObservedRun } from '../observedRun';
 import type { HistorySummary } from '../historyTypes';
-import { formatStatusLabel, isActiveRunStatus } from '../runStatus';
+import { formatStatusLabel, isActiveRunStatus, isPreflightError } from '../runStatus';
 import type { ObservedEvent, ObservedRun, RunStatus } from '../types';
 import type { RunHistoryController } from '../useRunHistory';
 import { EventInspector } from './EventInspector';
@@ -19,6 +20,7 @@ interface RunContextPanelProps {
   currentSelectedEvent: ObservedEvent | null;
   onSelectCurrentEvent: (eventId: string) => void;
   history: RunHistoryController;
+  onRetryPreflight?: () => void;
 }
 
 type PendingConfirmation = { kind: 'delete'; id: string; label: string } | { kind: 'clear' } | null;
@@ -41,6 +43,8 @@ const historyFilterLabels: Record<HistoryFilterStatus, string> = {
 
 function activityMessage(status: RunStatus): string {
   switch (status) {
+    case 'checking':
+      return 'Checking Kafka topics';
     case 'starting':
       return 'Starting capture';
     case 'in_progress':
@@ -217,13 +221,56 @@ function CurrentRun({
   selectedEventId,
   selectedEvent,
   onSelectEvent,
+  onRetryPreflight,
 }: {
   run: ObservedRun;
   selectedEventId: string | null;
   selectedEvent: ObservedEvent | null;
   onSelectEvent: (eventId: string) => void;
+  onRetryPreflight?: () => void;
 }) {
   const active = isActiveRunStatus(run.status);
+  if (run.status === 'checking') {
+    return (
+      <div className="run-context__state" role="status" aria-busy="true">
+        <LoadingDots size="setup" />
+        <strong>Checking Kafka topics</strong>
+        <span>Verifying the root and watched topics before capture and publishing.</span>
+      </div>
+    );
+  }
+  const error = run.error;
+  if (error !== null && isPreflightError(error)) {
+    return (
+      <div className="run-context__state run-context__state--error" role="alert">
+        <WarningCircle width={18} height={18} />
+        <strong>{error.message}</strong>
+        {error.topicDiagnostics?.some((item) => item.kind === topicDiagnosticKinds.missingTopic) ? (
+          <ul>
+            {error.topicDiagnostics
+              .filter((item) => item.kind === topicDiagnosticKinds.missingTopic)
+              .map((item) => (
+                <li key={item.topic}>
+                  {item.topic}
+                  {item.roles?.length ? ` (${item.roles.join(', ')})` : ''}
+                </li>
+              ))}
+          </ul>
+        ) : null}
+        {error.code === preflightErrorCodes.metadataUnavailable ? (
+          <span>
+            Kafka metadata could not be checked. Check your connection and permissions, then retry.
+          </span>
+        ) : null}
+        <span>No run started. Update the scenario or connection and publish again.</span>
+        {error.retryable && onRetryPreflight ? (
+          <button type="button" onClick={onRetryPreflight}>
+            Retry topic check
+          </button>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <>
       <div className="run-context__summary">
@@ -267,6 +314,7 @@ export function RunContextPanel({
   currentSelectedEvent,
   onSelectCurrentEvent,
   history,
+  onRetryPreflight,
 }: RunContextPanelProps) {
   const [menuRunId, setMenuRunId] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingConfirmation>(null);
@@ -379,6 +427,7 @@ export function RunContextPanel({
           selectedEventId={currentSelectedEventId}
           selectedEvent={currentSelectedEvent}
           onSelectEvent={onSelectCurrentEvent}
+          onRetryPreflight={onRetryPreflight}
         />
       ) : history.mode === 'history' ? (
         <div className="run-context__history-list">

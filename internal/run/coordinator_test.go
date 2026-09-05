@@ -334,6 +334,8 @@ func runCoordinator(t *testing.T, coordinator *Coordinator, request RunRequest) 
 }
 
 type eventKafkaClient struct {
+	offsetsErr      error
+	lookupTopics    func(context.Context, []string) ([]kafka.TopicMetadata, error)
 	ready           chan struct{}
 	holdCapture     bool
 	publishErr      error
@@ -348,6 +350,17 @@ type eventKafkaClient struct {
 	stopOnce        sync.Once
 }
 
+func (c *eventKafkaClient) LookupTopics(ctx context.Context, names []string) ([]kafka.TopicMetadata, error) {
+	if c.lookupTopics != nil {
+		return c.lookupTopics(ctx, names)
+	}
+	result := make([]kafka.TopicMetadata, 0, len(names))
+	for _, name := range names {
+		result = append(result, kafka.TopicMetadata{Name: name})
+	}
+	return result, nil
+}
+
 func newEventKafkaClient() *eventKafkaClient {
 	return &eventKafkaClient{
 		ready:          make(chan struct{}),
@@ -357,6 +370,9 @@ func newEventKafkaClient() *eventKafkaClient {
 }
 
 func (c *eventKafkaClient) ReadEndOffsets(context.Context, []string) ([]kafka.PartitionOffset, error) {
+	if c.offsetsErr != nil {
+		return nil, c.offsetsErr
+	}
 	return []kafka.PartitionOffset{{Topic: "payment.charged", Partition: 0, Offset: 1}}, nil
 }
 

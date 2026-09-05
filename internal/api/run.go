@@ -28,6 +28,36 @@ type RunRequest struct {
 	ScenarioSnapshot      *RunScenarioSnapshot `json:"scenarioSnapshot,omitempty"`
 }
 
+// Normalize returns a copy with canonical topic names. Watched topics retain
+// their first-seen order so preflight, capture, and history share one request.
+func (r RunRequest) Normalize() RunRequest {
+	normalized := r
+	normalized.RootTopic = strings.TrimSpace(r.RootTopic)
+	normalized.WatchedTopics = normalizeTopics(r.WatchedTopics)
+	if r.ScenarioSnapshot != nil {
+		snapshot := *r.ScenarioSnapshot
+		snapshot.RootTopic = strings.TrimSpace(r.ScenarioSnapshot.RootTopic)
+		snapshot.WatchedTopics = normalizeTopics(r.ScenarioSnapshot.WatchedTopics)
+		normalized.ScenarioSnapshot = &snapshot
+	}
+
+	return normalized
+}
+
+func normalizeTopics(topics []string) []string {
+	normalized := make([]string, 0, len(topics))
+	seen := make(map[string]struct{}, len(topics))
+	for _, topic := range topics {
+		topic = strings.TrimSpace(topic)
+		if _, exists := seen[topic]; exists {
+			continue
+		}
+		seen[topic] = struct{}{}
+		normalized = append(normalized, topic)
+	}
+	return normalized
+}
+
 // RunScenarioSnapshot carries the exact editable scenario configuration used
 // for a run so durable history does not depend on the current YAML file.
 type RunScenarioSnapshot struct {
@@ -61,16 +91,10 @@ func (r RunRequest) Validate() error {
 		return errors.New("at least one watched topic is required")
 	}
 
-	seenTopics := make(map[string]struct{}, len(r.WatchedTopics))
 	for index, topic := range r.WatchedTopics {
-		topic = strings.TrimSpace(topic)
-		if topic == "" {
+		if strings.TrimSpace(topic) == "" {
 			return fmt.Errorf("watched topic %d is required", index+1)
 		}
-		if _, exists := seenTopics[topic]; exists {
-			return fmt.Errorf("watched topic %q is duplicated", topic)
-		}
-		seenTopics[topic] = struct{}{}
 	}
 
 	if r.CaptureTimeoutSeconds <= 0 {

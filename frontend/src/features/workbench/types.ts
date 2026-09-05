@@ -183,7 +183,14 @@ export interface EventRecord {
 }
 
 export type RunStatus =
-  'idle' | 'starting' | 'in_progress' | 'completed' | 'timed_out' | 'cancelled' | 'failed';
+  | 'idle'
+  | 'checking'
+  | 'starting'
+  | 'in_progress'
+  | 'completed'
+  | 'timed_out'
+  | 'cancelled'
+  | 'failed';
 
 type TrackedEventStatus = 'in_progress' | 'completed' | 'unwitnessed' | 'failed';
 

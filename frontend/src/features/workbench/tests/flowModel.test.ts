@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { preflightErrorCodes } from '../../../api/result';
 import {
   buildFlowViewModel,
   flowRootDraftId,
@@ -6,7 +7,7 @@ import {
   nextRecordIdForNode,
 } from '../flowModel';
 import { initialScenario } from '../fixtures';
-import { initialRunState } from '../runReducer';
+import { initialRunState, runReducer } from '../runReducer';
 import type { EventRecord, RunState, ScenarioDraft } from '../types';
 
 const draft: ScenarioDraft = {
@@ -45,6 +46,25 @@ function flowDraft(overrides: Partial<ScenarioDraft>): ScenarioDraft {
 }
 
 describe('buildFlowViewModel', () => {
+  it('keeps the configured diagram while checking and after preflight failure', () => {
+    const checking = runReducer(initialRunState, {
+      type: 'begin',
+      watchedTopics: ['payment.charged'],
+    });
+    const rejected = runReducer(checking, {
+      type: 'failure',
+      error: {
+        code: preflightErrorCodes.missingTopics,
+        message: 'Missing payment.charged',
+        retryable: false,
+      },
+    });
+    for (const state of [checking, rejected]) {
+      const model = buildFlowViewModel(draft, state);
+      expect(model.nodes.every((node) => node.status === 'configured')).toBe(true);
+      expect(model.edges.every((edge) => edge.status === 'configured')).toBe(true);
+    }
+  });
   it('builds the configured order-flow topology with deterministic depth layout', () => {
     const model = buildFlowViewModel(draft, run());
 

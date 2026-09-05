@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
+import { preflightErrorCodes, topicDiagnosticKinds } from '../../../../api/result';
 import { initialRunState } from '../../runReducer';
 import type { RunHistoryController } from '../../useRunHistory';
 import type { ObservedRun } from '../../types';
@@ -49,6 +50,85 @@ function historyController(overrides: Partial<RunHistoryController> = {}): RunHi
 }
 
 describe('RunContextPanel', () => {
+  it.each([['orders'], ['orders', 'payments']])(
+    'lists missing topics without a failed timeline: %j',
+    (...topics) => {
+      const markup = renderToStaticMarkup(
+        <RunContextPanel
+          currentRun={{
+            ...currentRun,
+            id: '—',
+            status: 'idle',
+            events: [],
+            error: {
+              code: preflightErrorCodes.missingTopics,
+              message: 'Kafka topics are missing',
+              retryable: false,
+              topicDiagnostics: topics.map((topic) => ({
+                kind: topicDiagnosticKinds.missingTopic,
+                topic,
+                roles: ['watched'],
+              })),
+            },
+          }}
+          currentSelectedEventId={null}
+          currentSelectedEvent={null}
+          onSelectCurrentEvent={() => undefined}
+          history={historyController()}
+        />,
+      );
+      for (const topic of topics) expect(markup).toContain(`${topic} (watched)`);
+      expect(markup).toContain('No run started');
+      expect(markup).not.toContain('Capture failed');
+      expect(markup).not.toContain('run-context__timeline');
+      expect(markup).not.toContain('Retry topic check');
+    },
+  );
+
+  it('shows checking before any live timeline', () => {
+    const markup = renderToStaticMarkup(
+      <RunContextPanel
+        currentRun={{ ...currentRun, status: 'checking', events: [] }}
+        currentSelectedEventId={null}
+        currentSelectedEvent={null}
+        onSelectCurrentEvent={() => undefined}
+        history={historyController()}
+      />,
+    );
+    expect(markup).toContain('Checking Kafka topics');
+    expect(markup).not.toContain('run-context__timeline');
+  });
+
+  it('explains metadata errors with retry, including mixed missing diagnostics', () => {
+    const markup = renderToStaticMarkup(
+      <RunContextPanel
+        currentRun={{
+          ...currentRun,
+          status: 'idle',
+          events: [],
+          error: {
+            code: preflightErrorCodes.metadataUnavailable,
+            message: 'Metadata unavailable',
+            retryable: true,
+            topicDiagnostics: [
+              { kind: topicDiagnosticKinds.missingTopic, topic: 'orders', roles: ['root'] },
+              { kind: topicDiagnosticKinds.metadataUnavailable, topic: 'payments' },
+            ],
+          },
+        }}
+        currentSelectedEventId={null}
+        currentSelectedEvent={null}
+        onRetryPreflight={() => undefined}
+        onSelectCurrentEvent={() => undefined}
+        history={historyController()}
+      />,
+    );
+    expect(markup).toContain('orders (root)');
+    expect(markup).toContain('connection and permissions');
+    expect(markup).toContain('Retry topic check');
+    expect(markup).not.toContain('run-context__timeline');
+  });
+
   it('formats recent history timestamps compactly', () => {
     expect(
       formatHistoryRelativeTime('2026-08-26T10:00:00Z', Date.parse('2026-08-26T10:00:35Z')),

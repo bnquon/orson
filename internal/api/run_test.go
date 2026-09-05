@@ -20,15 +20,6 @@ func TestRunRequestValidateRejectsMalformedTopicsAndPayload(t *testing.T) {
 			},
 		},
 		{
-			name: "duplicate watched topic",
-			request: RunRequest{
-				RootTopic:             "order.created",
-				Payload:               "{}",
-				WatchedTopics:         []string{"payment.charged", " payment.charged "},
-				CaptureTimeoutSeconds: 5,
-			},
-		},
-		{
 			name: "invalid JSON payload",
 			request: RunRequest{
 				RootTopic:             "order.created",
@@ -45,6 +36,46 @@ func TestRunRequestValidateRejectsMalformedTopicsAndPayload(t *testing.T) {
 				t.Fatal("Validate() returned nil, want an error")
 			}
 		})
+	}
+}
+
+func TestRunRequestNormalizeCanonicalizesTopics(t *testing.T) {
+	request := RunRequest{
+		RootTopic:     " root ",
+		WatchedTopics: []string{" watch-b ", "watch-a", "watch-b", " root ", "root"},
+		ScenarioSnapshot: &RunScenarioSnapshot{
+			RootTopic:     " snapshot-root ",
+			WatchedTopics: []string{" snapshot-b ", "snapshot-a", "snapshot-b"},
+		},
+	}
+
+	normalized := request.Normalize()
+	if normalized.RootTopic != "root" {
+		t.Fatalf("root topic = %q, want root", normalized.RootTopic)
+	}
+	want := []string{"watch-b", "watch-a", "root"}
+	if len(normalized.WatchedTopics) != len(want) {
+		t.Fatalf("watched topics = %v, want %v", normalized.WatchedTopics, want)
+	}
+	for index := range want {
+		if normalized.WatchedTopics[index] != want[index] {
+			t.Fatalf("watched topics = %v, want %v", normalized.WatchedTopics, want)
+		}
+	}
+	snapshotWant := []string{"snapshot-b", "snapshot-a"}
+	if normalized.ScenarioSnapshot == request.ScenarioSnapshot || normalized.ScenarioSnapshot.RootTopic != "snapshot-root" {
+		t.Fatalf("normalized snapshot = %+v", normalized.ScenarioSnapshot)
+	}
+	if len(normalized.ScenarioSnapshot.WatchedTopics) != len(snapshotWant) {
+		t.Fatalf("snapshot watched topics = %v, want %v", normalized.ScenarioSnapshot.WatchedTopics, snapshotWant)
+	}
+	for index := range snapshotWant {
+		if normalized.ScenarioSnapshot.WatchedTopics[index] != snapshotWant[index] {
+			t.Fatalf("snapshot watched topics = %v, want %v", normalized.ScenarioSnapshot.WatchedTopics, snapshotWant)
+		}
+	}
+	if request.RootTopic != " root " || request.WatchedTopics[0] != " watch-b " || request.ScenarioSnapshot.RootTopic != " snapshot-root " || request.ScenarioSnapshot.WatchedTopics[0] != " snapshot-b " {
+		t.Fatalf("Normalize mutated original request: %+v", request)
 	}
 }
 
