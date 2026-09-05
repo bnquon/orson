@@ -93,15 +93,17 @@ export function setRootTopic(
   const previous = previousName.trim();
   if (previous === nextName && draft.rootTopic === nextName) return { ok: true, draft };
 
-  return {
-    ok: true,
-    draft: {
-      ...draft,
-      rootTopic: nextName,
-      topology: renameTopologyTopic(draft.topology, previous, nextName),
-      configuredTopology: renameTopologyTopic(draft.configuredTopology, previous, nextName),
-    },
+  const nextDraft = {
+    ...draft,
+    rootTopic: nextName,
+    topology: renameTopologyTopic(draft.topology, previous, nextName),
+    configuredTopology: renameTopologyTopic(draft.configuredTopology, previous, nextName),
   };
+  if (hasActiveTopologyCycle(nextDraft)) {
+    return mutationError('topology_cycle', 'That rename would create a topology cycle.');
+  }
+
+  return { ok: true, draft: nextDraft };
 }
 
 export function addWatchedTopic(
@@ -154,17 +156,19 @@ export function renameWatchedTopic(
   const previous = (previousName ?? topic.name).trim();
   if (previous === nextName && topic.name === nextName) return { ok: true, draft };
 
-  return {
-    ok: true,
-    draft: {
-      ...draft,
-      watchedTopics: draft.watchedTopics.map((candidate) =>
-        candidate.id === topicId ? { ...candidate, name: nextName } : candidate,
-      ),
-      topology: renameTopologyTopic(draft.topology, previous, nextName),
-      configuredTopology: renameTopologyTopic(draft.configuredTopology, previous, nextName),
-    },
+  const nextDraft = {
+    ...draft,
+    watchedTopics: draft.watchedTopics.map((candidate) =>
+      candidate.id === topicId ? { ...candidate, name: nextName } : candidate,
+    ),
+    topology: renameTopologyTopic(draft.topology, previous, nextName),
+    configuredTopology: renameTopologyTopic(draft.configuredTopology, previous, nextName),
   };
+  if (hasActiveTopologyCycle(nextDraft)) {
+    return mutationError('topology_cycle', 'That rename would create a topology cycle.');
+  }
+
+  return { ok: true, draft: nextDraft };
 }
 
 export function removeWatchedTopic(draft: ScenarioDraft, topicId: string): DraftMutationResult {
@@ -206,12 +210,19 @@ export function addTopologyEdge(
     return mutationError('topology_edge_duplicate', 'That topology connection already exists.');
   }
 
-  const id = input.id?.trim() || `edge:${from}->${to}`;
-  if (hasEdgeId(draft, id)) {
+  const explicitId = input.id?.trim();
+  const baseId = explicitId || `edge:${from}->${to}`;
+  let id = baseId;
+  if (explicitId && hasEdgeId(draft, id)) {
     return mutationError(
       'topology_edge_id_duplicate',
       'That topology connection ID already exists.',
     );
+  }
+
+  // Renamed edges keep their IDs, so a reused topic name may need a fresh ID.
+  for (let suffix = 2; hasEdgeId(draft, id); suffix += 1) {
+    id = `${baseId}:${suffix}`;
   }
 
   const edge = { id, from, to };

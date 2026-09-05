@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildFlowViewModel, getRunRecordId, nextRecordIdForNode } from '../flowModel';
+import {
+  buildFlowViewModel,
+  flowRootDraftId,
+  getRunRecordId,
+  nextRecordIdForNode,
+} from '../flowModel';
 import { initialScenario } from '../fixtures';
 import { initialRunState } from '../runReducer';
 import type { EventRecord, RunState, ScenarioDraft } from '../types';
@@ -100,10 +105,36 @@ describe('buildFlowViewModel', () => {
     );
 
     expect(edgePairs(model)).toEqual([['root:order.created', 'watched:payment.charged']]);
-    expect(model.nodes.map((node) => node.topic)).toContain('orphan.sent');
+    expect(model.nodes.find((node) => node.topic === 'payment.charged')?.disconnected).toBe(false);
+    expect(model.nodes.find((node) => node.topic === 'inventory.reserved')?.disconnected).toBe(
+      true,
+    );
+    expect(model.nodes.find((node) => node.topic === 'orphan.sent')?.disconnected).toBe(true);
     expect(new Set(model.nodes.map((node) => `${node.layout.left}:${node.layout.top}`)).size).toBe(
       model.nodes.length,
     );
+  });
+
+  it('keeps draft identities stable while root and watched topics are renamed', () => {
+    const before = buildFlowViewModel(
+      flowDraft({
+        watchedTopics: [{ id: 'payment-draft-id', name: 'payment.charged' }],
+        topology: [{ id: 'route', from: 'order.created', to: 'payment.charged' }],
+      }),
+      run(),
+    );
+    const after = buildFlowViewModel(
+      flowDraft({
+        rootTopic: 'order.updated',
+        watchedTopics: [{ id: 'payment-draft-id', name: 'payment.captured' }],
+        topology: [{ id: 'route', from: 'order.updated', to: 'payment.captured' }],
+      }),
+      run(),
+    );
+
+    expect(before.nodes.map((node) => node.draftId)).toEqual([flowRootDraftId, 'payment-draft-id']);
+    expect(after.nodes.map((node) => node.draftId)).toEqual([flowRootDraftId, 'payment-draft-id']);
+    expect(after.nodes.map((node) => node.topic)).toEqual(['order.updated', 'payment.captured']);
   });
 
   it('derives unique edge IDs from normalized source and target topics', () => {
@@ -162,6 +193,60 @@ describe('buildFlowViewModel', () => {
 
     expect(model.nodes.map((node) => node.topic)).toEqual(['order.created', 'a', 'b', 'c']);
     expect(model.edges).toEqual([]);
+    expect(model.routeIssues).toContainEqual(
+      expect.objectContaining({
+        code: 'topology_cycle',
+        edgeId: 'c-a',
+        sourceTopic: 'c',
+        targetTopic: 'a',
+      }),
+    );
+  });
+
+  it('keeps fan-in and fan-out routes forward and exposes their endpoint topics', () => {
+    const model = buildFlowViewModel(
+      flowDraft({
+        watchedTopics: [
+          { id: 'a-id', name: 'a' },
+          { id: 'b-id', name: 'b' },
+          { id: 'c-id', name: 'c' },
+        ],
+        topology: [
+          { id: 'root-a', from: 'order.created', to: 'a' },
+          { id: 'root-b', from: 'order.created', to: 'b' },
+          { id: 'a-c', from: 'a', to: 'c' },
+          { id: 'b-c', from: 'b', to: 'c' },
+        ],
+      }),
+      run(),
+    );
+    const nodes = new Map(model.nodes.map((node) => [node.id, node]));
+
+    expect(model.routeIssues).toEqual([]);
+    expect(model.edges.map(({ sourceTopic, targetTopic }) => [sourceTopic, targetTopic])).toEqual([
+      ['order.created', 'a'],
+      ['order.created', 'b'],
+      ['a', 'c'],
+      ['b', 'c'],
+    ]);
+    for (const edge of model.edges) {
+      const source = nodes.get(edge.sourceId);
+      const target = nodes.get(edge.targetId);
+      expect(source).toBeDefined();
+      expect(target).toBeDefined();
+      expect(source?.layout.left).toBeLessThan(target?.layout.left ?? 0);
+      expect(edge.path).toContain(`M ${(source?.layout.left ?? 0) + (source?.layout.width ?? 0)}`);
+      const pathCoordinates = edge.path.match(/-?\d+(?:\.\d+)?/g)?.map(Number) ?? [];
+      const pathXCoordinates = pathCoordinates.filter((_, index) => index % 2 === 0);
+      const sourceRight = (source?.layout.left ?? 0) + (source?.layout.width ?? 0);
+      const targetLeft = target?.layout.left ?? 0;
+      expect(pathXCoordinates.every((x) => x >= sourceRight && x <= targetLeft)).toBe(true);
+      expect(
+        edge.path.endsWith(
+          ` ${target?.layout.left} ${(target?.layout.top ?? 0) + (target?.layout.height ?? 0) / 2}`,
+        ),
+      ).toBe(true);
+    }
   });
 
   it('routes skip-level edges through an express lane above intermediate nodes', () => {
@@ -184,6 +269,28 @@ describe('buildFlowViewModel', () => {
       (edge) => edge.sourceId === 'root:order.created' && edge.targetId === 'watched:b',
     );
     expect(skipLevelEdge?.path).toBe('M 310 149 L 310 64 L 840 64 L 840 149');
+    expect(model.nodes.every((node) => node.layout.top > 64)).toBe(true);
+  });
+
+  it('reports root-target routes without marking their watched source disconnected', () => {
+    const model = buildFlowViewModel(
+      flowDraft({
+        watchedTopics: [{ id: 'payment-id', name: 'payment.charged' }],
+        topology: [{ id: 'payment-root', from: 'payment.charged', to: 'order.created' }],
+      }),
+      run(),
+    );
+
+    expect(model.edges).toEqual([]);
+    expect(model.nodes.find((node) => node.topic === 'payment.charged')?.disconnected).toBe(false);
+    expect(model.routeIssues).toEqual([
+      expect.objectContaining({
+        code: 'root_target',
+        edgeId: 'payment-root',
+        sourceTopic: 'payment.charged',
+        targetTopic: 'order.created',
+      }),
+    ]);
   });
 
   it('ignores empty, unknown, self-referencing, and duplicate topology edges', () => {
@@ -197,6 +304,7 @@ describe('buildFlowViewModel', () => {
           { id: 'unknown-source', from: 'unknown', to: 'payment.charged' },
           { id: 'unknown-target', from: 'order.created', to: 'unknown' },
           { id: 'self', from: 'payment.charged', to: 'payment.charged' },
+          { id: 'root-target', from: 'payment.charged', to: 'order.created' },
         ],
       }),
       run(),
@@ -208,6 +316,16 @@ describe('buildFlowViewModel', () => {
       sourceId: 'root:order.created',
       targetId: 'watched:payment.charged',
     });
+    expect(model.routeIssues.map((issue) => issue.code)).toEqual([
+      'duplicate_edge',
+      'missing_endpoint',
+      'missing_endpoint',
+      'unknown_source',
+      'unknown_target',
+      'self_reference',
+      'root_target',
+    ]);
+    expect(model.routeIssues.every((issue) => issue.message.length > 0)).toBe(true);
   });
 
   it('handles empty topology and a root with no valid outgoing edges', () => {

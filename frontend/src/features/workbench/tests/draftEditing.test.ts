@@ -123,6 +123,25 @@ describe('scenario draft mutations', () => {
     expect(errorCode(setRootTopic(original, ' payment.charged '))).toBe('topic_name_duplicate');
   });
 
+  it('rejects a root rename that activates a topology cycle without changing the draft', () => {
+    const original = draft({
+      rootTopic: 'a',
+      watchedTopics: [{ id: 'b', name: 'b' }],
+      topology: [
+        { id: 'a-b', from: 'a', to: 'b' },
+        { id: 'b-missing', from: 'b', to: 'missing' },
+      ],
+      configuredTopology: [
+        { id: 'a-b', from: 'a', to: 'b' },
+        { id: 'b-missing', from: 'b', to: 'missing' },
+      ],
+    });
+    const before = structuredClone(original);
+
+    expect(errorCode(setRootTopic(original, 'missing', 'a'))).toBe('topology_cycle');
+    expect(original).toEqual(before);
+  });
+
   it('adds a named watched topic with a caller-provided stable ID', () => {
     const original = draft();
     const next = successful(
@@ -192,6 +211,30 @@ describe('scenario draft mutations', () => {
     ).toBe('topic_name_duplicate');
   });
 
+  it('rejects a watched rename that activates a topology cycle without changing the draft', () => {
+    const original = draft({
+      rootTopic: 'a',
+      watchedTopics: [
+        { id: 'b', name: 'b' },
+        { id: 'c', name: 'c' },
+      ],
+      topology: [
+        { id: 'a-b', from: 'a', to: 'b' },
+        { id: 'b-c', from: 'b', to: 'c' },
+        { id: 'c-missing', from: 'c', to: 'missing' },
+      ],
+      configuredTopology: [
+        { id: 'a-b', from: 'a', to: 'b' },
+        { id: 'b-c', from: 'b', to: 'c' },
+        { id: 'c-missing', from: 'c', to: 'missing' },
+      ],
+    });
+    const before = structuredClone(original);
+
+    expect(errorCode(renameWatchedTopic(original, 'b', 'missing', 'b'))).toBe('topology_cycle');
+    expect(original).toEqual(before);
+  });
+
   it('removes a watched topic and every connected edge without disturbing other edge order', () => {
     const original = draft({
       configuredTopology: [
@@ -233,6 +276,54 @@ describe('scenario draft mutations', () => {
     };
     expect(next.topology).toEqual([...original.topology, added]);
     expect(next.configuredTopology).toEqual([...original.configuredTopology, added]);
+  });
+
+  it('reconnects reused topic names after repeated renames without changing existing edge IDs', () => {
+    let current = draft({
+      rootTopic: 'a',
+      watchedTopics: [{ id: 'first', name: 'b' }],
+      topology: [],
+      configuredTopology: [],
+    });
+    current = successful(addTopologyEdge(current, { from: 'a', to: 'b' }));
+    const firstId = current.configuredTopology[0].id;
+    current = successful(renameWatchedTopic(current, 'first', 'c'));
+    current = successful(addWatchedTopic(current, { id: 'second', name: 'b' }));
+    current = successful(addTopologyEdge(current, { from: 'a', to: 'b' }));
+    const secondId = current.configuredTopology[1].id;
+    current = successful(renameWatchedTopic(current, 'second', 'd'));
+    current = successful(addWatchedTopic(current, { id: 'third', name: 'b' }));
+    current = successful(addTopologyEdge(current, { from: 'a', to: 'b' }));
+
+    expect(current.configuredTopology).toEqual([
+      { id: firstId, from: 'a', to: 'c' },
+      { id: secondId, from: 'a', to: 'd' },
+      { id: current.configuredTopology[2].id, from: 'a', to: 'b' },
+    ]);
+    expect(new Set(current.configuredTopology.map((edge) => edge.id)).size).toBe(3);
+    expect(current.topology).toEqual(current.configuredTopology);
+    expect(errorCode(addTopologyEdge(current, { from: ' a ', to: ' b ' }))).toBe(
+      'topology_edge_duplicate',
+    );
+  });
+
+  it('avoids IDs reserved by warning edges while rejecting explicit duplicate IDs', () => {
+    const warning = {
+      id: 'edge:order.cancelled->inventory.reserved',
+      from: 'external.topic',
+      to: 'missing.topic',
+    };
+    const original = draft({
+      configuredTopology: [...initialScenario.configuredTopology, warning],
+    });
+    const endpoints = { from: 'order.cancelled', to: 'inventory.reserved' };
+    const next = successful(addTopologyEdge(original, endpoints));
+
+    expect(next.configuredTopology.slice(0, -1)).toEqual(original.configuredTopology);
+    expect(next.configuredTopology.at(-1)?.id).not.toBe(warning.id);
+    expect(errorCode(addTopologyEdge(original, { ...endpoints, id: warning.id }))).toBe(
+      'topology_edge_id_duplicate',
+    );
   });
 
   it('rejects invalid edge endpoints, self-links, duplicates, and cycles', () => {
