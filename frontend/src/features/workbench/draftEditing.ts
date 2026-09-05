@@ -93,15 +93,17 @@ export function setRootTopic(
   const previous = previousName.trim();
   if (previous === nextName && draft.rootTopic === nextName) return { ok: true, draft };
 
-  return {
-    ok: true,
-    draft: {
-      ...draft,
-      rootTopic: nextName,
-      topology: renameTopologyTopic(draft.topology, previous, nextName),
-      configuredTopology: renameTopologyTopic(draft.configuredTopology, previous, nextName),
-    },
+  const nextDraft = {
+    ...draft,
+    rootTopic: nextName,
+    topology: renameTopologyTopic(draft.topology, previous, nextName),
+    configuredTopology: renameTopologyTopic(draft.configuredTopology, previous, nextName),
   };
+  if (hasActiveTopologyCycle(nextDraft)) {
+    return mutationError('topology_cycle', 'That rename would create a topology cycle.');
+  }
+
+  return { ok: true, draft: nextDraft };
 }
 
 export function addWatchedTopic(
@@ -154,17 +156,19 @@ export function renameWatchedTopic(
   const previous = (previousName ?? topic.name).trim();
   if (previous === nextName && topic.name === nextName) return { ok: true, draft };
 
-  return {
-    ok: true,
-    draft: {
-      ...draft,
-      watchedTopics: draft.watchedTopics.map((candidate) =>
-        candidate.id === topicId ? { ...candidate, name: nextName } : candidate,
-      ),
-      topology: renameTopologyTopic(draft.topology, previous, nextName),
-      configuredTopology: renameTopologyTopic(draft.configuredTopology, previous, nextName),
-    },
+  const nextDraft = {
+    ...draft,
+    watchedTopics: draft.watchedTopics.map((candidate) =>
+      candidate.id === topicId ? { ...candidate, name: nextName } : candidate,
+    ),
+    topology: renameTopologyTopic(draft.topology, previous, nextName),
+    configuredTopology: renameTopologyTopic(draft.configuredTopology, previous, nextName),
   };
+  if (hasActiveTopologyCycle(nextDraft)) {
+    return mutationError('topology_cycle', 'That rename would create a topology cycle.');
+  }
+
+  return { ok: true, draft: nextDraft };
 }
 
 export function removeWatchedTopic(draft: ScenarioDraft, topicId: string): DraftMutationResult {

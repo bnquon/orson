@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, useState } from 'react';
+import { act, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ComposeConfigSection } from '../../components/ComposeConfigSection';
@@ -36,6 +36,7 @@ function renderConfig(initialDraft: ScenarioDraft) {
 
   function Harness() {
     const [draft, setDraft] = useState(initialDraft);
+    const rootTopicEditRef = useRef<string | null>(null);
     latestDraft = draft;
     return (
       <ComposeConfigSection
@@ -48,7 +49,7 @@ function renderConfig(initialDraft: ScenarioDraft) {
         }}
         draft={draft}
         setDraft={setDraft}
-        rootTopicEditRef={{ current: null }}
+        rootTopicEditRef={rootTopicEditRef}
         touched={touched}
         validation={validation}
         onReviewConnection={() => undefined}
@@ -80,6 +81,56 @@ function clickMenuOption(label: string) {
 }
 
 describe('ComposeConfigSection topology sources', () => {
+  it.each(['root', 'watched'])('restores a rejected %s rename and allows a valid retry', (kind) => {
+    const validEdge = {
+      id: 'valid',
+      from: kind === 'root' ? 'a' : 'b',
+      to: kind === 'root' ? 'b' : 'c',
+    };
+    const warningEdge = { id: 'warning', from: kind === 'root' ? 'b' : 'c', to: 'missing' };
+    const original: ScenarioDraft = {
+      ...initialScenario,
+      rootTopic: 'a',
+      watchedTopics: [
+        { id: 'b', name: 'b' },
+        { id: 'c', name: 'c' },
+      ],
+      topology: [validEdge],
+      configuredTopology: [validEdge, warningEdge],
+    };
+    const { host, getDraft } = renderConfig(original);
+    const input = host.querySelector<HTMLInputElement>(
+      kind === 'root' ? '#compose-root-topic' : '#watched-topic-b',
+    );
+    if (input === null) throw new Error('Missing topic input');
+    const typeName = (name: string) => {
+      act(() => input.focus());
+      act(() => {
+        Object.defineProperty(input, 'value', { configurable: true, value: name, writable: true });
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+    };
+
+    typeName('missing');
+    act(() => input.blur());
+
+    expect(getDraft()).toEqual(original);
+    expect(input.value).toBe(kind === 'root' ? 'a' : 'b');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe(
+      'That rename would create a topology cycle.',
+    );
+
+    typeName('renamed');
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    act(() => input.blur());
+
+    expect(input.value).toBe('renamed');
+    expect(input.getAttribute('aria-invalid')).toBe('false');
+    expect(getDraft().configuredTopology).toEqual([{ ...validEdge, from: 'renamed' }, warningEdge]);
+    expect(getDraft().topology).toEqual([{ ...validEdge, from: 'renamed' }]);
+  });
+
   it('shows every incoming source in configured order with root and source labels', () => {
     const extraEdge = {
       id: 'edge-order-notification',

@@ -123,6 +123,25 @@ describe('scenario draft mutations', () => {
     expect(errorCode(setRootTopic(original, ' payment.charged '))).toBe('topic_name_duplicate');
   });
 
+  it('rejects a root rename that activates a topology cycle without changing the draft', () => {
+    const original = draft({
+      rootTopic: 'a',
+      watchedTopics: [{ id: 'b', name: 'b' }],
+      topology: [
+        { id: 'a-b', from: 'a', to: 'b' },
+        { id: 'b-missing', from: 'b', to: 'missing' },
+      ],
+      configuredTopology: [
+        { id: 'a-b', from: 'a', to: 'b' },
+        { id: 'b-missing', from: 'b', to: 'missing' },
+      ],
+    });
+    const before = structuredClone(original);
+
+    expect(errorCode(setRootTopic(original, 'missing', 'a'))).toBe('topology_cycle');
+    expect(original).toEqual(before);
+  });
+
   it('adds a named watched topic with a caller-provided stable ID', () => {
     const original = draft();
     const next = successful(
@@ -190,6 +209,30 @@ describe('scenario draft mutations', () => {
     expect(
       errorCode(renameWatchedTopic(original, 'topic-payment-charged', ' inventory.reserved ')),
     ).toBe('topic_name_duplicate');
+  });
+
+  it('rejects a watched rename that activates a topology cycle without changing the draft', () => {
+    const original = draft({
+      rootTopic: 'a',
+      watchedTopics: [
+        { id: 'b', name: 'b' },
+        { id: 'c', name: 'c' },
+      ],
+      topology: [
+        { id: 'a-b', from: 'a', to: 'b' },
+        { id: 'b-c', from: 'b', to: 'c' },
+        { id: 'c-missing', from: 'c', to: 'missing' },
+      ],
+      configuredTopology: [
+        { id: 'a-b', from: 'a', to: 'b' },
+        { id: 'b-c', from: 'b', to: 'c' },
+        { id: 'c-missing', from: 'c', to: 'missing' },
+      ],
+    });
+    const before = structuredClone(original);
+
+    expect(errorCode(renameWatchedTopic(original, 'b', 'missing', 'b'))).toBe('topology_cycle');
+    expect(original).toEqual(before);
   });
 
   it('removes a watched topic and every connected edge without disturbing other edge order', () => {

@@ -46,6 +46,15 @@ export function ComposeConfigSection({
     message: string;
     topicId: string;
   } | null>(null);
+  const [renameFeedback, setRenameFeedback] = useState<{
+    draft: ScenarioDraft;
+    message: string;
+    topicId: string | null;
+  } | null>(null);
+  const rootRenameError =
+    renameFeedback?.draft === draft && renameFeedback.topicId === null
+      ? renameFeedback.message
+      : undefined;
   const touchedWatchedTopicIds = new Set(touched.watchedTopicIds);
   const showFieldError = (field: ValidatableField) => touched.fields[field] === true;
 
@@ -65,7 +74,15 @@ export function ComposeConfigSection({
       return;
     }
     const result = setRootTopic(draft, nextName, previousName);
-    if (!result.ok) return;
+    if (!result.ok) {
+      const restoredDraft = { ...draft, rootTopic: previousName };
+      rootTopicEditRef.current = null;
+      setDraft(restoredDraft);
+      setRenameFeedback({ draft: restoredDraft, message: result.error.message, topicId: null });
+      return;
+    }
+
+    setRenameFeedback(null);
 
     rootTopicEditRef.current = null;
     setDraft(result.draft);
@@ -85,7 +102,20 @@ export function ComposeConfigSection({
       return;
     }
     const result = renameWatchedTopic(draft, topicId, nextName, previousName);
-    if (!result.ok) return;
+    if (!result.ok) {
+      const restoredDraft = {
+        ...draft,
+        watchedTopics: draft.watchedTopics.map((topic) =>
+          topic.id === topicId ? { ...topic, name: previousName } : topic,
+        ),
+      };
+      watchedTopicEditRefs.current.delete(topicId);
+      setDraft(restoredDraft);
+      setRenameFeedback({ draft: restoredDraft, message: result.error.message, topicId });
+      return;
+    }
+
+    setRenameFeedback(null);
 
     watchedTopicEditRefs.current.delete(topicId);
     clearTopologyFeedback(topicId);
@@ -211,21 +241,24 @@ export function ComposeConfigSection({
           <input
             id="compose-root-topic"
             className={
-              showFieldError('rootTopic') && validation.fieldErrors.rootTopic !== undefined
+              rootRenameError !== undefined ||
+              (showFieldError('rootTopic') && validation.fieldErrors.rootTopic !== undefined)
                 ? 'compose-control--invalid'
                 : ''
             }
             value={draft.rootTopic}
             onFocus={beginRootTopicEdit}
-            onChange={(event) =>
-              setDraft((current) => ({ ...current, rootTopic: event.target.value }))
-            }
+            onChange={(event) => {
+              setRenameFeedback(null);
+              setDraft((current) => ({ ...current, rootTopic: event.target.value }));
+            }}
             onBlur={(event) => {
               commitRootTopicEdit(event.currentTarget.value);
               onTouchField('rootTopic');
             }}
             aria-invalid={
-              showFieldError('rootTopic') && validation.fieldErrors.rootTopic !== undefined
+              rootRenameError !== undefined ||
+              (showFieldError('rootTopic') && validation.fieldErrors.rootTopic !== undefined)
             }
             aria-describedby="compose-root-topic-help compose-root-topic-error"
             autoComplete="off"
@@ -233,8 +266,13 @@ export function ComposeConfigSection({
           <span className="compose-help" id="compose-root-topic-help">
             Published once and included automatically in the run.
           </span>
-          <span className="compose-error-slot" id="compose-root-topic-error">
-            {showFieldError('rootTopic') ? validation.fieldErrors.rootTopic : null}
+          <span
+            className="compose-error-slot"
+            id="compose-root-topic-error"
+            role={rootRenameError ? 'alert' : undefined}
+          >
+            {rootRenameError ??
+              (showFieldError('rootTopic') ? validation.fieldErrors.rootTopic : null)}
           </span>
         </label>
 
@@ -307,6 +345,10 @@ export function ComposeConfigSection({
         <div className="watched-topics__list">
           {draft.watchedTopics.map((topic) => {
             const showError = touchedWatchedTopicIds.has(topic.id);
+            const renameError =
+              renameFeedback?.draft === draft && renameFeedback.topicId === topic.id
+                ? renameFeedback.message
+                : undefined;
             const error = validation.watchedTopicErrors[topic.id];
             const targetName = topic.name.trim();
             const incomingSources = draft.configuredTopology.filter(
@@ -360,11 +402,16 @@ export function ComposeConfigSection({
                   </div>
                   <input
                     id={`watched-topic-${topic.id}`}
-                    className={showError && error !== undefined ? 'compose-control--invalid' : ''}
+                    className={
+                      renameError !== undefined || (showError && error !== undefined)
+                        ? 'compose-control--invalid'
+                        : ''
+                    }
                     value={topic.name}
                     onFocus={() => beginWatchedTopicEdit(topic.id, topic.name)}
                     onChange={(event) => {
                       clearTopologyFeedback(topic.id);
+                      setRenameFeedback(null);
                       setDraft((current) => ({
                         ...current,
                         watchedTopics: current.watchedTopics.map((item) =>
@@ -377,7 +424,7 @@ export function ComposeConfigSection({
                       onTouchWatchedTopic(topic.id);
                     }}
                     aria-label="Watched downstream topic"
-                    aria-invalid={showError && error !== undefined}
+                    aria-invalid={renameError !== undefined || (showError && error !== undefined)}
                     aria-describedby={`watched-topic-error-${topic.id}`}
                     autoComplete="off"
                   />
@@ -393,9 +440,9 @@ export function ComposeConfigSection({
                 <span
                   className="compose-error-slot"
                   id={`watched-topic-error-${topic.id}`}
-                  role={sourceFeedback ? 'alert' : undefined}
+                  role={renameError || sourceFeedback ? 'alert' : undefined}
                 >
-                  {sourceFeedback ?? (showError ? error : null)}
+                  {renameError ?? sourceFeedback ?? (showError ? error : null)}
                 </span>
               </div>
             );

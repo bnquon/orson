@@ -1,16 +1,16 @@
 export namespace api {
-
+	
 	export class APIError {
 	    code: string;
 	    message: string;
 	    details?: string;
 	    fieldErrors?: Record<string, string>;
 	    retryable: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new APIError(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
@@ -23,17 +23,17 @@ export namespace api {
 	export class ConnectionAttempt {
 	    status: string;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionAttempt(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.status = source["status"];
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -57,11 +57,11 @@ export namespace api {
 	    brokers: string[];
 	    clientId: string;
 	    dialTimeoutSeconds: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionInfo(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -75,11 +75,11 @@ export namespace api {
 	    brokers: string[];
 	    clientId: string;
 	    dialTimeoutSeconds: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -93,11 +93,11 @@ export namespace api {
 	    warning?: string;
 	    recoveryAvailable: boolean;
 	    sessionDirty: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new WorkspacePersistenceStatus(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.mode = source["mode"];
@@ -110,18 +110,18 @@ export namespace api {
 	    active?: ConnectionInfo;
 	    latestAttempt: ConnectionAttempt;
 	    persistence?: WorkspacePersistenceStatus;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionState(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.active = this.convertValues(source["active"], ConnectionInfo);
 	        this.latestAttempt = this.convertValues(source["latestAttempt"], ConnectionAttempt);
 	        this.persistence = this.convertValues(source["persistence"], WorkspacePersistenceStatus);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -144,18 +144,18 @@ export namespace api {
 	    ok: boolean;
 	    data?: ConnectionState;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], ConnectionState);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -174,23 +174,23 @@ export namespace api {
 		    return a;
 		}
 	}
-
+	
 	export class ConnectionStatusResponse {
 	    ok: boolean;
 	    data?: ConnectionState;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ConnectionStatusResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], ConnectionState);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -212,11 +212,11 @@ export namespace api {
 	export class FolderMutationSummary {
 	    removedScenarioCount: number;
 	    sharedFileCount: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new FolderMutationSummary(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.removedScenarioCount = source["removedScenarioCount"];
@@ -226,11 +226,11 @@ export namespace api {
 	export class Header {
 	    key: string;
 	    value: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Header(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.key = source["key"];
@@ -241,11 +241,11 @@ export namespace api {
 	    scenarioId: string;
 	    folderId: string;
 	    siblingIndex: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new MoveLocalScenarioRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scenarioId = source["scenarioId"];
@@ -256,11 +256,11 @@ export namespace api {
 	export class MoveScenarioFolderRequest {
 	    folderId: string;
 	    parentId: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new MoveScenarioFolderRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.folderId = source["folderId"];
@@ -270,11 +270,11 @@ export namespace api {
 	export class ReorderScenarioFolderRequest {
 	    folderId: string;
 	    siblingIndex: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ReorderScenarioFolderRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.folderId = source["folderId"];
@@ -284,17 +284,17 @@ export namespace api {
 	export class RunControlResponse {
 	    ok: boolean;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunControlResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -316,17 +316,17 @@ export namespace api {
 	export class RunHistoryActionResponse {
 	    ok: boolean;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunHistoryActionResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -348,11 +348,11 @@ export namespace api {
 	export class RunHistoryTopicStatus {
 	    topic: string;
 	    status: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunHistoryTopicStatus(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.topic = source["topic"];
@@ -370,11 +370,11 @@ export namespace api {
 	    partition: number;
 	    offset: string;
 	    timestamp: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunHistoryRecord(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.sequence = source["sequence"];
@@ -388,7 +388,7 @@ export namespace api {
 	        this.offset = source["offset"];
 	        this.timestamp = source["timestamp"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -411,11 +411,11 @@ export namespace api {
 	    id: string;
 	    from: string;
 	    to: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioTopologyEdge(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -439,11 +439,11 @@ export namespace api {
 	    captureTimeoutSeconds: number;
 	    topology: ScenarioTopologyEdge[];
 	    configuredTopology?: ScenarioTopologyEdge[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunHistoryScenarioSnapshot(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.version = source["version"];
@@ -462,7 +462,7 @@ export namespace api {
 	        this.topology = this.convertValues(source["topology"], ScenarioTopologyEdge);
 	        this.configuredTopology = this.convertValues(source["configuredTopology"], ScenarioTopologyEdge);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -497,11 +497,11 @@ export namespace api {
 	    failureMessage?: string;
 	    connectionName?: string;
 	    outcome: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunHistorySummary(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.runId = source["runId"];
@@ -526,11 +526,11 @@ export namespace api {
 	    scenario: RunHistoryScenarioSnapshot;
 	    records: RunHistoryRecord[];
 	    trackedTopics: RunHistoryTopicStatus[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunHistoryData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.summary = this.convertValues(source["summary"], RunHistorySummary);
@@ -538,7 +538,7 @@ export namespace api {
 	        this.records = this.convertValues(source["records"], RunHistoryRecord);
 	        this.trackedTopics = this.convertValues(source["trackedTopics"], RunHistoryTopicStatus);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -559,16 +559,16 @@ export namespace api {
 	}
 	export class RunHistoryListData {
 	    runs: RunHistorySummary[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunHistoryListData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.runs = this.convertValues(source["runs"], RunHistorySummary);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -591,18 +591,18 @@ export namespace api {
 	    ok: boolean;
 	    data?: RunHistoryListData;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunHistoryListResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], RunHistoryListData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -621,23 +621,23 @@ export namespace api {
 		    return a;
 		}
 	}
-
+	
 	export class RunHistoryResponse {
 	    ok: boolean;
 	    data?: RunHistoryData;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunHistoryResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], RunHistoryData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -656,9 +656,9 @@ export namespace api {
 		    return a;
 		}
 	}
-
-
-
+	
+	
+	
 	export class RunScenarioSnapshot {
 	    version: number;
 	    source: string;
@@ -675,11 +675,11 @@ export namespace api {
 	    correlationHeader: string;
 	    payload: string;
 	    captureTimeoutSeconds: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunScenarioSnapshot(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.version = source["version"];
@@ -698,7 +698,7 @@ export namespace api {
 	        this.payload = source["payload"];
 	        this.captureTimeoutSeconds = source["captureTimeoutSeconds"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -726,11 +726,11 @@ export namespace api {
 	    watchedTopics: string[];
 	    captureTimeoutSeconds: number;
 	    scenarioSnapshot?: RunScenarioSnapshot;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.rootTopic = source["rootTopic"];
@@ -742,7 +742,7 @@ export namespace api {
 	        this.captureTimeoutSeconds = source["captureTimeoutSeconds"];
 	        this.scenarioSnapshot = this.convertValues(source["scenarioSnapshot"], RunScenarioSnapshot);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -761,14 +761,14 @@ export namespace api {
 		    return a;
 		}
 	}
-
+	
 	export class RunStartData {
 	    runId: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunStartData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.runId = source["runId"];
@@ -778,18 +778,18 @@ export namespace api {
 	    ok: boolean;
 	    data?: RunStartData;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new RunStartResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], RunStartData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -815,11 +815,11 @@ export namespace api {
 	    sourceFilename?: string;
 	    line?: number;
 	    column?: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioWarning(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
@@ -850,11 +850,11 @@ export namespace api {
 	    topology: ScenarioTopologyEdge[];
 	    configuredTopology: ScenarioTopologyEdge[];
 	    warnings?: ScenarioWarning[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -877,7 +877,7 @@ export namespace api {
 	        this.configuredTopology = this.convertValues(source["configuredTopology"], ScenarioTopologyEdge);
 	        this.warnings = this.convertValues(source["warnings"], ScenarioWarning);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -904,11 +904,11 @@ export namespace api {
 	    sourceFilename: string;
 	    line?: number;
 	    column?: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioDiagnostic(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.code = source["code"];
@@ -934,11 +934,11 @@ export namespace api {
 	    status: string;
 	    warnings?: ScenarioWarning[];
 	    diagnostics?: ScenarioDiagnostic[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioDescriptor(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -955,7 +955,7 @@ export namespace api {
 	        this.warnings = this.convertValues(source["warnings"], ScenarioWarning);
 	        this.diagnostics = this.convertValues(source["diagnostics"], ScenarioDiagnostic);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -974,7 +974,7 @@ export namespace api {
 		    return a;
 		}
 	}
-
+	
 	export class ScenarioDraft {
 	    name: string;
 	    publishTopic: string;
@@ -985,11 +985,11 @@ export namespace api {
 	    correlationHeader: string;
 	    captureTimeoutSeconds: number;
 	    topology: ScenarioTopologyEdge[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioDraft(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -1002,7 +1002,7 @@ export namespace api {
 	        this.captureTimeoutSeconds = source["captureTimeoutSeconds"];
 	        this.topology = this.convertValues(source["topology"], ScenarioTopologyEdge);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1027,11 +1027,11 @@ export namespace api {
 	    scenario?: ScenarioData;
 	    diagnostics?: ScenarioDiagnostic[];
 	    persistence?: WorkspacePersistenceStatus;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioFileData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.cancelled = source["cancelled"];
@@ -1040,7 +1040,7 @@ export namespace api {
 	        this.diagnostics = this.convertValues(source["diagnostics"], ScenarioDiagnostic);
 	        this.persistence = this.convertValues(source["persistence"], WorkspacePersistenceStatus);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1063,18 +1063,18 @@ export namespace api {
 	    ok: boolean;
 	    data?: ScenarioFileData;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioFileResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], ScenarioFileData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1098,11 +1098,11 @@ export namespace api {
 	    name: string;
 	    parentId?: string;
 	    siblingOrder: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioFolder(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1116,11 +1116,11 @@ export namespace api {
 	    scenarios: ScenarioDescriptor[];
 	    persistence: WorkspacePersistenceStatus;
 	    summary?: FolderMutationSummary;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioFolderData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.folders = this.convertValues(source["folders"], ScenarioFolder);
@@ -1128,7 +1128,7 @@ export namespace api {
 	        this.persistence = this.convertValues(source["persistence"], WorkspacePersistenceStatus);
 	        this.summary = this.convertValues(source["summary"], FolderMutationSummary);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1151,18 +1151,18 @@ export namespace api {
 	    ok: boolean;
 	    data?: ScenarioFolderData;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioFolderResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], ScenarioFolderData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1183,16 +1183,16 @@ export namespace api {
 	}
 	export class ScenarioListData {
 	    scenarios: ScenarioDescriptor[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioListData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.scenarios = this.convertValues(source["scenarios"], ScenarioDescriptor);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1215,18 +1215,18 @@ export namespace api {
 	    ok: boolean;
 	    data?: ScenarioListData;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioListResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], ScenarioListData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1249,18 +1249,18 @@ export namespace api {
 	    ok: boolean;
 	    data?: ScenarioData;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], ScenarioData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1279,24 +1279,24 @@ export namespace api {
 		    return a;
 		}
 	}
-
-
+	
+	
 	export class ScenarioYAMLData {
 	    yaml?: string;
 	    warnings?: ScenarioWarning[];
 	    diagnostics?: ScenarioDiagnostic[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioYAMLData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.yaml = source["yaml"];
 	        this.warnings = this.convertValues(source["warnings"], ScenarioWarning);
 	        this.diagnostics = this.convertValues(source["diagnostics"], ScenarioDiagnostic);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1319,18 +1319,18 @@ export namespace api {
 	    ok: boolean;
 	    data?: ScenarioYAMLData;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new ScenarioYAMLResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], ScenarioYAMLData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1357,11 +1357,11 @@ export namespace api {
 	    lastOpenedAt: string;
 	    scenarioCount: number;
 	    hasRememberedConnection: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new Workspace(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -1377,18 +1377,18 @@ export namespace api {
 	    ok: boolean;
 	    persistence?: WorkspacePersistenceStatus;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new WorkspaceActionResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.persistence = this.convertValues(source["persistence"], WorkspacePersistenceStatus);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1418,11 +1418,11 @@ export namespace api {
 	    rememberedConnection?: ConnectionInfo;
 	    connection: ConnectionState;
 	    persistence: WorkspacePersistenceStatus;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new WorkspaceBootstrapData(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.workspaces = this.convertValues(source["workspaces"], Workspace);
@@ -1436,7 +1436,7 @@ export namespace api {
 	        this.connection = this.convertValues(source["connection"], ConnectionState);
 	        this.persistence = this.convertValues(source["persistence"], WorkspacePersistenceStatus);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1459,18 +1459,18 @@ export namespace api {
 	    ok: boolean;
 	    data?: WorkspaceBootstrapData;
 	    error?: APIError;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new WorkspaceBootstrapResponse(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.ok = source["ok"];
 	        this.data = this.convertValues(source["data"], WorkspaceBootstrapData);
 	        this.error = this.convertValues(source["error"], APIError);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -1489,16 +1489,16 @@ export namespace api {
 		    return a;
 		}
 	}
-
+	
 	export class WorkspaceSelectionRequest {
 	    workspaceId: string;
 	    source: string;
 	    scenarioId: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new WorkspaceSelectionRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.workspaceId = source["workspaceId"];
