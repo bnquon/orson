@@ -2,7 +2,7 @@
 
 import { act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FlowPanel } from '../../components/FlowPanel';
 import { areScenarioDraftsEqual } from '../../draftEditing';
 import { buildFlowViewModel } from '../../flowModel';
@@ -32,6 +32,7 @@ const roots: Array<ReturnType<typeof createRoot>> = [];
 afterEach(() => {
   for (const root of roots.splice(0)) act(() => root.unmount());
   document.body.innerHTML = '';
+  vi.useRealTimers();
 });
 
 function renderEditableFlow(initialDraft: ScenarioDraft, editingDisabled = false) {
@@ -95,10 +96,44 @@ function pointerEvent(type: string, pointerId: number, clientX: number, clientY:
 }
 
 describe('FlowPanel topology editing', () => {
+  it('closes node menus on outside presses while preserving menu and trigger interactions', () => {
+    const { host } = renderEditableFlow(initialScenario);
+    const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Edit order.created"]')!;
+    const press = (target: Element) => {
+      act(() => {
+        target.dispatchEvent(pointerEvent('pointerdown', 1, 0, 0));
+      });
+    };
+
+    act(() => trigger.click());
+    const connect = buttonWithText(host, 'Connect to…');
+    press(connect);
+    act(() => connect.click());
+    expect(host.querySelector('.flow-node__connect-targets')).not.toBeNull();
+
+    press(host.querySelector('.flow-map__surface')!);
+    expect(host.querySelector('.flow-node__menu')).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+
+    act(() => trigger.click());
+    expect(host.querySelector('.flow-node__connect-targets')).toBeNull();
+    press(trigger);
+    expect(host.querySelector('.flow-node__menu')).not.toBeNull();
+    act(() => trigger.click());
+    expect(host.querySelector('.flow-node__menu')).toBeNull();
+
+    act(() => trigger.click());
+    press(document.body);
+    expect(host.querySelector('.flow-node__menu')).toBeNull();
+  });
+
   it('keeps an empty graph until a valid root topic is created', () => {
     const { host, getDraft } = renderEditableFlow(createUnsavedScenario());
 
     expect(host.textContent).toContain('No root topic yet');
+    expect(host.querySelector('.flow-map__surface')?.textContent).not.toContain(
+      'No root topic yet',
+    );
     act(() => buttonWithText(host, 'Add root topic').click());
     act(() => document.body.querySelector<HTMLFormElement>('form')?.requestSubmit());
     expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
@@ -109,6 +144,8 @@ describe('FlowPanel topology editing', () => {
     expect(getDraft().rootTopic).toBe('orders.created');
     expect(host.textContent).not.toContain('No root topic yet');
     expect(host.textContent).toContain('orders.created');
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('adds and renames watched topics without creating blank graph nodes', () => {
@@ -122,6 +159,8 @@ describe('FlowPanel topology editing', () => {
     expect(getDraft().watchedTopics.map((topic) => topic.name)).toEqual(['payments.completed']);
     expect(areScenarioDraftsEqual(getDraft(), draft)).toBe(false);
     expect(host.querySelectorAll('.flow-node-shell')).toHaveLength(2);
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
 
     act(() =>
       host.querySelector<HTMLButtonElement>('[aria-label="Edit payments.completed"]')?.click(),
@@ -131,6 +170,8 @@ describe('FlowPanel topology editing', () => {
 
     expect(getDraft().watchedTopics[0]?.name).toBe('payments.settled');
     expect(host.textContent).toContain('payments.settled');
+    expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.body.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('creates a connection through the accessible fallback and deletes the selected edge', () => {
@@ -152,6 +193,8 @@ describe('FlowPanel topology editing', () => {
         to: 'payments.completed',
       },
     ]);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(host.querySelector('.flow-node__menu')).toBeNull();
 
     const edge = host.querySelector<SVGElement>(
       '[aria-label="Connection from orders.created to payments.completed"]',
@@ -160,10 +203,11 @@ describe('FlowPanel topology editing', () => {
       edge?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(host.textContent).toContain('orders.created → payments.completed');
-    act(() => buttonWithText(host, 'Delete').click());
+    act(() => buttonWithText(host, 'Delete connection').click());
 
     expect(getDraft().configuredTopology).toEqual([]);
     expect(host.querySelector('[aria-label^="Connection from"]')).toBeNull();
+    expect(host.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('creates a connection by dragging from a source handle to a watched node', () => {
@@ -192,6 +236,15 @@ describe('FlowPanel topology editing', () => {
       sourceHandle.dispatchEvent(pointerEvent('pointerdown', 1, 255, 124.5));
     });
     act(() => {
+      sourceHandle.dispatchEvent(pointerEvent('pointerup', 1, 690, 60));
+    });
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(getDraft().configuredTopology).toEqual([]);
+
+    act(() => {
+      sourceHandle.dispatchEvent(pointerEvent('pointerdown', 1, 255, 124.5));
+    });
+    act(() => {
       sourceHandle.dispatchEvent(pointerEvent('pointerup', 1, 175, 222.5));
     });
 
@@ -202,6 +255,7 @@ describe('FlowPanel topology editing', () => {
         to: 'payments.completed',
       },
     ]);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('removes a watched node and all of its connected edges', () => {
@@ -217,6 +271,53 @@ describe('FlowPanel topology editing', () => {
         (edge) => edge.from === 'payment.charged' || edge.to === 'payment.charged',
       ),
     ).toBe(false);
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('dismisses errors manually or four seconds after the latest failed action', () => {
+    vi.useFakeTimers();
+    const draft = {
+      ...createUnsavedScenario(),
+      rootTopic: 'orders.created',
+      watchedTopics: [{ id: 'payments', name: 'payments.completed' }],
+      configuredTopology: [
+        {
+          id: 'edge:orders.created->payments.completed',
+          from: 'orders.created',
+          to: 'payments.completed',
+        },
+      ],
+    };
+    const { host, getDraft } = renderEditableFlow(draft);
+
+    act(() => host.querySelector<HTMLButtonElement>('[aria-label="Edit orders.created"]')?.click());
+    act(() => buttonWithText(host, 'Connect to…').click());
+    act(() => buttonWithText(host, 'payments.completed').click());
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      'That topology connection already exists.',
+    );
+    const dismiss = host.querySelector<HTMLButtonElement>('[aria-label="Dismiss error"]');
+    expect(dismiss).not.toBeNull();
+    act(() => dismiss?.click());
+
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(areScenarioDraftsEqual(getDraft(), draft)).toBe(true);
+
+    act(() => buttonWithText(host, 'payments.completed').click());
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    act(() => buttonWithText(host, 'payments.completed').click());
+    act(() => {
+      vi.advanceTimersByTime(3999);
+    });
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(host.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('disables graph mutations while retaining the read-only flow', () => {

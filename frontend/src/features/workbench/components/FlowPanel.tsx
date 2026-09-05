@@ -1,5 +1,6 @@
 import {
   CheckCircle,
+  Xmark,
   EditPencil,
   Link,
   MoreHoriz,
@@ -122,12 +123,14 @@ export function FlowPanel({
   } = useFlowViewport({ graphWidth: model.width, graphHeight: model.height });
   const canvasRef = useRef<HTMLDivElement>(null);
   const nodeRefs = useRef(new Map<string, HTMLElement>());
+  const openMenuRef = useRef<HTMLDivElement>(null);
+  const openMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const pendingFocusRef = useRef<string | null>(null);
   const [dialog, setDialog] = useState<TopicDialogState | null>(null);
   const [menuDraftId, setMenuDraftId] = useState<string | null>(null);
   const [connectMenuOpen, setConnectMenuOpen] = useState(false);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState('');
+  const [feedback, setFeedback] = useState<{ message: string } | null>(null);
   const [edgeDrag, setEdgeDrag] = useState<EdgeDragState | null>(null);
   const editingAvailable = onAddRootTopic !== undefined;
   const rootNode = model.nodes.find((node) => node.role === 'root') ?? null;
@@ -166,16 +169,36 @@ export function FlowPanel({
       setConnectMenuOpen(false);
       nodeRefs.current.get(menuDraftId)?.focus();
     };
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      if (
+        openMenuRef.current?.contains(event.target) ||
+        openMenuTriggerRef.current?.contains(event.target)
+      )
+        return;
+      setMenuDraftId(null);
+      setConnectMenuOpen(false);
+    };
     document.addEventListener('keydown', closeOnEscape);
-    return () => document.removeEventListener('keydown', closeOnEscape);
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown, true);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('pointerdown', closeOnOutsidePointerDown, true);
+    };
   }, [menuDraftId]);
+
+  useEffect(() => {
+    if (feedback === null) return;
+    const timeout = window.setTimeout(() => setFeedback(null), 4000);
+    return () => window.clearTimeout(timeout);
+  }, [feedback]);
 
   const reportResult = (error: string | null, focusDraftId?: string) => {
     if (error !== null) {
-      setFeedback(error);
+      setFeedback({ message: error });
       return false;
     }
-    setFeedback('');
+    setFeedback(null);
     if (focusDraftId !== undefined) pendingFocusRef.current = focusDraftId;
     return true;
   };
@@ -192,18 +215,20 @@ export function FlowPanel({
     if (dialog === null) return 'The topic editor is no longer available.';
     let error: string | null;
     if (dialog.mode === 'add-root') {
-      error = onAddRootTopic?.(name) ?? 'The root topic cannot be edited here.';
+      error = onAddRootTopic ? onAddRootTopic(name) : 'The root topic cannot be edited here.';
       if (error === null) pendingFocusRef.current = 'root';
     } else if (dialog.mode === 'add-watched') {
-      error = onAddWatchedTopic?.(name) ?? 'Watched topics cannot be edited here.';
+      error = onAddWatchedTopic ? onAddWatchedTopic(name) : 'Watched topics cannot be edited here.';
       if (error === null) pendingFocusRef.current = `topic:${name.trim()}`;
     } else if (dialog.node !== null) {
-      error = onRenameTopic?.(dialog.node, name) ?? 'This topic cannot be renamed here.';
+      error = onRenameTopic
+        ? onRenameTopic(dialog.node, name)
+        : 'This topic cannot be renamed here.';
       if (error === null) pendingFocusRef.current = dialog.node.draftId;
     } else {
       error = 'The selected topic is no longer available.';
     }
-    if (error === null) setFeedback('');
+    if (error === null) setFeedback(null);
     return error;
   };
 
@@ -221,7 +246,7 @@ export function FlowPanel({
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
-    setFeedback('');
+    setFeedback(null);
     setEdgeDrag({
       pointerId: event.pointerId,
       source,
@@ -252,14 +277,13 @@ export function FlowPanel({
     }
     setEdgeDrag(null);
     if (editingDisabled) {
-      setFeedback(editingDisabledReason || 'Topology editing is unavailable.');
+      setFeedback({ message: editingDisabledReason || 'Topology editing is unavailable.' });
       return;
     }
-    if (target === null) {
-      setFeedback('Drop the connection on a watched topic.');
-      return;
-    }
-    reportResult(onCreateEdge?.(edgeDrag.source, target) ?? 'Connections cannot be edited here.');
+    if (target === null) return;
+    reportResult(
+      onCreateEdge ? onCreateEdge(edgeDrag.source, target) : 'Connections cannot be edited here.',
+    );
   };
 
   const cancelEdgeDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -267,13 +291,11 @@ export function FlowPanel({
     setEdgeDrag(null);
   };
 
-  const removeSelectedEdge = () => {
-    if (selectedEdge === null || onRemoveEdge === undefined || editingDisabled) return;
-    if (reportResult(onRemoveEdge(selectedEdge))) {
+  const removeEdge = (edge: FlowEdge) => {
+    if (onRemoveEdge === undefined || editingDisabled) return;
+    if (reportResult(onRemoveEdge(edge))) {
       setSelectedEdgeId(null);
-      const sourceDraftId = model.nodes.find(
-        (node) => node.topic === selectedEdge.sourceTopic,
-      )?.draftId;
+      const sourceDraftId = model.nodes.find((node) => node.topic === edge.sourceTopic)?.draftId;
       if (sourceDraftId !== undefined) {
         window.requestAnimationFrame(() => nodeRefs.current.get(sourceDraftId)?.focus());
       }
@@ -292,11 +314,13 @@ export function FlowPanel({
                 type="button"
                 disabled={editingDisabled}
                 title={editingDisabled ? editingDisabledReason : 'Delete selected connection'}
-                onClick={removeSelectedEdge}
+                onClick={() => removeEdge(selectedEdge)}
               >
-                <Trash width={14} height={14} aria-hidden="true" /> Delete
+                <Trash width={14} height={14} aria-hidden="true" /> Delete connection
               </button>
             </span>
+          ) : editingAvailable && model.edges.length > 0 ? (
+            <span className="flow-panel__connection-hint">Click a connection to remove it</span>
           ) : null}
         </div>
         <div className="flow-panel__controls">
@@ -347,256 +371,256 @@ export function FlowPanel({
           </button>
         </div>
       </header>
-      <div className="flow-panel__viewport workbench-scroll-region" ref={viewportRef}>
-        <div className="flow-map__surface" style={surfaceStyle}>
-          <div className="flow-map" ref={canvasRef} style={canvasStyle}>
-            {rootNode === null ? (
-              <div className="flow-map__empty" tabIndex={-1}>
-                <strong>No root topic yet</strong>
-                <span>Add the published starting topic to begin building this scenario.</span>
-                {editingAvailable ? (
-                  <button
-                    type="button"
-                    disabled={editingDisabled}
-                    title={editingDisabled ? editingDisabledReason : 'Add root topic'}
-                    onClick={() => openDialog('add-root')}
-                  >
-                    <Plus width={16} height={16} aria-hidden="true" /> Add root topic
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <>
-                {model.routeIssues.length > 0 ? (
-                  <div className="flow-map__routing-warning" role="status">
-                    <WarningCircle width={16} height={16} aria-hidden="true" />
-                    <span>{model.routeIssues[0]?.message}</span>
-                  </div>
-                ) : null}
-                <svg
-                  className="flow-map__edges"
-                  width={model.width}
-                  height={model.height}
-                  viewBox={`0 0 ${model.width} ${model.height}`}
-                  aria-label={editingAvailable ? 'Topology connections' : undefined}
-                  aria-hidden={editingAvailable ? undefined : true}
-                >
-                  {model.edges.map((edge) => (
-                    <g key={edge.id}>
-                      <path
-                        className={`flow-map__edge flow-map__edge--${edge.status} ${selectedEdgeId === edge.id ? 'flow-map__edge--selected' : ''}`}
-                        d={edge.path}
-                      />
-                      {editingAvailable ? (
-                        <path
-                          className="flow-map__edge-hit"
-                          d={edge.path}
-                          role="button"
-                          tabIndex={editingDisabled ? -1 : 0}
-                          aria-disabled={editingDisabled}
-                          aria-label={`Connection from ${edge.sourceTopic} to ${edge.targetTopic}`}
-                          aria-pressed={selectedEdgeId === edge.id}
-                          onClick={() => {
-                            setSelectedEdgeId(edge.id);
-                            setFeedback('');
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              setSelectedEdgeId(edge.id);
-                            } else if (
-                              (event.key === 'Delete' || event.key === 'Backspace') &&
-                              !editingDisabled
-                            ) {
-                              event.preventDefault();
-                              if (reportResult(onRemoveEdge?.(edge) ?? null)) {
-                                setSelectedEdgeId(null);
-                                const sourceDraftId = model.nodes.find(
-                                  (node) => node.topic === edge.sourceTopic,
-                                )?.draftId;
-                                if (sourceDraftId !== undefined) {
-                                  window.requestAnimationFrame(() =>
-                                    nodeRefs.current.get(sourceDraftId)?.focus(),
-                                  );
-                                }
-                              }
-                            }
-                          }}
-                        />
-                      ) : null}
-                    </g>
-                  ))}
-                  {edgeDrag !== null ? (
-                    <path
-                      className="flow-map__edge-preview"
-                      d={`M ${edgeDrag.source.layout.left + edgeDrag.source.layout.width} ${edgeDrag.source.layout.top + edgeDrag.source.layout.height / 2} L ${edgeDrag.x} ${edgeDrag.y}`}
-                    />
+      <div className="flow-panel__canvas-area">
+        <div className="flow-panel__viewport workbench-scroll-region" ref={viewportRef}>
+          <div className="flow-map__surface" style={surfaceStyle}>
+            <div className="flow-map" ref={canvasRef} style={canvasStyle}>
+              {rootNode !== null ? (
+                <>
+                  {model.routeIssues.length > 0 ? (
+                    <div className="flow-map__routing-warning" role="status">
+                      <WarningCircle width={16} height={16} aria-hidden="true" />
+                      <span>{model.routeIssues[0]?.message}</span>
+                    </div>
                   ) : null}
-                </svg>
-                {model.nodes.map((node) => {
-                  const className = [
-                    'flow-node',
-                    `flow-node--${node.status}`,
-                    editingAvailable ? 'flow-node--editable' : '',
-                    node.recordIds.includes(selectedRecordId ?? '') ? 'flow-node--selected' : '',
-                    edgeDrag?.targetDraftId === node.draftId ? 'flow-node--drop-target' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ');
-                  const menuOpen = !editingDisabled && menuDraftId === node.draftId;
-                  return (
-                    <div
-                      className={`flow-node-shell ${menuOpen ? 'flow-node-shell--menu-open' : ''}`}
-                      style={{ left: node.layout.left, top: node.layout.top }}
-                      key={node.draftId}
-                    >
-                      {node.recordId !== null ? (
-                        <button
-                          ref={(element) => {
-                            if (element === null) nodeRefs.current.delete(node.draftId);
-                            else nodeRefs.current.set(node.draftId, element);
-                          }}
-                          className={className}
-                          type="button"
-                          aria-label={`${node.topic}, ${formatStatusLabel(node.status)}. Select observed record${node.recordIds.length > 1 ? ' (click to cycle records)' : ''}.`}
-                          aria-pressed={node.recordIds.includes(selectedRecordId ?? '')}
-                          onClick={() => {
-                            const recordId = nextRecordIdForNode(node, selectedRecordId);
-                            if (recordId !== null) onSelectRecord(recordId);
-                          }}
-                        >
-                          <NodeContent node={node} showDisconnected={editingAvailable} />
-                        </button>
-                      ) : (
-                        <div
-                          ref={(element) => {
-                            if (element === null) nodeRefs.current.delete(node.draftId);
-                            else nodeRefs.current.set(node.draftId, element);
-                          }}
-                          className={className}
-                          tabIndex={editingAvailable ? -1 : undefined}
-                          role="group"
-                          aria-label={`${node.topic}, ${formatStatusLabel(node.status)}. No observed record to inspect.`}
-                        >
-                          <NodeContent node={node} showDisconnected={editingAvailable} />
-                        </div>
-                      )}
-                      {editingAvailable ? (
-                        <>
-                          {node.role === 'watched' ? (
-                            <span className="flow-node__target-handle" aria-hidden="true" />
-                          ) : null}
-                          <button
-                            className="flow-node__source-handle"
-                            type="button"
-                            aria-label={`Drag a connection from ${node.topic}`}
-                            disabled={editingDisabled}
-                            title={
-                              editingDisabled ? editingDisabledReason : 'Drag to a watched topic'
-                            }
-                            onPointerDown={(event) => beginEdgeDrag(event, node)}
-                            onPointerMove={moveEdgeDrag}
-                            onPointerUp={finishEdgeDrag}
-                            onPointerCancel={cancelEdgeDrag}
-                          />
-                          <button
-                            className="flow-node__menu-trigger"
-                            type="button"
-                            aria-label={`Edit ${node.topic}`}
-                            aria-expanded={menuOpen}
-                            disabled={editingDisabled}
-                            title={editingDisabled ? editingDisabledReason : 'Topic actions'}
+                  <svg
+                    className="flow-map__edges"
+                    width={model.width}
+                    height={model.height}
+                    viewBox={`0 0 ${model.width} ${model.height}`}
+                    aria-label={editingAvailable ? 'Topology connections' : undefined}
+                    aria-hidden={editingAvailable ? undefined : true}
+                  >
+                    {model.edges.map((edge) => (
+                      <g key={edge.id}>
+                        <path
+                          className={`flow-map__edge flow-map__edge--${edge.status} ${selectedEdgeId === edge.id ? 'flow-map__edge--selected' : ''}`}
+                          d={edge.path}
+                        />
+                        {editingAvailable ? (
+                          <path
+                            className="flow-map__edge-hit"
+                            d={edge.path}
+                            role="button"
+                            tabIndex={editingDisabled ? -1 : 0}
+                            aria-disabled={editingDisabled}
+                            aria-label={`Connection from ${edge.sourceTopic} to ${edge.targetTopic}`}
+                            aria-pressed={selectedEdgeId === edge.id}
                             onClick={() => {
-                              setMenuDraftId(menuOpen ? null : node.draftId);
-                              setConnectMenuOpen(false);
+                              setSelectedEdgeId(edge.id);
+                              setFeedback(null);
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault();
+                                setSelectedEdgeId(edge.id);
+                              } else if (
+                                (event.key === 'Delete' || event.key === 'Backspace') &&
+                                !editingDisabled
+                              ) {
+                                event.preventDefault();
+                                removeEdge(edge);
+                              }
+                            }}
+                          />
+                        ) : null}
+                      </g>
+                    ))}
+                    {edgeDrag !== null ? (
+                      <path
+                        className="flow-map__edge-preview"
+                        d={`M ${edgeDrag.source.layout.left + edgeDrag.source.layout.width} ${edgeDrag.source.layout.top + edgeDrag.source.layout.height / 2} L ${edgeDrag.x} ${edgeDrag.y}`}
+                      />
+                    ) : null}
+                  </svg>
+                  {model.nodes.map((node) => {
+                    const className = [
+                      'flow-node',
+                      `flow-node--${node.status}`,
+                      editingAvailable ? 'flow-node--editable' : '',
+                      node.recordIds.includes(selectedRecordId ?? '') ? 'flow-node--selected' : '',
+                      edgeDrag?.targetDraftId === node.draftId ? 'flow-node--drop-target' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ');
+                    const menuOpen = !editingDisabled && menuDraftId === node.draftId;
+                    return (
+                      <div
+                        className={`flow-node-shell ${menuOpen ? 'flow-node-shell--menu-open' : ''}`}
+                        style={{ left: node.layout.left, top: node.layout.top }}
+                        key={node.draftId}
+                      >
+                        {node.recordId !== null ? (
+                          <button
+                            ref={(element) => {
+                              if (element === null) nodeRefs.current.delete(node.draftId);
+                              else nodeRefs.current.set(node.draftId, element);
+                            }}
+                            className={className}
+                            type="button"
+                            aria-label={`${node.topic}, ${formatStatusLabel(node.status)}. Select observed record${node.recordIds.length > 1 ? ' (click to cycle records)' : ''}.`}
+                            aria-pressed={node.recordIds.includes(selectedRecordId ?? '')}
+                            onClick={() => {
+                              const recordId = nextRecordIdForNode(node, selectedRecordId);
+                              if (recordId !== null) onSelectRecord(recordId);
                             }}
                           >
-                            <MoreHoriz width={16} height={16} aria-hidden="true" />
+                            <NodeContent node={node} showDisconnected={editingAvailable} />
                           </button>
-                          {menuOpen ? (
-                            <div
-                              className="flow-node__menu"
-                              aria-label={`Actions for ${node.topic}`}
+                        ) : (
+                          <div
+                            ref={(element) => {
+                              if (element === null) nodeRefs.current.delete(node.draftId);
+                              else nodeRefs.current.set(node.draftId, element);
+                            }}
+                            className={className}
+                            tabIndex={editingAvailable ? -1 : undefined}
+                            role="group"
+                            aria-label={`${node.topic}, ${formatStatusLabel(node.status)}. No observed record to inspect.`}
+                          >
+                            <NodeContent node={node} showDisconnected={editingAvailable} />
+                          </div>
+                        )}
+                        {editingAvailable ? (
+                          <>
+                            {node.role === 'watched' ? (
+                              <span className="flow-node__target-handle" aria-hidden="true" />
+                            ) : null}
+                            <button
+                              className="flow-node__source-handle"
+                              type="button"
+                              aria-label={`Drag a connection from ${node.topic}`}
+                              disabled={editingDisabled}
+                              title={
+                                editingDisabled ? editingDisabledReason : 'Drag to a watched topic'
+                              }
+                              onPointerDown={(event) => beginEdgeDrag(event, node)}
+                              onPointerMove={moveEdgeDrag}
+                              onPointerUp={finishEdgeDrag}
+                              onPointerCancel={cancelEdgeDrag}
+                            />
+                            <button
+                              ref={menuOpen ? openMenuTriggerRef : null}
+                              className="flow-node__menu-trigger"
+                              type="button"
+                              aria-label={`Edit ${node.topic}`}
+                              aria-expanded={menuOpen}
+                              disabled={editingDisabled}
+                              title={editingDisabled ? editingDisabledReason : 'Topic actions'}
+                              onClick={() => {
+                                setMenuDraftId(menuOpen ? null : node.draftId);
+                                setConnectMenuOpen(false);
+                              }}
                             >
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openDialog(
-                                    node.role === 'root' ? 'rename-root' : 'rename-watched',
-                                    node,
-                                  )
-                                }
+                              <MoreHoriz width={16} height={16} aria-hidden="true" />
+                            </button>
+                            {menuOpen ? (
+                              <div
+                                ref={openMenuRef}
+                                className="flow-node__menu"
+                                aria-label={`Actions for ${node.topic}`}
                               >
-                                <EditPencil width={14} height={14} aria-hidden="true" /> Rename
-                              </button>
-                              <button
-                                type="button"
-                                aria-expanded={connectMenuOpen}
-                                onClick={() => setConnectMenuOpen((open) => !open)}
-                              >
-                                <Link width={14} height={14} aria-hidden="true" /> Connect to…
-                              </button>
-                              {connectMenuOpen ? (
-                                <div className="flow-node__connect-targets">
-                                  {watchedTargets.length === 0 ? (
-                                    <span>Add a watched topic first.</span>
-                                  ) : (
-                                    watchedTargets.map((target) => (
-                                      <button
-                                        type="button"
-                                        key={target.draftId}
-                                        onClick={() => {
-                                          if (editingDisabled) return;
-                                          const error =
-                                            onCreateEdge?.(node, target) ??
-                                            'Connections cannot be edited here.';
-                                          if (reportResult(error)) {
-                                            setMenuDraftId(null);
-                                            setConnectMenuOpen(false);
-                                          }
-                                        }}
-                                      >
-                                        {target.topic}
-                                      </button>
-                                    ))
-                                  )}
-                                </div>
-                              ) : null}
-                              {node.role === 'watched' ? (
                                 <button
-                                  className="flow-node__delete"
                                   type="button"
-                                  onClick={() => {
-                                    if (editingDisabled) return;
-                                    const error =
-                                      onRemoveTopic?.(node) ?? 'This topic cannot be removed here.';
-                                    if (reportResult(error)) {
-                                      setMenuDraftId(null);
-                                      setConnectMenuOpen(false);
-                                      window.requestAnimationFrame(() =>
-                                        document.getElementById('flow-add-topic')?.focus(),
-                                      );
-                                    }
-                                  }}
+                                  onClick={() =>
+                                    openDialog(
+                                      node.role === 'root' ? 'rename-root' : 'rename-watched',
+                                      node,
+                                    )
+                                  }
                                 >
-                                  <Trash width={14} height={14} aria-hidden="true" /> Delete topic
+                                  <EditPencil width={14} height={14} aria-hidden="true" /> Rename
                                 </button>
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </>
-            )}
+                                <button
+                                  type="button"
+                                  aria-expanded={connectMenuOpen}
+                                  onClick={() => setConnectMenuOpen((open) => !open)}
+                                >
+                                  <Link width={14} height={14} aria-hidden="true" /> Connect to…
+                                </button>
+                                {connectMenuOpen ? (
+                                  <div className="flow-node__connect-targets">
+                                    {watchedTargets.length === 0 ? (
+                                      <span>Add a watched topic first.</span>
+                                    ) : (
+                                      watchedTargets.map((target) => (
+                                        <button
+                                          type="button"
+                                          key={target.draftId}
+                                          onClick={() => {
+                                            if (editingDisabled) return;
+                                            const error = onCreateEdge
+                                              ? onCreateEdge(node, target)
+                                              : 'Connections cannot be edited here.';
+                                            if (reportResult(error)) {
+                                              setMenuDraftId(null);
+                                              setConnectMenuOpen(false);
+                                            }
+                                          }}
+                                        >
+                                          {target.topic}
+                                        </button>
+                                      ))
+                                    )}
+                                  </div>
+                                ) : null}
+                                {node.role === 'watched' ? (
+                                  <button
+                                    className="flow-node__delete"
+                                    type="button"
+                                    onClick={() => {
+                                      if (editingDisabled) return;
+                                      const error = onRemoveTopic
+                                        ? onRemoveTopic(node)
+                                        : 'This topic cannot be removed here.';
+                                      if (reportResult(error)) {
+                                        setMenuDraftId(null);
+                                        setConnectMenuOpen(false);
+                                        window.requestAnimationFrame(() =>
+                                          document.getElementById('flow-add-topic')?.focus(),
+                                        );
+                                      }
+                                    }}
+                                  >
+                                    <Trash width={14} height={14} aria-hidden="true" /> Delete topic
+                                  </button>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </>
+              ) : null}
+            </div>
           </div>
         </div>
+        {rootNode === null ? (
+          <div className="flow-map__empty" tabIndex={-1}>
+            <strong>No root topic yet</strong>
+            <span>Add the published starting topic to begin building this scenario.</span>
+            {editingAvailable ? (
+              <button
+                type="button"
+                disabled={editingDisabled}
+                title={editingDisabled ? editingDisabledReason : 'Add root topic'}
+                onClick={() => openDialog('add-root')}
+              >
+                <Plus width={16} height={16} aria-hidden="true" /> Add root topic
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
       {feedback ? (
         <div className="flow-panel__feedback" role="alert">
-          <WarningCircle width={15} height={15} aria-hidden="true" /> {feedback}
+          <WarningCircle width={15} height={15} aria-hidden="true" />
+          <span>{feedback.message}</span>
+          <button type="button" aria-label="Dismiss error" onClick={() => setFeedback(null)}>
+            <Xmark width={15} height={15} aria-hidden="true" />
+          </button>
         </div>
       ) : null}
       {dialog !== null && !editingDisabled ? (

@@ -206,12 +206,19 @@ export function addTopologyEdge(
     return mutationError('topology_edge_duplicate', 'That topology connection already exists.');
   }
 
-  const id = input.id?.trim() || `edge:${from}->${to}`;
-  if (hasEdgeId(draft, id)) {
+  const explicitId = input.id?.trim();
+  const baseId = explicitId || `edge:${from}->${to}`;
+  let id = baseId;
+  if (explicitId && hasEdgeId(draft, id)) {
     return mutationError(
       'topology_edge_id_duplicate',
       'That topology connection ID already exists.',
     );
+  }
+
+  // Renamed edges keep their IDs, so a reused topic name may need a fresh ID.
+  for (let suffix = 2; hasEdgeId(draft, id); suffix += 1) {
+    id = `${baseId}:${suffix}`;
   }
 
   const edge = { id, from, to };

@@ -426,15 +426,6 @@ function edgeStatus(source: FlowNode, target: FlowNode): FlowStatus {
   return 'configured';
 }
 
-function latestRecordForTopic(
-  records: EventRecord[],
-  topic: string,
-  rootRecord: EventRecord | null,
-): EventRecord | null {
-  const matches = recordsForTopic(records, topic, rootRecord);
-  return matches[matches.length - 1] ?? null;
-}
-
 function recordsForTopic(
   records: EventRecord[],
   topic: string,
@@ -475,7 +466,7 @@ export function buildFlowViewModel(draft: ScenarioDraft, run: RunState): FlowVie
 
   const watchedNodes = watchedTopics.map(({ draftId, topic }): FlowNode => {
     const records = recordsForTopic(run.records, topic, actualRootRecord);
-    const record = latestRecordForTopic(run.records, topic, actualRootRecord);
+    const record = records[records.length - 1] ?? null;
     return {
       id: `watched:${topic}`,
       draftId,
