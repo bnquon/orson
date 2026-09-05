@@ -8,7 +8,7 @@ import { formatObservedTimestamp } from '../observedEvent';
 import { formatRunDuration } from '../historyFormatting';
 import { toObservedRun } from '../observedRun';
 import type { HistorySummary } from '../historyTypes';
-import { formatStatusLabel, isActiveRunStatus, isPreflightError } from '../runStatus';
+import { formatStatusLabel, isActiveRunStatus } from '../runStatus';
 import type { ObservedEvent, ObservedRun, RunStatus } from '../types';
 import type { RunHistoryController } from '../useRunHistory';
 import { EventInspector } from './EventInspector';
@@ -240,7 +240,10 @@ function CurrentRun({
     );
   }
   const error = run.error;
-  if (error !== null && isPreflightError(error)) {
+  if (
+    error?.code === preflightErrorCodes.missingTopics ||
+    error?.code === preflightErrorCodes.metadataUnavailable
+  ) {
     return (
       <div className="run-context__state run-context__state--error" role="alert">
         <WarningCircle width={18} height={18} />
