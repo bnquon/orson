@@ -1,5 +1,14 @@
-import { preflightErrorCodes, type PreflightErrorCode } from '../../api/result';
-import type { ApiError, RunStatus } from './types';
+import { preflightErrorCodes, type ApiError, type PreflightErrorCode } from '../../api/result';
+
+export type RunStatus =
+  | 'idle'
+  | 'checking'
+  | 'starting'
+  | 'in_progress'
+  | 'completed'
+  | 'timed_out'
+  | 'cancelled'
+  | 'failed';
 
 export const terminalRunStatuses: ReadonlySet<RunStatus> = new Set([
   'completed',
