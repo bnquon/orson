@@ -1,6 +1,8 @@
 import type { ApiError as ApiErrorModel } from '../../api/result';
+import type { RunStatus } from './runStatus';
 
 export type ApiError = ApiErrorModel;
+export type { RunStatus } from './runStatus';
 
 export type WorkspaceMode = 'compose' | 'flow';
 
@@ -181,16 +183,6 @@ export interface EventRecord {
   offset: string;
   timestamp: string;
 }
-
-export type RunStatus =
-  | 'idle'
-  | 'checking'
-  | 'starting'
-  | 'in_progress'
-  | 'completed'
-  | 'timed_out'
-  | 'cancelled'
-  | 'failed';
 
 type TrackedEventStatus = 'in_progress' | 'completed' | 'unwitnessed' | 'failed';
 
