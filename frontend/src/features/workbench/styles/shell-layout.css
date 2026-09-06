@@ -216,18 +216,6 @@
   }
 }
 
-.workbench-user-avatar {
-  align-items: center;
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: 50%;
-  display: inline-flex;
-  font-size: 9px;
-  height: 28px;
-  justify-content: center;
-  width: 28px;
-}
-
 .workbench-layout {
   display: grid;
   grid-template-columns: 202px minmax(0, 1fr) 288px;

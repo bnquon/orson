@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { EditPencil, MoreVert, Plus, Search, Trash } from 'iconoir-react';
 import orsonIcon from '../../assets/orson-icon.png';
+import { FeedbackActions } from '../../components/FeedbackActions';
 import { PixelGridLoader } from '../../components/PixelGridLoader';
 import {
   WorkspaceActionDialog,
@@ -280,6 +281,7 @@ export function WorkspaceStartScreen({
           <span className="workspace-start__slash">/</span>
           <span className="workspace-start__context">Workspace Launcher</span>
         </div>
+        <FeedbackActions className="feedback-actions--launcher" />
       </header>
 
       <section className="workspace-start__content" aria-labelledby="workspace-start-title">

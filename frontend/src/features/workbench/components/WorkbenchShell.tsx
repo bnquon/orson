@@ -2,6 +2,7 @@ import { NavArrowDown } from 'iconoir-react';
 import type { ReactNode } from 'react';
 import type { KafkaConnection, WorkspaceMode } from '../types';
 import orsonIcon from '../../../assets/orson-icon.png';
+import { FeedbackActions } from '../../../components/FeedbackActions';
 import '../styles/shell.css';
 
 // TODO: [Workspace] Scope open scenario tabs when multi-tab workspaces are introduced.
@@ -65,6 +66,7 @@ export function WorkbenchShell({
           {workspaceSelector}
         </div>
         <div className="workbench-topbar__group workbench-topbar__group--right">
+          <FeedbackActions />
           <button
             className="workbench-environment"
             id="workbench-environment-selector"
@@ -81,7 +83,6 @@ export function WorkbenchShell({
             </span>
             <NavArrowDown width={16} height={16} />
           </button>
-          <span className="workbench-user-avatar">BQ</span>
         </div>
       </header>
 
