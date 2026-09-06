@@ -7,6 +7,8 @@ interface TooltipProps {
   children: ReactNode;
   interactive?: boolean;
   multiline?: boolean;
+  onClick?: () => void;
+  placement?: 'top' | 'bottom' | 'left';
 }
 
 export function Tooltip({
@@ -15,6 +17,8 @@ export function Tooltip({
   children,
   interactive = false,
   multiline = false,
+  onClick,
+  placement = 'top',
 }: TooltipProps) {
   const tooltipId = useId();
   const trigger = interactive ? (
@@ -23,6 +27,7 @@ export function Tooltip({
       type="button"
       aria-label={label}
       aria-describedby={tooltipId}
+      onClick={onClick}
     >
       {children}
     </button>
@@ -42,7 +47,7 @@ export function Tooltip({
     <span className="tooltip">
       {trigger}
       <span
-        className={`tooltip__content${multiline ? ' tooltip__content--multiline' : ''}`}
+        className={`tooltip__content${multiline ? ' tooltip__content--multiline' : ''} tooltip__content--${placement}`}
         id={tooltipId}
         role="tooltip"
       >
