@@ -8,7 +8,11 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/61a024c2-7fb6-46f8-bc3e-9f0ae63a0313" controls width="100%"/>
+  <video src="https://github.com/user-attachments/assets/50de40c2-a435-46be-b877-4e005f1d13fb" controls width="100%"/>
+</p>
+
+<p align="center">
+  <sub>Demo recorded with v0.1.0 on September 6, 2026.</sub>
 </p>
 
 ## Overview
@@ -20,6 +24,18 @@ you inspect each message's payload, headers, partition, and offset.
 
 Orson runs on your machine and connects directly to the Kafka broker you configure. Your payloads
 and captured events are not uploaded to an Orson cloud service or analytics pipeline.
+
+## Current Release
+
+**v0.1.0-alpha.1** · First public alpha
+
+[Download Orson for macOS](https://github.com/bnquon/orson/releases/download/v0.1.0-alpha.1/Orson-macos-universal.zip) ·
+[View release notes](https://github.com/bnquon/orson/releases/tag/v0.1.0-alpha.1)
+
+Orson is currently unsigned and not notarized by Apple. On first launch, macOS may block the
+app because it cannot verify the developer. If that happens, right-click `Orson.app`, choose
+**Open**, and confirm. You may also need to approve it under **System Settings → Privacy &
+Security → Open Anyway**.
 
 ## Demo
 
