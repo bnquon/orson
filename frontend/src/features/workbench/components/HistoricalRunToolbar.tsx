@@ -1,4 +1,4 @@
-import { NavArrowLeft } from 'iconoir-react';
+import { EditPencil, NavArrowLeft } from 'iconoir-react';
 import type { HistorySummary } from '../historyTypes';
 import { formatObservedTimestamp } from '../observedEvent';
 import { formatStatusLabel } from '../runStatus';
@@ -7,9 +7,18 @@ import '../styles/historical-run.css';
 interface HistoricalRunToolbarProps {
   summary: HistorySummary;
   onReturnToCurrent: () => void;
+  onLoadIntoCompose: () => void;
+  loadDisabled: boolean;
+  loadDisabledReason: string;
 }
 
-export function HistoricalRunToolbar({ summary, onReturnToCurrent }: HistoricalRunToolbarProps) {
+export function HistoricalRunToolbar({
+  summary,
+  onReturnToCurrent,
+  onLoadIntoCompose,
+  loadDisabled,
+  loadDisabledReason,
+}: HistoricalRunToolbarProps) {
   const recordedAt = summary.finishedAt || summary.startedAt;
 
   return (
@@ -34,6 +43,16 @@ export function HistoricalRunToolbar({ summary, onReturnToCurrent }: HistoricalR
         </div>
       </div>
       <div className="workspace-toolbar__historical-right">
+        <button
+          className="compose-secondary-button historical-toolbar__load"
+          type="button"
+          onClick={onLoadIntoCompose}
+          disabled={loadDisabled}
+          title={loadDisabled ? loadDisabledReason : 'Load this historical run into Compose'}
+        >
+          <EditPencil width={14} height={14} aria-hidden="true" />
+          Load into Compose
+        </button>
         <span
           className={`historical-toolbar__status historical-toolbar__status--${summary.status}`}
         >

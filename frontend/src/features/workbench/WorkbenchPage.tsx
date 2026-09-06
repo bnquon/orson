@@ -33,6 +33,7 @@ import {
   ScenarioSelectionLoadError,
 } from './components/ScenarioLoadState';
 import { buildFlowViewModel } from './flowModel';
+import type { HistoricalRun } from './historyTypes';
 import { toObservedRun } from './observedRun';
 import { formatStatusLabel, isActiveRunStatus, terminalRunStatuses } from './runStatus';
 import { toRunRequest } from './runMapping';
@@ -80,6 +81,7 @@ export function WorkbenchPage({
     fileFeedback,
     onSelectScenario,
     onCreateScenario,
+    onLoadDraftAsUnsaved,
     onExitUnsavedScenario,
     onImportScenario,
     onRemoveScenario,
@@ -110,6 +112,8 @@ export function WorkbenchPage({
   const [activeEditorTab, setActiveEditorTab] = useState<ComposeEditorTab>('payload');
   const [touched, setTouched] = useState<TouchedState>(initialTouched);
   const [publishAttempted, setPublishAttempted] = useState(false);
+  const [pendingHistoricalLoad, setPendingHistoricalLoad] = useState<HistoricalRun | null>(null);
+  const [historyLoadFeedback, setHistoryLoadFeedback] = useState<string | null>(null);
   const [composeConfigHeight, setComposeConfigHeight] = useState<number | null>(null);
   const scenarioIdentity = scenario.id;
   const [warningDismissal, setWarningDismissal] = useState({
@@ -224,6 +228,21 @@ export function WorkbenchPage({
       : fileOperations.fileBusy
         ? 'Wait for the current scenario file operation to finish'
         : '';
+  const historyLoadDisabledReason =
+    history.detailStatus !== 'ready' || history.selectedRun === null
+      ? 'Wait for the historical run to finish loading'
+      : isRunActive
+        ? 'Stop the active run before loading a historical draft'
+        : fileOperations.fileBusy
+          ? 'Wait for the current scenario file operation to finish'
+          : scenarioSelectionLoading
+            ? 'Wait for the selected scenario to finish loading'
+            : folderOperation !== 'idle'
+              ? 'Wait for the current folder operation to finish'
+              : history.operation !== 'idle'
+                ? 'Wait for the current history operation to finish'
+                : '';
+  const historyLoadDisabled = historyLoadDisabledReason !== '';
 
   useEffect(() => {
     onWorkspaceGuardChange({
@@ -311,6 +330,40 @@ export function WorkbenchPage({
         ? current.headerIds
         : [...current.headerIds, headerId],
     }));
+  };
+
+  const loadHistoricalDraft = (historical: HistoricalRun) => {
+    onLoadDraftAsUnsaved(historical.scenario);
+    setMode('compose');
+    history.setMode('current');
+    setPendingHistoricalLoad(null);
+    setHistoryLoadFeedback('Historical run loaded into Compose as an unsaved draft.');
+  };
+
+  const requestHistoricalDraftLoad = () => {
+    const historical = history.selectedRun;
+    if (historical === null || historyLoadDisabled) return;
+    if (!emptyWorkbench && fileOperations.draftIsDirty) {
+      setPendingHistoricalLoad(historical);
+      return;
+    }
+    loadHistoricalDraft(historical);
+  };
+
+  const cancelPendingDraftReplacement = () => {
+    if (pendingHistoricalLoad !== null) {
+      setPendingHistoricalLoad(null);
+      return;
+    }
+    fileOperations.cancelPendingScenarioAction();
+  };
+
+  const confirmPendingDraftReplacement = () => {
+    if (pendingHistoricalLoad !== null) {
+      loadHistoricalDraft(pendingHistoricalLoad);
+      return;
+    }
+    fileOperations.confirmPendingScenarioAction();
   };
 
   const publishRun = () => {
@@ -594,6 +647,9 @@ export function WorkbenchPage({
     <HistoricalRunToolbar
       summary={history.selectedSummary}
       onReturnToCurrent={() => history.setMode('current')}
+      onLoadIntoCompose={requestHistoricalDraftLoad}
+      loadDisabled={historyLoadDisabled}
+      loadDisabledReason={historyLoadDisabledReason}
     />
   ) : (
     <WorkspaceToolbar
@@ -640,6 +696,34 @@ export function WorkbenchPage({
         />
       ) : null}
     </>
+  );
+  const historicalLoadPending = pendingHistoricalLoad !== null;
+  const discardModalOpen = historicalLoadPending || fileOperations.pendingScenarioAction !== null;
+  const discardModalDescription = historicalLoadPending
+    ? 'Loading this historical run will replace the current unsaved draft.'
+    : fileOperations.pendingScenarioAction?.kind === 'import'
+      ? 'Importing another file will replace the current editable draft if it succeeds.'
+      : fileOperations.pendingScenarioAction?.kind === 'new'
+        ? 'Creating a new scenario will replace the current editable draft.'
+        : 'Switching scenarios will replace the current editable draft.';
+  const discardModalConfirmLabel = historicalLoadPending
+    ? 'Discard changes and load'
+    : 'Discard changes';
+  const discardModalCopy = historicalLoadPending ? (
+    <p className="scenario-switch-copy">
+      Any unsaved edits to <strong>{draft.name}</strong> will be lost. The historical run and any
+      scenario file on disk will remain unchanged.
+    </p>
+  ) : (
+    <p className="scenario-switch-copy">
+      Any unsaved edits to <strong>{draft.name}</strong> will be lost after the next scenario loads
+      successfully.{' '}
+      {fileOperations.pendingScenarioAction?.kind === 'new'
+        ? 'This scenario has not been saved to disk.'
+        : scenario.source === 'example'
+          ? 'The example file remains unchanged.'
+          : 'The file on disk remains unchanged.'}
+    </p>
   );
 
   return (
@@ -778,41 +862,30 @@ export function WorkbenchPage({
           onDismiss={() => run.clearHistoryError()}
         />
       ) : null}
+      {historyLoadFeedback !== null ? (
+        <Toast
+          message={historyLoadFeedback}
+          tone="success"
+          onDismiss={() => setHistoryLoadFeedback(null)}
+        />
+      ) : null}
       <Modal
-        open={fileOperations.pendingScenarioAction !== null}
+        open={discardModalOpen}
         title="Discard local changes?"
-        description={
-          fileOperations.pendingScenarioAction?.kind === 'import'
-            ? 'Importing another file will replace the current editable draft if it succeeds.'
-            : fileOperations.pendingScenarioAction?.kind === 'new'
-              ? 'Creating a new scenario will replace the current editable draft.'
-              : 'Switching scenarios will replace the current editable draft.'
-        }
-        onClose={fileOperations.cancelPendingScenarioAction}
+        description={discardModalDescription}
+        onClose={cancelPendingDraftReplacement}
         footer={
           <ModalActions>
-            <ModalButton type="button" onClick={fileOperations.cancelPendingScenarioAction}>
+            <ModalButton type="button" onClick={cancelPendingDraftReplacement}>
               Cancel
             </ModalButton>
-            <ModalButton
-              tone="danger"
-              type="button"
-              onClick={fileOperations.confirmPendingScenarioAction}
-            >
-              Discard changes
+            <ModalButton tone="danger" type="button" onClick={confirmPendingDraftReplacement}>
+              {discardModalConfirmLabel}
             </ModalButton>
           </ModalActions>
         }
       >
-        <p className="scenario-switch-copy">
-          Any unsaved edits to <strong>{draft.name}</strong> will be lost after the next scenario
-          loads successfully.{' '}
-          {fileOperations.pendingScenarioAction?.kind === 'new'
-            ? 'This scenario has not been saved to disk.'
-            : scenario.source === 'example'
-              ? 'The example file remains unchanged.'
-              : 'The file on disk remains unchanged.'}
-        </p>
+        {discardModalCopy}
       </Modal>
     </>
   );

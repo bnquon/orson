@@ -111,13 +111,21 @@ describe('HistoricalRunPanel', () => {
 describe('HistoricalRunToolbar', () => {
   it('identifies the active run as a read-only historical snapshot', () => {
     const markup = renderToStaticMarkup(
-      <HistoricalRunToolbar summary={historicalRun.summary} onReturnToCurrent={vi.fn()} />,
+      <HistoricalRunToolbar
+        summary={historicalRun.summary}
+        onReturnToCurrent={vi.fn()}
+        onLoadIntoCompose={vi.fn()}
+        loadDisabled={false}
+        loadDisabledReason=""
+      />,
     );
 
     expect(markup).toContain('Historical run');
     expect(markup).toContain('Checkout flow');
     expect(markup).toContain('Read-only');
     expect(markup).toContain('Current workspace');
+    expect(markup).toContain('Load into Compose');
+    expect(markup).toContain('type="button"');
   });
 
   it('identifies runs from unsaved scenarios', () => {
@@ -125,9 +133,28 @@ describe('HistoricalRunToolbar', () => {
       <HistoricalRunToolbar
         summary={{ ...historicalRun.summary, scenarioSource: 'unsaved' }}
         onReturnToCurrent={vi.fn()}
+        onLoadIntoCompose={vi.fn()}
+        loadDisabled={false}
+        loadDisabledReason=""
       />,
     );
 
     expect(markup).toContain('Unsaved scenario');
+  });
+
+  it('disables loading while the selected historical detail is unavailable', () => {
+    const markup = renderToStaticMarkup(
+      <HistoricalRunToolbar
+        summary={historicalRun.summary}
+        onReturnToCurrent={vi.fn()}
+        onLoadIntoCompose={vi.fn()}
+        loadDisabled
+        loadDisabledReason="Wait for the historical run to finish loading"
+      />,
+    );
+
+    expect(markup).toContain('Load into Compose');
+    expect(markup).toContain('disabled=""');
+    expect(markup).toContain('Wait for the historical run to finish loading');
   });
 });

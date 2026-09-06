@@ -1,7 +1,6 @@
 import type {
   RunHistoryDetailModel,
   RunHistoryRecordModel,
-  RunHistoryScenarioSnapshotModel,
   RunHistorySummaryModel,
 } from '../../api/runHistory';
 import type {
@@ -13,6 +12,7 @@ import type {
   TrackedEvent,
 } from './types';
 import { getRunRecordId } from './flowModel';
+import { toHistoricalScenarioDraft } from './historyDraft';
 import { initialRunState } from './runReducer';
 import type { HistoricalRun, HistorySummary } from './historyTypes';
 
@@ -59,43 +59,6 @@ export function toHistorySummary(model: RunHistorySummaryModel): HistorySummary 
   };
 }
 
-function topologyEdges(snapshot: RunHistoryScenarioSnapshotModel) {
-  return snapshot.topology.map((edge) => ({
-    id: edge.id,
-    from: edge.from,
-    to: edge.to,
-  }));
-}
-
-function toHistoricalScenario(snapshot: RunHistoryScenarioSnapshotModel): ScenarioDraft {
-  const watchedTopics = snapshot.watchedTopics.map((topic, index) => ({
-    id: `topic-${index}`,
-    name: topic,
-  }));
-  const topology = topologyEdges(snapshot);
-  return {
-    name: snapshot.displayName,
-    rootTopic: snapshot.rootTopic,
-    watchedTopics,
-    topology,
-    configuredTopology: (snapshot.configuredTopology ?? snapshot.topology).map((edge) => ({
-      id: edge.id,
-      from: edge.from,
-      to: edge.to,
-    })),
-    messageKey: snapshot.messageKey,
-    headers: snapshot.headers.map((header, index) => ({
-      id: `header-${index}`,
-      name: header.key,
-      value: header.value,
-      protected: false,
-    })),
-    correlationHeader: snapshot.correlationHeader ?? '',
-    payload: snapshot.payload,
-    captureTimeoutSeconds: String(snapshot.captureTimeoutSeconds),
-  };
-}
-
 function recordModel(source: RunHistoryRecordModel): EventRecord {
   return {
     topic: source.topic,
@@ -134,7 +97,7 @@ function trackedEvents(detail: RunHistoryDetailModel, scenario: ScenarioDraft): 
 
 export function toHistoricalRun(detail: RunHistoryDetailModel): HistoricalRun {
   const summary = toHistorySummary(detail.summary);
-  const scenario = toHistoricalScenario(detail.scenario);
+  const scenario = toHistoricalScenarioDraft(detail.scenario);
   const indexedRecords = detail.records
     .map((item, index) => ({ item, index }))
     .sort(

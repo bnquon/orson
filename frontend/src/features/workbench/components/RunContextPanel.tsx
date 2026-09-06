@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type Ref } from 'react';
 import { CheckCircle, Clock, MoreHoriz, NavArrowLeft, Refresh, WarningCircle } from 'iconoir-react';
 import { preflightErrorCodes, topicDiagnosticKinds } from '../../../api/result';
 import { LoadingDots } from '../../../components/LoadingDots';
@@ -7,7 +7,7 @@ import { Toast } from '../../../components/Toast';
 import { formatObservedTimestamp } from '../observedEvent';
 import { formatRunDuration } from '../historyFormatting';
 import { toObservedRun } from '../observedRun';
-import type { HistorySummary } from '../historyTypes';
+import type { HistorySummary, RunContextMode } from '../historyTypes';
 import { formatStatusLabel, isActiveRunStatus, type RunStatus } from '../runStatus';
 import type { ObservedEvent, ObservedRun } from '../types';
 import type { RunHistoryController } from '../useRunHistory';
@@ -95,6 +95,7 @@ function HistoryCard({
   onSelect,
   onToggleMenu,
   onDelete,
+  menuContainerRef,
 }: {
   summary: HistorySummary;
   selected: boolean;
@@ -103,6 +104,7 @@ function HistoryCard({
   onSelect: () => void;
   onToggleMenu: () => void;
   onDelete: () => void;
+  menuContainerRef?: Ref<HTMLDivElement>;
 }) {
   return (
     <article className={`history-card ${selected ? 'history-card--selected' : ''}`}>
@@ -134,7 +136,7 @@ function HistoryCard({
         </span>
         <span className="history-card__outcome">{summary.outcome}</span>
       </button>
-      <div className="history-card__actions">
+      <div className="history-card__actions" ref={menuContainerRef}>
         <button
           className="history-card__menu-button"
           type="button"
@@ -320,6 +322,7 @@ export function RunContextPanel({
   onRetryPreflight,
 }: RunContextPanelProps) {
   const [menuRunId, setMenuRunId] = useState<string | null>(null);
+  const openMenuContainerRef = useRef<HTMLDivElement>(null);
   const [pending, setPending] = useState<PendingConfirmation>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
@@ -346,6 +349,31 @@ export function RunContextPanel({
       ? history.summaries
       : history.summaries.filter((summary) => summary.status === activeHistoryFilter);
 
+  useEffect(() => {
+    if (menuRunId === null) return;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      if (openMenuContainerRef.current?.contains(event.target)) return;
+      setMenuRunId(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuRunId(null);
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointerDown, true);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointerDown, true);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [menuRunId]);
+
+  const changeHistoryMode = (mode: RunContextMode) => {
+    setMenuRunId(null);
+    history.setMode(mode);
+  };
+
   const confirmDelete = async () => {
     if (pending === null) return;
     const success =
@@ -366,7 +394,7 @@ export function RunContextPanel({
               <button
                 className="run-context__back"
                 type="button"
-                onClick={() => history.setMode('history')}
+                onClick={() => changeHistoryMode('history')}
                 title="Back to run history"
               >
                 <NavArrowLeft width={16} height={16} />
@@ -408,7 +436,7 @@ export function RunContextPanel({
             role="tab"
             aria-selected={history.mode === 'current'}
             className={history.mode === 'current' ? 'is-active' : ''}
-            onClick={() => history.setMode('current')}
+            onClick={() => changeHistoryMode('current')}
           >
             Current run
           </button>
@@ -417,7 +445,7 @@ export function RunContextPanel({
             role="tab"
             aria-selected={history.mode !== 'current'}
             className={history.mode !== 'current' ? 'is-active' : ''}
-            onClick={() => history.setMode('history')}
+            onClick={() => changeHistoryMode('history')}
           >
             History
           </button>
@@ -495,8 +523,10 @@ export function RunContextPanel({
                     summary={summary}
                     selected={history.selectedSummary?.id === summary.id}
                     menuOpen={menuRunId === summary.id}
+                    menuContainerRef={menuRunId === summary.id ? openMenuContainerRef : undefined}
                     disabled={history.operation !== 'idle'}
                     onSelect={() => {
+                      setMenuRunId(null);
                       void history.selectRun(summary);
                     }}
                     onToggleMenu={() => setMenuRunId(menuRunId === summary.id ? null : summary.id)}
@@ -537,7 +567,7 @@ export function RunContextPanel({
             <div className="run-context__state run-context__state--detail" role="alert">
               <WarningCircle width={18} height={18} />
               <span>{history.error?.message ?? 'This historical run is no longer available.'}</span>
-              <button type="button" onClick={() => history.setMode('history')}>
+              <button type="button" onClick={() => changeHistoryMode('history')}>
                 Back to history
               </button>
             </div>

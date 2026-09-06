@@ -1,10 +1,20 @@
+// @vitest-environment jsdom
+
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { preflightErrorCodes, topicDiagnosticKinds } from '../../../../api/result';
+import type { HistorySummary } from '../../historyTypes';
 import { initialRunState } from '../../runReducer';
 import type { RunHistoryController } from '../../useRunHistory';
 import type { ObservedRun } from '../../types';
 import { formatHistoryRelativeTime, RunContextPanel } from '../../components/RunContextPanel';
+
+Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
+  configurable: true,
+  value: true,
+});
 
 const currentRun: ObservedRun = {
   id: 'run-live',
@@ -28,6 +38,71 @@ const currentRun: ObservedRun = {
   error: null,
 };
 
+const savedRunSummary: HistorySummary = {
+  id: 'run-1',
+  scenarioName: 'Checkout flow',
+  scenarioSource: 'unsaved',
+  scenarioId: 'checkout',
+  scenarioPath: '',
+  rootTopic: 'order.created',
+  status: 'completed',
+  startedAt: '2026-08-26T10:00:00Z',
+  finishedAt: '2026-08-26T10:00:02Z',
+  durationMs: 2000,
+  eventCount: 4,
+  outcome: '4 events captured',
+  failureStage: null,
+  failureMessage: null,
+  connectionName: null,
+};
+
+let interactiveRoot: Root | null = null;
+let interactiveHost: HTMLDivElement | null = null;
+
+function renderInteractivePanel(history: RunHistoryController) {
+  interactiveHost = document.createElement('div');
+  document.body.append(interactiveHost);
+  interactiveRoot = createRoot(interactiveHost);
+  act(() => {
+    interactiveRoot?.render(
+      <RunContextPanel
+        currentRun={currentRun}
+        currentSelectedEventId={null}
+        currentSelectedEvent={null}
+        onSelectCurrentEvent={() => undefined}
+        history={history}
+      />,
+    );
+  });
+}
+
+function rerenderInteractivePanel(history: RunHistoryController) {
+  act(() => {
+    interactiveRoot?.render(
+      <RunContextPanel
+        currentRun={currentRun}
+        currentSelectedEventId={null}
+        currentSelectedEvent={null}
+        onSelectCurrentEvent={() => undefined}
+        history={history}
+      />,
+    );
+  });
+}
+
+function runActionsButton(): HTMLButtonElement {
+  const trigger = interactiveHost?.querySelector('[aria-label="Actions for Checkout flow"]');
+  if (!(trigger instanceof HTMLButtonElement)) throw new Error('run actions button not found');
+  return trigger;
+}
+
+afterEach(() => {
+  if (interactiveRoot !== null) act(() => interactiveRoot?.unmount());
+  interactiveHost?.remove();
+  interactiveRoot = null;
+  interactiveHost = null;
+});
+
 function historyController(overrides: Partial<RunHistoryController> = {}): RunHistoryController {
   return {
     mode: 'current',
@@ -50,6 +125,41 @@ function historyController(overrides: Partial<RunHistoryController> = {}): RunHi
 }
 
 describe('RunContextPanel', () => {
+  it('closes a history card menu when clicking outside it', () => {
+    const history = historyController({ mode: 'history', summaries: [savedRunSummary] });
+    renderInteractivePanel(history);
+
+    act(() => runActionsButton().click());
+    expect(interactiveHost?.querySelector('[role="menu"]')).not.toBeNull();
+
+    act(() => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    expect(interactiveHost?.querySelector('[role="menu"]')).toBeNull();
+  });
+
+  it('does not preserve an open card menu after leaving and returning to history', () => {
+    const history = historyController({ mode: 'history', summaries: [savedRunSummary] });
+    renderInteractivePanel(history);
+
+    act(() => runActionsButton().click());
+    expect(interactiveHost?.querySelector('[role="menu"]')).not.toBeNull();
+
+    const currentRunTab = Array.from(
+      interactiveHost?.querySelectorAll<HTMLButtonElement>('button') ?? [],
+    ).find((candidate) => candidate.textContent?.trim() === 'Current run');
+    if (currentRunTab === undefined) throw new Error('current run tab not found');
+    act(() => currentRunTab.click());
+
+    history.mode = 'current';
+    rerenderInteractivePanel(history);
+    history.mode = 'history';
+    rerenderInteractivePanel(history);
+
+    expect(interactiveHost?.querySelector('[role="menu"]')).toBeNull();
+    expect(runActionsButton().getAttribute('aria-expanded')).toBe('false');
+  });
+
   it.each([['orders'], ['orders', 'payments']])(
     'lists missing topics without a failed timeline: %j',
     (...topics) => {
@@ -195,6 +305,7 @@ describe('RunContextPanel', () => {
     expect(markup).toContain('Completed');
     expect(markup).not.toContain('history-filter--failed');
     expect(markup).toContain('Clear all history');
+    expect(markup).not.toContain('Load into Compose');
   });
 
   it('marks a selected historical run read-only and does not expose publish controls', () => {

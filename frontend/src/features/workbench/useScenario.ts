@@ -29,7 +29,7 @@ import {
   toScenarioDiagnostic,
   type ScenarioDraftData,
 } from './scenarioMapping';
-import { createUnsavedScenario, createUnsavedScenarioId } from './scenarioFactory';
+import { createUnsavedLoadedScenario, createUnsavedScenario } from './scenarioFactory';
 import { applyScenarioFileResult } from './scenarioFileResult';
 import type { WorkspaceRequestOutcome } from '../workspace/useWorkspace';
 import type {
@@ -40,6 +40,7 @@ import type {
   ScenarioFileOperationOutcome,
   ScenarioFolderFeedback,
   ScenarioFolder,
+  ScenarioDraft,
 } from './types';
 
 type ScenarioCatalogStatus = 'loading' | 'loaded' | 'failed';
@@ -68,6 +69,7 @@ export interface ScenarioController {
   retrySelectedScenario(): Promise<void>;
   selectScenario(id: string): Promise<void>;
   createScenario(): void;
+  loadDraftAsUnsaved(draft: ScenarioDraft): void;
   exitScenario(): void;
   importScenario(): Promise<ScenarioFileOperationOutcome>;
   removeScenario(id: string): Promise<ScenarioFileOperationOutcome>;
@@ -334,21 +336,17 @@ export function useScenario({
   const createScenario = useCallback(() => {
     if (scenario?.source !== 'unsaved') scenarioBeforeUnsavedRef.current = scenario;
     dispatchLocalSession({ type: 'feedback_cleared' });
-    const draft = createUnsavedScenario();
-    const unsaved: LoadedScenario = {
-      id: createUnsavedScenarioId(),
-      relativePath: '',
-      folderPath: '',
-      name: draft.name,
-      sourceFilename: '',
-      source: 'unsaved',
-      sourcePath: '',
-      localStatus: null,
-      draft,
-      warnings: [],
-    };
-    activateScenario(unsaved, null);
+    activateScenario(createUnsavedLoadedScenario(createUnsavedScenario()), null);
   }, [activateScenario, dispatchLocalSession, scenario]);
+
+  const loadDraftAsUnsaved = useCallback(
+    (draft: ScenarioDraft) => {
+      if (scenario?.source !== 'unsaved') scenarioBeforeUnsavedRef.current = scenario;
+      dispatchLocalSession({ type: 'feedback_cleared' });
+      activateScenario(createUnsavedLoadedScenario(draft), null);
+    },
+    [activateScenario, dispatchLocalSession, scenario],
+  );
 
   const exitScenario = useCallback(() => {
     if (scenario?.source !== 'unsaved') return;
@@ -725,6 +723,7 @@ export function useScenario({
     retrySelectedScenario,
     selectScenario,
     createScenario,
+    loadDraftAsUnsaved,
     exitScenario,
     importScenario,
     removeScenario,
