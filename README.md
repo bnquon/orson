@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/61a024c2-7fb6-46f8-bc3e-9f0ae63a0313" controls width="100%"/>
+  <video src="https://github.com/user-attachments/assets/50de40c2-a435-46be-b877-4e005f1d13fb" controls width="100%"/>
 </p>
 
 <p align="center">
