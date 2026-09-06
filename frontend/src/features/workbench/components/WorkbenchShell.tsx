@@ -1,9 +1,8 @@
-import { Bug, NavArrowDown, Suggestion } from 'iconoir-react';
+import { NavArrowDown } from 'iconoir-react';
 import type { ReactNode } from 'react';
 import type { KafkaConnection, WorkspaceMode } from '../types';
 import orsonIcon from '../../../assets/orson-icon.png';
-import { Tooltip } from '../../../components/Tooltip';
-import { BrowserOpenURL } from '../../../../wailsjs/runtime/runtime';
+import { FeedbackActions } from '../../../components/FeedbackActions';
 import '../styles/shell.css';
 
 // TODO: [Workspace] Scope open scenario tabs when multi-tab workspaces are introduced.
@@ -25,9 +24,6 @@ interface WorkbenchShellProps {
   runStatusLabel?: string;
   statusDetail: string;
 }
-
-const suggestionUrl = 'https://github.com/bnquon/orson/issues/new?template=feature_request.yml';
-const bugReportUrl = 'https://github.com/bnquon/orson/issues/new?template=bug_report.yml';
 
 export function WorkbenchShell({
   connection,
@@ -70,28 +66,7 @@ export function WorkbenchShell({
           {workspaceSelector}
         </div>
         <div className="workbench-topbar__group workbench-topbar__group--right">
-          <span className="workbench-feedback">
-            <Tooltip
-              label="Suggest an improvement"
-              content="Suggest an improvement"
-              interactive
-              placement="bottom"
-              onClick={() => BrowserOpenURL(suggestionUrl)}
-            >
-              <Suggestion width={16} height={16} aria-hidden="true" />
-            </Tooltip>
-          </span>
-          <span className="workbench-feedback">
-            <Tooltip
-              label="Report a bug"
-              content="Report a bug"
-              interactive
-              placement="bottom"
-              onClick={() => BrowserOpenURL(bugReportUrl)}
-            >
-              <Bug width={16} height={16} aria-hidden="true" />
-            </Tooltip>
-          </span>
+          <FeedbackActions />
           <button
             className="workbench-environment"
             id="workbench-environment-selector"
