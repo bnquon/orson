@@ -20,20 +20,30 @@ describe('toRunRequest', () => {
     expect(request.headers).toEqual([{ key: 'content-type', value: 'application/json' }]);
   });
 
-  it('includes the immutable scenario snapshot when publishing', () => {
-    const request = toRunRequest(initialScenario, {
-      source: 'local',
-      scenarioId: 'checkout.yaml',
-      sourcePath: '/tmp/checkout.yaml',
-      sourceFilename: 'checkout.yaml',
-      displayName: 'Checkout flow',
-    });
+  it('keeps active and warning-bearing configured topology distinct in the snapshot', () => {
+    const activeTopology = [{ id: 'active-edge', from: 'order.created', to: 'payment.charged' }];
+    const configuredTopology = [
+      ...activeTopology,
+      { id: 'warning-edge', from: 'missing.topic', to: 'inventory.reserved' },
+    ];
+    const request = toRunRequest(
+      { ...initialScenario, topology: activeTopology, configuredTopology },
+      {
+        source: 'local',
+        scenarioId: 'checkout.yaml',
+        sourcePath: '/tmp/checkout.yaml',
+        sourceFilename: 'checkout.yaml',
+        displayName: 'Checkout flow',
+      },
+    );
 
     expect(request.scenarioSnapshot).toMatchObject({
       version: 1,
       source: 'local',
       scenarioId: 'checkout.yaml',
       rootTopic: 'order.created',
+      topology: activeTopology,
+      configuredTopology,
     });
   });
 

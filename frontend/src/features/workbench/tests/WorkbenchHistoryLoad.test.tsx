@@ -18,6 +18,11 @@ import type { LoadedScenario, ScenarioDraft } from '../types';
 import type { RunHistoryController } from '../useRunHistory';
 import type { WorkbenchPageProps } from '../workbenchPageTypes';
 
+Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', {
+  configurable: true,
+  value: true,
+});
+
 const runApiState = vi.hoisted(() => ({ requests: [] as api.RunRequest[] }));
 
 vi.mock('../../../api/run', () => ({
@@ -69,8 +74,8 @@ const historicalScenario: ScenarioDraft = {
   ],
   topology: [{ id: 'observed-edge', from: 'orders.created', to: 'payments.captured' }],
   configuredTopology: [
-    { id: 'configured-1', from: 'orders.created', to: 'payments.captured' },
-    { id: 'configured-2', from: 'payments.captured', to: 'inventory.reserved' },
+    { id: 'observed-edge', from: 'orders.created', to: 'payments.captured' },
+    { id: 'warning-edge', from: 'missing.topic', to: 'inventory.reserved' },
   ],
   messageKey: 'order-42',
   headers: [
@@ -452,6 +457,8 @@ describe('loading a historical run into Compose', () => {
       scenarioSnapshot: {
         source: 'unsaved',
         displayName: 'Recorded checkout flow',
+        topology: historicalScenario.topology,
+        configuredTopology: historicalScenario.configuredTopology,
       },
     });
     expect(request.headers).not.toContainEqual({
