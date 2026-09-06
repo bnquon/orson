@@ -281,7 +281,7 @@ export function WorkspaceStartScreen({
           <span className="workspace-start__slash">/</span>
           <span className="workspace-start__context">Workspace Launcher</span>
         </div>
-        <FeedbackActions />
+        <FeedbackActions className="feedback-actions--launcher" />
       </header>
 
       <section className="workspace-start__content" aria-labelledby="workspace-start-title">

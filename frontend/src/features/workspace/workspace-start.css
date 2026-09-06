@@ -1,7 +1,6 @@
 .workspace-start-screen {
   min-height: 100vh;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: auto;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-ui);

@@ -41,14 +41,14 @@
   min-width: 0;
 }
 
-.feedback-actions .tooltip__content--bottom {
+.feedback-actions--launcher .tooltip__content--bottom {
   left: auto;
   right: 0;
   transform: translateY(-2px);
 }
 
-.feedback-actions .tooltip:hover .tooltip__content--bottom,
-.feedback-actions .tooltip:focus-within .tooltip__content--bottom {
+.feedback-actions--launcher .tooltip:hover .tooltip__content--bottom,
+.feedback-actions--launcher .tooltip:focus-within .tooltip__content--bottom {
   transform: translateY(0);
 }
 
