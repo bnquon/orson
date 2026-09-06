@@ -1,36 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import type { api } from '../../../wailsjs/go/models';
-import {
-  importLocalScenario,
-  listLocalScenarios,
-  loadBundledScenario,
-  loadLocalScenario,
-  removeLocalScenario,
-  saveLocalScenario,
-  saveScenarioAs,
-  type ScenarioFileResult,
-} from '../../api/scenario';
-import {
-  createScenarioFolder,
-  deleteScenarioFolder,
-  moveLocalScenario,
-  moveScenarioFolder,
-  reorderScenarioFolder,
-  renameScenarioFolder,
-} from '../../api/scenarioFolders';
+import { listLocalScenarios, loadBundledScenario, loadLocalScenario } from '../../api/scenario';
 import type { ApiError } from '../../api/result';
 import {
   initialLocalScenarioSessionState,
   localScenarioSessionReducer,
 } from './localScenarioSession';
-import {
-  toLoadedScenario,
-  toScenarioDescriptor,
-  toScenarioDiagnostic,
-  type ScenarioDraftData,
-} from './scenarioMapping';
+import { toLoadedScenario, toScenarioDescriptor, type ScenarioDraftData } from './scenarioMapping';
 import { createUnsavedLoadedScenario, createUnsavedScenario } from './scenarioFactory';
-import { applyScenarioFileResult } from './scenarioFileResult';
+import { useScenarioFolders } from './useScenarioFolders';
+import { useScenarioFiles } from './useScenarioFiles';
+import { invalidSelectionError, protocolError } from './scenarioErrors';
 import type { WorkspaceRequestOutcome } from '../workspace/useWorkspace';
 import type {
   LoadedScenario,
@@ -86,38 +66,6 @@ export interface ScenarioController {
   clearFolderFeedback(): void;
 }
 
-function invalidSelectionError(descriptor: ScenarioDescriptor): ApiError {
-  const localMessages: Partial<Record<NonNullable<ScenarioDescriptor['localStatus']>, string>> = {
-    changed: `${descriptor.sourceFilename} changed outside Orson. Re-import it to refresh this workspace.`,
-    missing: `${descriptor.sourceFilename} is missing from disk.`,
-    unreadable: `${descriptor.sourceFilename} could not be read.`,
-  };
-  return {
-    code: descriptor.localStatus === 'available' ? 'scenario_invalid' : 'scenario_unavailable',
-    message:
-      (descriptor.localStatus === null ? undefined : localMessages[descriptor.localStatus]) ??
-      `${descriptor.sourceFilename} is invalid.`,
-    details: descriptor.diagnostics.map((diagnostic) => diagnostic.message).join('\n'),
-    retryable: false,
-  };
-}
-
-function protocolError(message: string): ApiError {
-  return {
-    code: 'scenario_file_response_invalid',
-    message,
-    retryable: true,
-  };
-}
-
-function folderDeletionMessage(summary: api.FolderMutationSummary | undefined): string {
-  if (summary === undefined) return 'Folder deleted';
-
-  const removedScenarioCount = summary.removedScenarioCount ?? 0;
-  const scenarioLabel = removedScenarioCount === 1 ? 'scenario' : 'scenarios';
-  return `Folder deleted. ${removedScenarioCount} ${scenarioLabel} removed.`;
-}
-
 interface UseScenarioOptions {
   bootstrap: api.WorkspaceBootstrapData | null;
   bootstrapError: ApiError | null;
@@ -152,12 +100,6 @@ export function useScenario({
   const [selectedLoadStatus, setSelectedLoadStatus] = useState<ScenarioSelectionStatus>('idle');
   const [selectedLoadError, setSelectedLoadError] = useState<ApiError | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
-  const [localFolders, setLocalFolders] = useState<ScenarioFolder[]>([]);
-  const [folderOperation, setFolderOperation] = useState<ScenarioFolderOperation>('idle');
-  const [folderError, setFolderError] = useState<ApiError | null>(null);
-  const [folderFeedback, setFolderFeedback] = useState<ScenarioFolderFeedback>({
-    successMessage: null,
-  });
   const [activeScenarioCleared, setActiveScenarioCleared] = useState(false);
   const requestIdRef = useRef(0);
   const mountedRef = useRef(true);
@@ -203,21 +145,6 @@ export function useScenario({
     return descriptors;
   }, [replaceLocalDescriptors]);
 
-  const applyFolderData = useCallback(
-    (data: api.ScenarioFolderData) => {
-      setLocalFolders(
-        (data.folders ?? []).map((folder) => ({
-          id: folder.id,
-          name: folder.name,
-          parentId: folder.parentId ?? '',
-          siblingOrder: folder.siblingOrder ?? 0,
-        })),
-      );
-      replaceLocalDescriptors((data.scenarios ?? []).map(toScenarioDescriptor));
-    },
-    [replaceLocalDescriptors],
-  );
-
   const clearScenarioSelection = useCallback((showBlankWorkbench: boolean) => {
     requestIdRef.current += 1;
     setScenario(null);
@@ -230,92 +157,33 @@ export function useScenario({
     setActiveScenarioCleared(showBlankWorkbench);
   }, []);
 
-  const runFolderOperation = useCallback(
-    async (
-      operation: Exclude<ScenarioFolderOperation, 'idle'>,
-      request: () => ReturnType<typeof createScenarioFolder>,
-    ) => {
-      setFolderOperation(operation);
-      setFolderError(null);
-      setFolderFeedback({ successMessage: null });
-      const activeIdBeforeOperation = activeScenarioIdRef.current;
-      const activeWasLocal =
-        activeIdBeforeOperation !== null &&
-        localDescriptorsRef.current.some((item) => item.id === activeIdBeforeOperation);
-      const selectedIdBeforeOperation = selectedScenarioId;
-      const selectedWasLocal =
-        selectedIdBeforeOperation !== null &&
-        localDescriptorsRef.current.some((item) => item.id === selectedIdBeforeOperation);
-      const result = await request();
-      if (!mountedRef.current) return false;
-      if (result.data !== undefined) applyFolderData(result.data);
-      if (result.data?.persistence !== undefined) onPersistence(result.data.persistence);
-      if (operation === 'deleting' && result.data !== undefined) {
-        const remainingScenarioIds = new Set(result.data.scenarios.map((item) => item.id));
-        const activeWasRemoved =
-          activeWasLocal &&
-          activeIdBeforeOperation !== null &&
-          !remainingScenarioIds.has(activeIdBeforeOperation);
-        const selectedWasRemoved =
-          selectedWasLocal &&
-          selectedIdBeforeOperation !== null &&
-          !remainingScenarioIds.has(selectedIdBeforeOperation);
-
-        if (activeWasRemoved) {
-          clearScenarioSelection(true);
-        } else if (selectedWasRemoved) {
-          setSelectedScenarioId(null);
-          setSelectedDiagnostics([]);
-          setSelectedLoadStatus('idle');
-          setSelectedLoadError(null);
-        }
-        if (result.ok) {
-          setFolderFeedback({
-            successMessage: folderDeletionMessage(result.data.summary),
-          });
-        }
-      }
-      if (!result.ok) {
-        setFolderError(result.error);
-        setFolderOperation('idle');
-        return false;
-      }
-      setFolderError(null);
-      setFolderOperation('idle');
-      return true;
-    },
-    [applyFolderData, clearScenarioSelection, onPersistence, selectedScenarioId],
-  );
-
-  const createFolder = useCallback(
-    (name: string, parentId = '') =>
-      runFolderOperation('creating', () => createScenarioFolder(name, parentId)),
-    [runFolderOperation],
-  );
-  const renameFolder = useCallback(
-    (id: string, name: string) =>
-      runFolderOperation('renaming', () => renameScenarioFolder(id, name)),
-    [runFolderOperation],
-  );
-  const moveFolder = useCallback(
-    (id: string, parentId: string) =>
-      runFolderOperation('moving', () => moveScenarioFolder(id, parentId)),
-    [runFolderOperation],
-  );
-  const reorderFolder = useCallback(
-    (id: string, siblingIndex: number) =>
-      runFolderOperation('moving', () => reorderScenarioFolder(id, siblingIndex)),
-    [runFolderOperation],
-  );
-  const moveScenario = useCallback(
-    (id: string, folderId: string, siblingIndex: number) =>
-      runFolderOperation('moving', () => moveLocalScenario(id, folderId, siblingIndex)),
-    [runFolderOperation],
-  );
-  const deleteFolder = useCallback(
-    (id: string) => runFolderOperation('deleting', () => deleteScenarioFolder(id)),
-    [runFolderOperation],
-  );
+  const {
+    localFolders,
+    setLocalFolders,
+    folderOperation,
+    folderError,
+    setFolderError,
+    folderFeedback,
+    setFolderFeedback,
+    createFolder,
+    renameFolder,
+    moveFolder,
+    reorderFolder,
+    moveScenario,
+    deleteFolder,
+  } = useScenarioFolders({
+    mountedRef,
+    activeScenarioIdRef,
+    localDescriptorsRef,
+    selectedScenarioId,
+    setSelectedScenarioId,
+    setSelectedDiagnostics,
+    setSelectedLoadStatus,
+    setSelectedLoadError,
+    replaceLocalDescriptors,
+    clearScenarioSelection,
+    onPersistence,
+  });
 
   const activateScenario = useCallback(
     (loaded: LoadedScenario, selectedId: string | null = loaded.id) => {
@@ -470,140 +338,21 @@ export function useScenario({
     setError(bootstrapError ?? protocolError('The workspace could not be refreshed.'));
   }, [bootstrapError, onRetryBootstrap]);
 
-  const handleFileResult = useCallback(
-    (
-      result: ScenarioFileResult,
-      successMessage: (descriptor: ScenarioDescriptor) => string,
-    ): ScenarioFileOperationOutcome =>
-      applyScenarioFileResult(result, scenario?.sourceFilename ?? 'scenario.yaml', successMessage, {
-        dispatch: dispatchLocalSession,
-        activate: activateScenario,
-      }),
-    [activateScenario, dispatchLocalSession, scenario?.sourceFilename],
-  );
-
-  const importScenario = useCallback(async (): Promise<ScenarioFileOperationOutcome> => {
-    dispatchLocalSession({ type: 'operation_started', operation: 'importing' });
-    const result = await importLocalScenario();
-    if (!mountedRef.current) return 'cancelled';
-    if (result.ok) onPersistence(result.data.persistence);
-    if (!result.ok) await refreshLocalDescriptors();
-    const outcome = handleFileResult(
-      result,
-      (descriptor) => `${descriptor.sourceFilename} imported`,
-    );
-    if (result.ok && result.data.descriptor !== undefined) {
-      void onRememberScenario('local', result.data.descriptor.id);
-    }
-    return outcome;
-  }, [
-    dispatchLocalSession,
-    handleFileResult,
-    onPersistence,
-    onRememberScenario,
-    refreshLocalDescriptors,
-  ]);
-
-  const saveScenario = useCallback(
-    async (draft: ScenarioDraftData): Promise<ScenarioFileOperationOutcome> => {
-      if (scenario === null || scenario.source !== 'local') return 'failed';
-      dispatchLocalSession({ type: 'operation_started', operation: 'saving' });
-      const result = await saveLocalScenario(scenario.id, draft);
-      if (!mountedRef.current) return 'cancelled';
-      if (result.ok) onPersistence(result.data.persistence);
-      if (
-        !result.ok &&
-        ['scenario_file_changed', 'scenario_file_missing', 'scenario_read_failed'].includes(
-          result.error.code,
-        )
-      ) {
-        await refreshLocalDescriptors();
-      }
-      return handleFileResult(result, (descriptor) => `${descriptor.sourceFilename} saved`);
-    },
-    [dispatchLocalSession, handleFileResult, onPersistence, refreshLocalDescriptors, scenario],
-  );
-
-  const saveActiveScenarioAs = useCallback(
-    async (draft: ScenarioDraftData): Promise<ScenarioFileOperationOutcome> => {
-      dispatchLocalSession({ type: 'operation_started', operation: 'saving_as' });
-      const result = await saveScenarioAs(draft);
-      if (!mountedRef.current) return 'cancelled';
-      if (result.ok) onPersistence(result.data.persistence);
-      const outcome = handleFileResult(
-        result,
-        (descriptor) => `${descriptor.sourceFilename} saved`,
-      );
-      if (result.ok && result.data.descriptor !== undefined) {
-        void onRememberScenario('local', result.data.descriptor.id);
-      }
-      return outcome;
-    },
-    [dispatchLocalSession, handleFileResult, onPersistence, onRememberScenario],
-  );
-
-  const removeScenario = useCallback(
-    async (id: string): Promise<ScenarioFileOperationOutcome> => {
-      if (scenario?.source === 'unsaved') {
-        dispatchLocalSession({
-          type: 'operation_failed',
-          error: protocolError(
-            'Save or exit the unsaved scenario before removing another scenario.',
-          ),
-        });
-        return 'failed';
-      }
-      dispatchLocalSession({ type: 'operation_started', operation: 'removing' });
-      const result = await removeLocalScenario(id);
-      if (!mountedRef.current) return 'cancelled';
-      if (!result.ok) {
-        dispatchLocalSession({
-          type: 'operation_failed',
-          error: result.error,
-          diagnostics: result.diagnostics.map((diagnostic) =>
-            toScenarioDiagnostic(diagnostic, scenario?.sourceFilename ?? id),
-          ),
-        });
-        return 'failed';
-      }
-      onPersistence(result.data.persistence);
-      if (scenarioBeforeUnsavedRef.current?.id === id) {
-        scenarioBeforeUnsavedRef.current = null;
-      }
-      dispatchLocalSession({ type: 'removed', id });
-      if (activeScenarioIdRef.current === id) {
-        clearScenarioSelection(false);
-      }
-      bootstrapIdentityRef.current = '';
-      const refreshed = await onRetryBootstrap();
-      if (!mountedRef.current) return 'cancelled';
-      if (refreshed === 'failed') {
-        dispatchLocalSession({
-          type: 'operation_failed',
-          error: protocolError('Scenario removed, but the workspace could not be refreshed.'),
-        });
-        return 'failed';
-      }
-      if (refreshed === 'superseded') {
-        dispatchLocalSession({ type: 'operation_cancelled' });
-        return 'cancelled';
-      }
-      dispatchLocalSession({ type: 'operation_succeeded', message: 'Scenario import removed' });
-      return 'succeeded';
-    },
-    [
-      clearScenarioSelection,
+  const { importScenario, saveScenario, saveActiveScenarioAs, removeScenario, clearFileFeedback } =
+    useScenarioFiles({
+      scenario,
       dispatchLocalSession,
+      activateScenario,
+      mountedRef,
       onPersistence,
+      onRememberScenario,
+      refreshLocalDescriptors,
+      scenarioBeforeUnsavedRef,
+      activeScenarioIdRef,
+      clearScenarioSelection,
+      bootstrapIdentityRef,
       onRetryBootstrap,
-      scenario?.source,
-      scenario?.sourceFilename,
-    ],
-  );
-
-  const clearFileFeedback = useCallback(() => {
-    dispatchLocalSession({ type: 'feedback_cleared' });
-  }, [dispatchLocalSession]);
+    });
 
   useEffect(() => {
     mountedRef.current = true;
@@ -690,6 +439,7 @@ export function useScenario({
     bootstrapIdentity,
     clearScenarioSelection,
     replaceLocalDescriptors,
+    setLocalFolders,
   ]);
 
   const descriptors = [...examples, ...localSession.descriptors];
