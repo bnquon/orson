@@ -21,6 +21,18 @@ you inspect each message's payload, headers, partition, and offset.
 Orson runs on your machine and connects directly to the Kafka broker you configure. Your payloads
 and captured events are not uploaded to an Orson cloud service or analytics pipeline.
 
+## Current Release
+
+**v0.1.0-alpha.1** · First public alpha
+
+[Download Orson for macOS](https://github.com/bnquon/orson/releases/download/v0.1.0-alpha.1/Orson-macos-universal.zip) ·
+[View release notes](https://github.com/bnquon/orson/releases/tag/v0.1.0-alpha.1)
+
+Orson is currently unsigned and not notarized by Apple. On first launch, macOS may block the
+app because it cannot verify the developer. If that happens, right-click `Orson.app`, choose
+**Open**, and confirm. You may also need to approve it under **System Settings → Privacy &
+Security → Open Anyway**.
+
 ## Demo
 
 The demo pipeline models an order flow:
