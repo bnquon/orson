@@ -11,6 +11,10 @@
   <video src="https://github.com/user-attachments/assets/61a024c2-7fb6-46f8-bc3e-9f0ae63a0313" controls width="100%"/>
 </p>
 
+<p align="center">
+  <sub>Demo recorded with v0.1.0 on September 6, 2026.</sub>
+</p>
+
 ## Overview
 
 Orson helps developers understand what happens after publishing a Kafka event.
