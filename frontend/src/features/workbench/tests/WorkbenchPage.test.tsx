@@ -92,6 +92,7 @@ it('keeps the draft and connection after preflight failure and retries the edite
         },
         onSelectScenario: noop,
         onCreateScenario: noop,
+        onLoadDraftAsUnsaved: noop,
         onExitUnsavedScenario: noop,
         onImportScenario: noop,
         onRemoveScenario: noop,

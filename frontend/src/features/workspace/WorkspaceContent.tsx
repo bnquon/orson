@@ -155,6 +155,7 @@ export function WorkspaceContent({
       fileFeedback: scenario.fileFeedback,
       onSelectScenario: (id) => scenario.selectScenario(id),
       onCreateScenario: () => scenario.createScenario(),
+      onLoadDraftAsUnsaved: (draft) => scenario.loadDraftAsUnsaved(draft),
       onExitUnsavedScenario: () => scenario.exitScenario(),
       onImportScenario: () => scenario.importScenario(),
       onRemoveScenario: (id) => scenario.removeScenario(id),

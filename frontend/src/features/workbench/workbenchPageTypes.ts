@@ -11,6 +11,7 @@ import type {
   ScenarioFileFeedback,
   ScenarioFileOperationOutcome,
   ScenarioFolder,
+  ScenarioDraft,
 } from './types';
 
 interface WorkbenchScenarioCatalog {
@@ -32,6 +33,7 @@ interface WorkbenchScenarioFiles {
   fileFeedback: ScenarioFileFeedback;
   onSelectScenario: (id: string) => Promise<void>;
   onCreateScenario: () => void;
+  onLoadDraftAsUnsaved: (draft: ScenarioDraft) => void;
   onExitUnsavedScenario: () => void;
   onImportScenario: () => Promise<ScenarioFileOperationOutcome>;
   onRemoveScenario: (id: string) => Promise<ScenarioFileOperationOutcome>;

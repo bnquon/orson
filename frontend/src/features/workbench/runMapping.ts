@@ -44,7 +44,7 @@ export function toRunRequest(
             displayName: draft.name.trim() || scenario.displayName,
             rootTopic: draft.rootTopic,
             watchedTopics: draft.watchedTopics.map((topic) => topic.name),
-            topology: draft.configuredTopology,
+            topology: draft.topology,
             configuredTopology: draft.configuredTopology,
             messageKey: draft.messageKey,
             headers: draft.headers.map((header) => ({ key: header.name, value: header.value })),
